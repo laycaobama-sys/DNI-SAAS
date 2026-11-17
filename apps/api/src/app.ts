@@ -4,7 +4,10 @@ import type { AppEnv, Deps } from "./env";
 import { ApiError, problem } from "./lib/http";
 import { log } from "./lib/util";
 import { csrf, requestId, requireMembership, requireScope, requireUser, securityHeaders, session } from "./middleware";
+import { admin } from "./routes/admin";
 import { ai } from "./routes/ai";
+import { aihub } from "./routes/aihub";
+import { content } from "./routes/content";
 import { auth } from "./routes/auth";
 import { billing, providerManifest, webhooks } from "./routes/billing";
 import { insights } from "./routes/insights";
@@ -14,6 +17,16 @@ import { work } from "./routes/work";
 
 export function createApp(deps: Deps) {
   const app = new Hono<AppEnv>();
+
+  // Browser pages and the Google sign-in start live on the canonical origin only (cookies, OAuth state).
+  app.use("*", async (c, next) => {
+    if (c.env.ENVIRONMENT !== "production" || (c.req.method !== "GET" && c.req.method !== "HEAD")) return next();
+    const url = new URL(c.req.url);
+    const canon = new URL(c.env.APP_ORIGIN);
+    const page = url.pathname === "/app" || url.pathname.startsWith("/app/") || url.pathname === "/api/v1/auth/google/start";
+    if (page && url.host !== canon.host) return c.redirect(`${canon.origin}${url.pathname}${url.search}`, 301);
+    return next();
+  });
 
   app.use("/api/*", requestId, securityHeaders, async (c, next) => {
     c.set("deps", deps);
@@ -38,8 +51,11 @@ export function createApp(deps: Deps) {
   tenant.route("/", insights);
   tenant.route("/", billing);
   tenant.route("/", ai);
+  tenant.route("/", aihub);
+  tenant.route("/", content);
   tenant.get("/integrations", requireScope("integrations:read"), (c) => c.json({ items: providerManifest(c.env) }));
   app.route("/api/v1/orgs/:orgId", tenant);
+  app.route("/api/v1/admin", admin);
 
   // Development-only mailbox to complete email flows locally. 404 in every other environment.
   app.get("/api/v1/dev/mailbox", async (c) => {

@@ -17,9 +17,22 @@ export interface Env {
   MAIL_REPLY_TO?: string;
   /** "true" only once the sending domain is onboarded in Email Service. */
   EMAIL_SENDING_ENABLED?: string;
+  /** Max real emails per month (default 2500, under the 3,000 included in Workers Paid). */
+  EMAIL_MONTHLY_CAP?: string;
   GOOGLE_CLIENT_ID?: string;
   /** Stripe stays off until the owner decides: "true" enables checkout/webhook. */
   BILLING_ENABLED?: string;
+  /** OpenRouter FREE-only policy (fail-closed: any other value disables OpenRouter). */
+  OPENROUTER_FREE_ONLY?: string;
+  ALLOW_PAID_MODELS?: string;
+  OPENROUTER_MAX_SPEND_USD?: string;
+  /** Shared free-model request budget of the single OpenRouter key (all tenants together). */
+  OPENROUTER_DAILY_REQUESTS?: string;
+  OPENROUTER_RPM?: string;
+  OPENROUTER_ORG_DAILY?: string;
+  OPENROUTER_USER_DAILY?: string;
+  /** Secret: comma-separated platform admin emails (verified accounts only). */
+  PLATFORM_ADMIN_EMAILS?: string;
   /** Platform daily ceiling (USD, estimated) for paid AI usage. Default 0.10 ≈ Workers AI free allocation. */
   AI_DAILY_BUDGET_USD?: string;
   /** Secrets (wrangler secret put …). Never logged, never stored in D1. */

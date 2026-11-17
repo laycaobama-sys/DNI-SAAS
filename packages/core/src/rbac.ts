@@ -33,6 +33,8 @@ export const SCOPES = [
   "jobs:control",
   "plan:read",
   "plan:write",
+  "content:read",
+  "content:write",
   "content:approve",
   "content:publish",
   "ads:draft",
@@ -45,6 +47,7 @@ export const SCOPES = [
   "integrations:manage",
   "ai:use",
   "creative:generate",
+  "ai:configure",
 ] as const;
 export type Scope = (typeof SCOPES)[number];
 
@@ -54,6 +57,7 @@ const READ_BASE: Scope[] = [
   "audit_results:read",
   "jobs:read",
   "plan:read",
+  "content:read",
 ];
 
 const MATRIX: Record<Role, readonly Scope[]> = {
@@ -67,13 +71,15 @@ const MATRIX: Record<Role, readonly Scope[]> = {
     "site:analyze",
     "jobs:control",
     "plan:write",
+    "content:write",
     "content:approve",
     "ads:draft",
     "integrations:read",
     "ai:use",
     "creative:generate",
+    "ai:configure",
   ],
-  editor: [...READ_BASE, "members:read", "brand:write", "site:analyze", "jobs:control", "plan:write", "ads:draft", "ai:use", "creative:generate"],
+  editor: [...READ_BASE, "members:read", "brand:write", "site:analyze", "jobs:control", "plan:write", "content:write", "ads:draft", "ai:use", "creative:generate"],
   analyst: [...READ_BASE, "members:read", "integrations:read", "ai:use"],
   ads_approver: [...READ_BASE, "ads:draft", "ads:approve", "ads:emergency_stop"],
   ads_publisher: [...READ_BASE, "ads:publish"],

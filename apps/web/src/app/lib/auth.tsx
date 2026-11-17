@@ -9,7 +9,7 @@ export interface Membership {
   role: string;
 }
 export interface Me {
-  user: { id: string; email: string; name: string; emailVerified: boolean } | null;
+  user: { id: string; email: string; name: string; emailVerified: boolean; isPlatformAdmin?: boolean } | null;
   memberships: Membership[];
 }
 

@@ -10,6 +10,8 @@ import { ForgotPage, InvitePage, LoginPage, RegisterPage, ResetPage, VerifyPage 
 import { DashboardPage, OnboardingPage } from "./pages/dashboard";
 import { AnalyzePage, JobPage, JobsPage } from "./pages/analyze";
 import { AdvisorPage, CreativePage } from "./pages/ai";
+import { AiHubPage } from "./pages/aihub";
+import { ContentDetailPage, ContentListPage } from "./pages/content";
 import { AuditDetailPage, AuditsPage, BrandPage, BrandsPage, PlanPage } from "./pages/insights";
 import { AuditLogPage, BillingPage, IntegrationsPage, ModulePage, NotFoundPage, TeamPage } from "./pages/org";
 
@@ -68,6 +70,9 @@ function App() {
           <Route path="plans/:planId" element={<PlanPage />} />
           <Route path="advisor" element={<AdvisorPage />} />
           <Route path="creative" element={<CreativePage />} />
+          <Route path="ai-hub" element={<AiHubPage />} />
+          <Route path="content" element={<ContentListPage />} />
+          <Route path="content/:contentId" element={<ContentDetailPage />} />
           <Route path="team" element={<TeamPage />} />
           <Route path="billing" element={<BillingPage />} />
           <Route path="integrations" element={<IntegrationsPage />} />

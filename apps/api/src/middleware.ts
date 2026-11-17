@@ -76,3 +76,25 @@ export const requireScope =
     if (!can(t.role, scope)) throw forbidden();
     return next();
   };
+
+/**
+ * Platform SuperAdmin (not an organization role). Granted only by users.is_platform_admin = 1 or
+ * by the PLATFORM_ADMIN_EMAILS Worker secret (comma separated), and only for verified emails.
+ */
+export async function isPlatformAdmin(env: AppEnv["Bindings"], user: { id: string; email: string; emailVerified: boolean } | null): Promise<boolean> {
+  if (!user || !user.emailVerified) return false;
+  const list = (env.PLATFORM_ADMIN_EMAILS ?? "")
+    .split(",")
+    .map((s) => s.trim().toLowerCase())
+    .filter(Boolean);
+  if (list.includes(user.email.toLowerCase())) return true;
+  const r = await env.DB.prepare("SELECT is_platform_admin FROM users WHERE id = ?").bind(user.id).first<{ is_platform_admin: number }>();
+  return r?.is_platform_admin === 1;
+}
+
+export const requirePlatformAdmin: MiddlewareHandler<AppEnv> = async (c, next) => {
+  const u = c.get("user");
+  if (!u) throw unauthorized();
+  if (!(await isPlatformAdmin(c.env, u))) throw notFound("Recurso");
+  return next();
+};

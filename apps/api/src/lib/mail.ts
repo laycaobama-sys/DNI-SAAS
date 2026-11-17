@@ -127,6 +127,21 @@ export async function sendMail(
 
 const backoff = (attempt: number) => Math.min(60 * 2 ** (attempt - 1), 3600);
 
+/** Monthly ceiling for real sends (default 2500 < 3000 included in Workers Paid). */
+export function monthlyCap(env: Env): number {
+  const n = Number(env.EMAIL_MONTHLY_CAP ?? "2500");
+  return Number.isFinite(n) && n >= 0 ? Math.floor(n) : 2500;
+}
+
+/** Emails accepted by the real provider since the start of the current UTC month. */
+export async function monthlySent(env: Env): Promise<number> {
+  const start = `${new Date().toISOString().slice(0, 7)}-01T00:00:00.000Z`;
+  const r = await env.DB.prepare("SELECT COUNT(*) AS n FROM email_outbox WHERE status = 'accepted' AND provider <> 'dev_mailbox' AND accepted_at >= ?")
+    .bind(start)
+    .first<{ n: number }>();
+  return r?.n ?? 0;
+}
+
 /** Claims one outbox row and sends it. Safe under concurrent cron + request dispatch. */
 export async function dispatchEmail(env: Env, id: string, provider = resolveProvider(env)): Promise<string> {
   const key = encKey(env);
@@ -143,11 +158,16 @@ export async function dispatchEmail(env: Env, id: string, provider = resolveProv
     return "dead";
   }
   let res: SendResult;
-  try {
-    const msg = await decryptJson<MailMessage>(key, claimed.payload_enc, id);
-    res = await provider.send(msg);
-  } catch {
-    res = { ok: false, code: "decrypt_failed", retryable: false };
+  if (provider.name !== "dev_mailbox" && (await monthlySent(env)) >= monthlyCap(env)) {
+    // Never exceed the plan's included volume: refuse instead of incurring overage charges.
+    res = { ok: false, code: "monthly_cap_reached", retryable: false };
+  } else {
+    try {
+      const msg = await decryptJson<MailMessage>(key, claimed.payload_enc, id);
+      res = await provider.send(msg);
+    } catch {
+      res = { ok: false, code: "decrypt_failed", retryable: false };
+    }
   }
   if (res.ok) {
     // Purge the encrypted body: the single-use link no longer needs to exist at rest.

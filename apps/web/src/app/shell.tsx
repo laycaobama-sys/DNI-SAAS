@@ -5,6 +5,7 @@ import {
   Bot,
   Building2,
   ChevronsUpDown,
+  Cpu,
   CreditCard,
   FileSearch,
   FileText,
@@ -60,8 +61,8 @@ function navFor(orgId: string): Array<{ section: string; items: NavItem[] }> {
   const o = `/o/${orgId}`;
   const m = (k: string, icon: typeof Gauge): NavItem => ({ to: `${o}/m/${k}`, label: MODULES[k]!.label, icon });
   return [
-    { section: "Crecimiento", items: [{ to: o, label: "Command Center", icon: LayoutDashboard, live: true, end: true }, { to: `${o}/analyze`, label: "Nueva auditoría", icon: Sparkles, live: true }, { to: `${o}/advisor`, label: "Asesor IA", icon: MessageSquareText, live: true }, { to: `${o}/audits`, label: "Auditoría web", icon: FileSearch, live: true }, { to: `${o}/brands`, label: "Proyectos y marcas", icon: Building2, live: true }] },
-    { section: "Orgánico", items: [m("seo-tecnico", Gauge), m("keywords", Search), m("ai-visibility", Bot), m("content", FileText), m("authority", Link2)] },
+    { section: "Crecimiento", items: [{ to: o, label: "Command Center", icon: LayoutDashboard, live: true, end: true }, { to: `${o}/analyze`, label: "Nueva auditoría", icon: Sparkles, live: true }, { to: `${o}/advisor`, label: "Asesor IA", icon: MessageSquareText, live: true }, { to: `${o}/ai-hub`, label: "Centro de IA", icon: Cpu, live: true }, { to: `${o}/audits`, label: "Auditoría web", icon: FileSearch, live: true }, { to: `${o}/brands`, label: "Proyectos y marcas", icon: Building2, live: true }] },
+    { section: "Orgánico", items: [m("seo-tecnico", Gauge), m("keywords", Search), m("ai-visibility", Bot), { to: `${o}/content`, label: "Content Studio", icon: FileText, live: true }, m("authority", Link2)] },
     { section: "Creatividad y pago", items: [{ to: `${o}/creative`, label: "Creative Studio", icon: Palette, live: true }, m("video", Film), m("ads", Megaphone), m("landings", LayoutTemplate), m("experiments", FlaskConical)] },
     { section: "Ventas y datos", items: [m("crm", Target), m("analytics", BarChart3), { to: `${o}/jobs`, label: "AI Agent Center", icon: Bot, live: true }, m("automations", Workflow)] },
     { section: "Organización", items: [{ to: `${o}/integrations`, label: "Integraciones", icon: Plug, live: true }, { to: `${o}/team`, label: "Equipo y accesos", icon: Users, live: true }, { to: `${o}/billing`, label: "Facturación y créditos", icon: CreditCard, live: true }, m("agency", KeyRound), { to: `${o}/audit-log`, label: "Logs de auditoría", icon: ScrollText, live: true }] },

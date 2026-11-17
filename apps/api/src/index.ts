@@ -4,6 +4,7 @@ import type { Deps, Env, JobMessage } from "./env";
 import { processJobMessage } from "./jobs/consumer";
 import { dispatchOutbox, recoverStuckJobs } from "./jobs/queue";
 import { drainEmailOutbox } from "./lib/mail";
+import { maybeSyncCatalog } from "./lib/openrouter";
 import { log } from "./lib/util";
 
 const deps: Deps = {
@@ -37,5 +38,7 @@ export default {
     await dispatchOutbox(env, deps, (p) => ctx.waitUntil(p));
     await drainEmailOutbox(env).catch((e) => log("error", "mail.drain_failed", { error: String(e) }));
     await env.DB.prepare("DELETE FROM rate_limits WHERE window_start < ?").bind(Math.floor(Date.now() / 1000) - 86400).run();
+    await maybeSyncCatalog(env, deps).catch((e) => log("error", "openrouter.cron_failed", { error: String(e).slice(0, 120) }));
+    await env.DB.prepare("DELETE FROM ai_quota_counters WHERE updated_at < ?").bind(new Date(Date.now() - 3 * 86400_000).toISOString()).run();
   },
 } satisfies ExportedHandler<Env, JobMessage>;

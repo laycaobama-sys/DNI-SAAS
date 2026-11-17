@@ -6,9 +6,9 @@ import { useApi } from "../lib/hooks";
 import { Badge, Button, Card, EmptyState, ErrorState, Notice, PageHeader, Skeleton, cx } from "../ui";
 
 type AiStatus = { workersAi: boolean; openRouter: boolean; gemini: boolean; images: boolean; dailyBudgetUsd: number; spentTodayUsd: number; budgetExhausted: boolean };
-type Msg = { id: string; role: "user" | "assistant"; content: string; provider?: string | null; model?: string | null; credits?: number; created_at?: string };
+type Msg = { id: string; role: "user" | "assistant"; content: string; provider?: string | null; model?: string | null; servedModel?: string | null; fallback?: boolean; credits?: number; created_at?: string };
 
-const PROVIDER_LABEL: Record<string, string> = { workers_ai: "Workers AI", openrouter: "OpenRouter (gratis)", gemini: "Gemini" };
+const PROVIDER_LABEL: Record<string, string> = { workers_ai: "Workers AI", openrouter: "OpenRouter (modelo gratuito)", gemini: "Gemini" };
 
 function StatusNotice({ s }: { s: AiStatus | null }) {
   if (!s) return null;
@@ -60,21 +60,24 @@ export function AdvisorPage() {
   useEffect(() => setMessages(convId ? (conv.data?.messages ?? []) : []), [convId, conv.data]);
   useEffect(() => endRef.current?.scrollIntoView({ behavior: "smooth", block: "end" }), [messages.length, busy]);
 
-  const ask = async (e?: FormEvent, preset?: string) => {
+  const [retryQ, setRetryQ] = useState<string | null>(null);
+  const ask = async (e?: FormEvent, preset?: string, allowFallback = false) => {
     e?.preventDefault();
     const q = (preset ?? question).trim();
     if (q.length < 2 || busy) return;
     setBusy(true);
     setError(null);
+    setRetryQ(null);
     setMessages((m) => [...m, { id: `tmp-${Date.now()}`, role: "user", content: q }]);
     setQuestion("");
     try {
-      const r = await post<{ conversationId: string; message: Msg }>(`/orgs/${orgId}/advisor`, { question: q, ...(convId ? { conversationId: convId } : brandId ? { brandId } : {}) });
+      const r = await post<{ conversationId: string; message: Msg }>(`/orgs/${orgId}/advisor`, { question: q, ...(convId ? { conversationId: convId } : brandId ? { brandId } : {}), ...(allowFallback ? { allowFallback: true } : {}) });
       setMessages((m) => [...m, r.message]);
       if (r.conversationId !== convId) setParams({ c: r.conversationId }, { replace: true });
       void convs.reload();
     } catch (err) {
       setError(err instanceof ApiError ? err : new ApiError(0, "error", "Error inesperado"));
+      if (err instanceof ApiError && err.code === "selected_model_failed") setRetryQ(q);
       setMessages((m) => m.slice(0, -1));
       setQuestion(q);
     } finally {
@@ -157,7 +160,9 @@ export function AdvisorPage() {
                   {m.role === "assistant" ? <Answer text={m.content} /> : <p className="whitespace-pre-wrap text-sm">{m.content}</p>}
                   {m.role === "assistant" && m.provider && (
                     <p className="mt-2 text-[11px] text-mute">
-                      Generado por IA · {PROVIDER_LABEL[m.provider] ?? m.provider} · revisa antes de aplicar
+                      Generado por IA · {PROVIDER_LABEL[m.provider] ?? m.provider}
+                      {(m.servedModel ?? m.model) && <> · <span className="font-mono">{m.servedModel ?? m.model}</span></>}
+                      {m.fallback && " · respaldo automático"} · revisa antes de aplicar
                     </p>
                   )}
                 </div>
@@ -174,6 +179,11 @@ export function AdvisorPage() {
             {error && (
               <div className="mb-3">
                 <ErrorState error={error} />
+                {retryQ && (
+                  <Button className="mt-2" onClick={() => void ask(undefined, retryQ, true)}>
+                    Usar respaldo automático (gratuito)
+                  </Button>
+                )}
                 {error.code === "insufficient_credits" && (
                   <Link to={`/o/${orgId}/billing`} className="mt-2 inline-block text-sm text-accent-text hover:underline">
                     Ver créditos

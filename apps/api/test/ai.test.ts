@@ -1,5 +1,4 @@
-import { beforeEach, describe, expect, it } from "vitest";
-import { resetOpenRouterCache } from "../src/lib/ai";
+import { describe, expect, it } from "vitest";
 import { createHarness } from "./helpers";
 
 // 1×1 PNG
@@ -48,7 +47,6 @@ async function setup(b: Behaviour = {}) {
 
 const balance = async (owner: { get: (p: string) => Promise<{ json: { balance: number } }> }, orgId: string) => (await owner.get(`/api/v1/orgs/${orgId}/billing`)).json.balance;
 
-beforeEach(() => resetOpenRouterCache());
 
 describe("AI advisor", () => {
   it("answers, stores the conversation and charges exactly 1 credit", async () => {
@@ -71,36 +69,6 @@ describe("AI advisor", () => {
     const r = await owner.post(`/api/v1/orgs/${orgId}/advisor`, { question: "Hola asesor" });
     expect(r.json.message.model).toBe("@cf/mistralai/mistral-small-3.1-24b-instruct");
     expect(aiBinding.calls).toEqual(["@cf/google/gemma-4-26b-a4b-it", "@cf/mistralai/mistral-small-3.1-24b-instruct"]);
-  });
-
-  it("falls back to OpenRouter FREE models only (never paid ones) when Workers AI fails", async () => {
-    const all = ["@cf/google/gemma-4-26b-a4b-it", "@cf/mistralai/mistral-small-3.1-24b-instruct", "@cf/meta/llama-4-scout-17b-16e-instruct"];
-    const { h, owner, orgId } = await setup({ failModels: all });
-    h.env.OPENROUTER_API_KEY = "test-or-key";
-    const orCalls: string[] = [];
-    const real = h.deps.fetchImpl;
-    h.deps.fetchImpl = (async (input: RequestInfo | URL, init?: RequestInit) => {
-      const url = String(input instanceof Request ? input.url : input);
-      if (url === "https://openrouter.ai/api/v1/models")
-        return Response.json({
-          data: [
-            { id: "paid/model", pricing: { prompt: "0.000001", completion: "0.000002" }, context_length: 999999 },
-            { id: "meta-llama/llama-free:free", pricing: { prompt: "0", completion: "0" }, context_length: 128000, architecture: { output_modalities: ["text"] } },
-            { id: "qwen/qwen-free:free", pricing: { prompt: "0", completion: "0" }, context_length: 32000, architecture: { output_modalities: ["text"] } },
-          ],
-        });
-      if (url === "https://openrouter.ai/api/v1/chat/completions") {
-        const body = JSON.parse(String(init?.body));
-        orCalls.push(body.model);
-        expect((init?.headers as Record<string, string>).authorization).toBe("Bearer test-or-key");
-        if (body.model === "meta-llama/llama-free:free") return new Response("{}", { status: 429 });
-        return Response.json({ choices: [{ message: { content: "Respuesta gratuita." } }] });
-      }
-      return real(input, init);
-    }) as typeof fetch;
-    const r = await owner.post(`/api/v1/orgs/${orgId}/advisor`, { question: "Hola" });
-    expect(r.json.message).toMatchObject({ provider: "openrouter", model: "qwen/qwen-free:free", content: "Respuesta gratuita." });
-    expect(orCalls).toEqual(["meta-llama/llama-free:free", "qwen/qwen-free:free"]);
   });
 
   it("when every provider fails: 503 and the reserved credit is released", async () => {

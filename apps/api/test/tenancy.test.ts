@@ -149,7 +149,7 @@ describe("RBAC", () => {
 
 describe("Static SQL guard", () => {
   it("every query touching a tenant table filters or writes organization_id", () => {
-    const tenantTables = ["brands", "brand_profiles", "sites", "integrations", "jobs", "job_events", "web_crawls", "crawl_pages", "seo_issues", "growth_plans", "growth_tasks", "invitations", "credit_ledger", "ai_conversations", "ai_messages", "ai_images"];
+    const tenantTables = ["brands", "brand_profiles", "sites", "integrations", "jobs", "job_events", "web_crawls", "crawl_pages", "seo_issues", "growth_plans", "growth_tasks", "invitations", "credit_ledger", "ai_conversations", "ai_messages", "ai_images", "content_items", "content_versions", "organization_ai_preferences"];
     const srcDir = join(import.meta.dirname, "..", "src");
     const files: string[] = [];
     const walk = (d: string) => {

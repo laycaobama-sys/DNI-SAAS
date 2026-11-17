@@ -7,6 +7,13 @@
   "workers_dev": true,
   "preview_urls": false,
 
+  // Production domain (zone dnigrowth.com in this account). workers.dev stays on for Search Console
+  // and health checks; browser pages on other hosts redirect to APP_ORIGIN.
+  "routes": [
+    { "pattern": "dnigrowth.com", "custom_domain": true },
+    { "pattern": "www.dnigrowth.com", "custom_domain": true }
+  ],
+
   // Landing + SPA built by apps/web. The Worker runs first only for API and app routes.
   "assets": {
     "directory": "../web/dist",
@@ -55,12 +62,23 @@
   // email links, canonical URLs and the sitemap (apps/web/vite.config.ts reads it from here).
   "vars": {
     "ENVIRONMENT": "production",
-    "APP_ORIGIN": "https://dni-growth.ibraguimova19.workers.dev",
-    "EMAIL_SENDING_ENABLED": "false",
-    "MAIL_FROM": "",
-    "GOOGLE_CLIENT_ID": "",
+    "APP_ORIGIN": "https://dnigrowth.com",
+    "EMAIL_SENDING_ENABLED": "true",
+    "MAIL_FROM": "hola@dnigrowth.com",
+    // Hard monthly cap kept under the 3,000 emails included in Workers Paid (no overage charges).
+    "EMAIL_MONTHLY_CAP": "2500",
+    "GOOGLE_CLIENT_ID": "1028756015912-90c4g5idtm8tgea4s6dh92lj3ljfs2e2.apps.googleusercontent.com",
     "BILLING_ENABLED": "false",
-    "AI_DAILY_BUDGET_USD": "0.10"
+    "AI_DAILY_BUDGET_USD": "0.10",
+    // OpenRouter FREE-ONLY policy (fail-closed). Authorised OpenRouter spend: 0.00 USD, always.
+    "OPENROUTER_FREE_ONLY": "true",
+    "ALLOW_PAID_MODELS": "false",
+    "OPENROUTER_MAX_SPEND_USD": "0",
+    // Shared budget of the single key (OpenRouter free tier: 20/min, 50/day without credits).
+    "OPENROUTER_DAILY_REQUESTS": "45",
+    "OPENROUTER_RPM": "15",
+    "OPENROUTER_ORG_DAILY": "20",
+    "OPENROUTER_USER_DAILY": "10"
   },
 
   "observability": { "enabled": true, "head_sampling_rate": 1 }

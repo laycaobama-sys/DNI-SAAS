@@ -3,30 +3,50 @@ import {
   estimateImageCostUsd,
   estimateTextCostUsd,
   parseTextResult,
+  rankModels,
+  TASK_PROFILES,
+  OPENROUTER_FREE_ROUTER,
   WORKERS_AI_IMAGE_MODEL,
   WORKERS_AI_TEXT_MODELS,
   type AiProviderKey,
+  type AiTask,
   type ChatMessage,
 } from "@dni/core";
 import type { Deps, Env } from "../env";
-import { log } from "./util";
+import {
+  callOpenRouterChat,
+  listModels,
+  observedStats,
+  OpenRouterCallError,
+  openRouterAvailability,
+  quotaScopes,
+  releaseQuota,
+  reserveQuota,
+} from "./openrouter";
+import { log, nowIso, uuid } from "./util";
 
 /**
- * AI runtime with automatic fallback:
- *   1. Workers AI (no key; billed per neuron) — only while today's estimated spend is under
- *      AI_DAILY_BUDGET_USD (default 0.10 ≈ the daily free allocation), so we never spend silently.
- *   2. OpenRouter FREE models (":free", price 0) — only if OPENROUTER_API_KEY is set.
- *   3. Google Gemini — only if GEMINI_API_KEY is set.
- * Each provider/model failure is recorded and the next one is tried. Keys never reach logs.
+ * AI Router. Order per organisation strategy:
+ *   automatic_free / manual_free / openrouter_free_router:
+ *     1. OpenRouter FREE models (allowlist + quotas + max_price 0; at most 2 attempts per request)
+ *     2. Workers AI (only while today's estimated spend < AI_DAILY_BUDGET_USD ≈ free allocation)
+ *     3. Gemini (only with GEMINI_API_KEY and not in privacy-first mode)
+ *   cloudflare_only: Workers AI only.
+ * Every attempt is written to ai_invocations (model, status, latency, tokens, cost state; never prompts).
  */
+
+export const MAX_OPENROUTER_ATTEMPTS = 2;
 
 export interface TextResult {
   text: string;
   provider: AiProviderKey;
   model: string;
+  servedModel?: string | null;
   inputTokens: number;
   outputTokens: number;
   costUsd: number;
+  fallback: boolean;
+  attempts: string[];
 }
 export interface ImageResult {
   bytes: Uint8Array;
@@ -37,9 +57,38 @@ export interface ImageResult {
 }
 
 export class AiUnavailableError extends Error {
-  constructor(readonly attempts: string[]) {
+  constructor(
+    readonly attempts: string[],
+    readonly openRouterQuotaExhausted = false,
+  ) {
     super("ai_unavailable");
   }
+}
+/** The organisation chose a specific model, it failed, and its policy is to ask before falling back. */
+export class SelectedModelFailedError extends Error {
+  constructor(readonly attempts: string[]) {
+    super("selected_model_failed");
+  }
+}
+
+export type Strategy = "automatic_free" | "manual_free" | "openrouter_free_router" | "cloudflare_only";
+export interface AiPreferences {
+  strategy: Strategy;
+  manualModelId: string | null;
+  fallbackPolicy: "auto" | "ask";
+  privacyFirst: boolean;
+  openrouterEnabled: boolean;
+}
+export const DEFAULT_PREFERENCES: AiPreferences = { strategy: "automatic_free", manualModelId: null, fallbackPolicy: "auto", privacyFirst: false, openrouterEnabled: true };
+
+export async function getAiPreferences(db: D1Database, orgId: string | null | undefined): Promise<AiPreferences> {
+  if (!orgId) return DEFAULT_PREFERENCES;
+  const r = await db
+    .prepare("SELECT strategy, manual_model_id, fallback_policy, privacy_first, openrouter_enabled FROM organization_ai_preferences WHERE organization_id = ?")
+    .bind(orgId)
+    .first<{ strategy: Strategy; manual_model_id: string | null; fallback_policy: "auto" | "ask"; privacy_first: number; openrouter_enabled: number }>();
+  if (!r) return DEFAULT_PREFERENCES;
+  return { strategy: r.strategy, manualModelId: r.manual_model_id, fallbackPolicy: r.fallback_policy, privacyFirst: r.privacy_first === 1, openrouterEnabled: r.openrouter_enabled === 1 };
 }
 
 const today = () => new Date().toISOString().slice(0, 10);
@@ -67,130 +116,187 @@ async function workersAiAllowed(env: Env, estimate: number): Promise<boolean> {
   return (await spentToday(env, "workers_ai")) + estimate <= budget(env);
 }
 
-// ── OpenRouter free model catalogue (public endpoint, cached per isolate) ─────────────────────
-interface OrModel {
-  id: string;
-  context_length?: number;
-  pricing?: Record<string, string>;
-  architecture?: { input_modalities?: string[]; output_modalities?: string[] };
+export interface InvocationLog {
+  orgId: string | null;
+  userId: string | null;
+  requestRef: string;
+  task: string;
+  strategy: string;
+  provider: AiProviderKey;
+  model: string;
+  servedModel?: string | null;
+  status: "ok" | "failed" | "skipped" | "blocked";
+  errorCode?: string | null;
+  latencyMs?: number | null;
+  inputTokens?: number | null;
+  outputTokens?: number | null;
+  estimatedCostUsd?: number;
+  reportedCostUsd?: number | null;
+  costState: "zero_confirmed" | "zero_expected" | "estimated" | "billed" | "unknown";
+  isFallback: boolean;
 }
-let orCache: { at: number; text: string[]; image: string[] } | null = null;
 
-const isFree = (m: OrModel) => {
-  const p = m.pricing ?? {};
-  return Object.values(p).every((v) => Number(v) === 0) && (m.id.endsWith(":free") || Number(p.prompt) === 0);
-};
-
-export async function openRouterFreeModels(deps: Deps): Promise<{ text: string[]; image: string[] }> {
-  if (orCache && Date.now() - orCache.at < 6 * 3600_000) return orCache;
+export async function logInvocation(env: Env, e: InvocationLog) {
   try {
-    const res = await deps.fetchImpl("https://openrouter.ai/api/v1/models", { headers: { accept: "application/json" }, signal: AbortSignal.timeout(8000) });
-    if (!res.ok) throw new Error(`models_${res.status}`);
-    const data = ((await res.json()) as { data?: OrModel[] }).data ?? [];
-    const free = data.filter((m) => typeof m.id === "string" && isFree(m) && !m.id.startsWith("openrouter/"));
-    const out = (m: OrModel) => m.architecture?.output_modalities ?? ["text"];
-    const text = free.filter((m) => out(m).includes("text") && !out(m).includes("image")).sort((a, b) => (b.context_length ?? 0) - (a.context_length ?? 0)).map((m) => m.id);
-    const image = free.filter((m) => out(m).includes("image")).map((m) => m.id);
-    orCache = { at: Date.now(), text, image };
-    return orCache;
-  } catch (e) {
-    log("warn", "ai.openrouter_catalogue_failed", { error: String((e as Error).message ?? e) });
-    return orCache ?? { text: [], image: [] };
+    await env.DB.prepare(
+      `INSERT INTO ai_invocations (id, organization_id, user_id, request_ref, task, strategy, provider, model, served_model, status, error_code, latency_ms,
+         input_tokens, output_tokens, estimated_cost_usd, reported_cost_usd, cost_state, is_fallback, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    )
+      .bind(
+        uuid(), e.orgId, e.userId, e.requestRef, e.task, e.strategy, e.provider, e.model, e.servedModel ?? null, e.status, e.errorCode ?? null, e.latencyMs ?? null,
+        e.inputTokens ?? null, e.outputTokens ?? null, e.estimatedCostUsd ?? 0, e.reportedCostUsd ?? null, e.costState, e.isFallback ? 1 : 0, nowIso(),
+      )
+      .run();
+  } catch (err) {
+    log("error", "ai.invocation_log_failed", { error: String(err).slice(0, 120) });
   }
 }
 
-/** Test hook: reset the per-isolate cache. */
-export const resetOpenRouterCache = () => void (orCache = null);
+export interface GenerateOptions {
+  task?: AiTask;
+  maxTokens?: number;
+  orgId?: string | null;
+  userId?: string | null;
+  requestRef?: string;
+  /** Explicit user consent to use automatic fallback after a manually selected model failed. */
+  allowFallback?: boolean;
+}
 
-async function openRouterChat(env: Env, deps: Deps, model: string, body: Record<string, unknown>) {
-  const res = await deps.fetchImpl("https://openrouter.ai/api/v1/chat/completions", {
-    method: "POST",
-    headers: {
-      authorization: `Bearer ${env.OPENROUTER_API_KEY}`,
-      "content-type": "application/json",
-      "x-title": "DNI Growth",
-      "http-referer": env.APP_ORIGIN,
-    },
-    body: JSON.stringify({ model, ...body }),
-    signal: AbortSignal.timeout(45_000),
-  });
-  if (!res.ok) throw new Error(`openrouter_${res.status}`);
-  const json = (await res.json()) as { error?: unknown };
-  if (json.error) throw new Error("openrouter_error");
-  return json as Record<string, unknown>;
+/** Picks the OpenRouter candidates for this request according to the organisation's strategy. */
+async function openRouterCandidates(env: Env, prefs: AiPreferences, task: AiTask): Promise<string[]> {
+  if (prefs.strategy === "manual_free") return prefs.manualModelId ? [prefs.manualModelId] : [];
+  if (prefs.strategy === "openrouter_free_router") return [OPENROUTER_FREE_ROUTER];
+  const ranked = rankModels(await listModels(env.DB), task, await observedStats(env.DB, task));
+  return ranked.map((r) => r.modelId);
 }
 
 // ── Text ─────────────────────────────────────────────────────────────────────────────────────
-export async function generateText(env: Env, deps: Deps, messages: ChatMessage[], maxTokens = 700): Promise<TextResult> {
+export async function generateText(env: Env, deps: Deps, messages: ChatMessage[], options: GenerateOptions | number = {}): Promise<TextResult> {
+  const o: GenerateOptions = typeof options === "number" ? { maxTokens: options } : options;
+  const task: AiTask = o.task ?? "advisor_chat";
+  const profile = TASK_PROFILES[task];
+  const maxTokens = o.maxTokens ?? profile.maxOutputTokens;
+  const prefs = await getAiPreferences(env.DB, o.orgId);
+  const base = { orgId: o.orgId ?? null, userId: o.userId ?? null, requestRef: o.requestRef ?? uuid(), task, strategy: prefs.strategy };
   const attempts: string[] = [];
   const inputApprox = approxTokens(messages.map((m) => m.content).join("\n"));
+  let quotaExhausted = false;
+  let tried = 0;
 
+  // 1. OpenRouter FREE
+  if (prefs.strategy !== "cloudflare_only") {
+    const avail = await openRouterAvailability(env, prefs.openrouterEnabled);
+    if (!avail.usable) attempts.push(`openrouter:${avail.reason}`);
+    else {
+      const candidates = await openRouterCandidates(env, prefs, task);
+      if (!candidates.length) attempts.push("openrouter:sin_modelos_gratuitos_elegibles");
+      for (const model of candidates) {
+        if (tried >= MAX_OPENROUTER_ATTEMPTS) break;
+        const scopes = await quotaScopes(env, base.orgId, base.userId);
+        const q = await reserveQuota(env.DB, scopes);
+        if (!q.ok) {
+          quotaExhausted = true;
+          attempts.push(`openrouter:cuota_agotada:${q.scope.split(":").slice(0, 2).join(":")}`);
+          await logInvocation(env, { ...base, provider: "openrouter", model, status: "skipped", errorCode: `quota:${q.scope.split(":")[1]}`, costState: "zero_expected", isFallback: tried > 0 });
+          break;
+        }
+        tried++;
+        try {
+          const r = await callOpenRouterChat(env, deps, model, task, messages, { maxTokens, temperature: profile.temperature, privacyFirst: prefs.privacyFirst });
+          await logInvocation(env, {
+            ...base, provider: "openrouter", model, servedModel: r.servedModel, status: "ok", latencyMs: r.latencyMs, inputTokens: r.inputTokens, outputTokens: r.outputTokens,
+            reportedCostUsd: r.reportedCostUsd, costState: r.reportedCostUsd === 0 ? "zero_confirmed" : "zero_expected", isFallback: tried > 1,
+          });
+          await recordUsage(env, "openrouter", 0, false);
+          return {
+            text: r.text, provider: "openrouter", model, servedModel: r.servedModel, inputTokens: r.inputTokens ?? inputApprox, outputTokens: r.outputTokens ?? approxTokens(r.text),
+            costUsd: 0, fallback: tried > 1, attempts,
+          };
+        } catch (e) {
+          const err = e instanceof OpenRouterCallError ? e : new OpenRouterCallError(String((e as Error).message ?? e).slice(0, 60), "model");
+          const blocked = err.code.startsWith("gate:") || err.code === "policy_blocked";
+          if (blocked) {
+            tried--; // nothing was sent: give the quota back
+            await releaseQuota(env.DB, scopes);
+          }
+          attempts.push(`${model}:${err.code}`);
+          await logInvocation(env, {
+            ...base, provider: "openrouter", model, status: blocked ? "blocked" : "failed", errorCode: err.code.slice(0, 80),
+            reportedCostUsd: err.costUsd, costState: err.costUsd ? "billed" : "zero_expected", isFallback: tried > 1,
+          });
+          if (!blocked) await recordUsage(env, "openrouter", 0, true);
+          if (err.scope === "global") break;
+        }
+      }
+    }
+    if (prefs.strategy === "manual_free" && prefs.fallbackPolicy === "ask" && !o.allowFallback) throw new SelectedModelFailedError(attempts);
+  }
+
+  // 2. Workers AI (independent provider with its own daily budget)
   for (const m of WORKERS_AI_TEXT_MODELS) {
     const budgetTokens = m.reasoning ? Math.max(maxTokens * 3, 2048) : maxTokens;
     const estimate = estimateTextCostUsd(m, { input: inputApprox, output: budgetTokens });
     if (!(await workersAiAllowed(env, estimate))) {
-      attempts.push(`${m.model}:skipped_budget`);
+      attempts.push(`${m.model}:presupuesto_diario`);
+      await logInvocation(env, { ...base, provider: "workers_ai", model: m.model, status: "skipped", errorCode: env.AI ? "daily_budget" : "not_configured", costState: "estimated", isFallback: true });
       break;
     }
+    const started = Date.now();
     try {
-      const raw = await env.AI!.run(m.model as Parameters<Ai["run"]>[0], { messages, max_tokens: budgetTokens, temperature: 0.4 } as never);
+      const raw = await env.AI!.run(m.model as Parameters<Ai["run"]>[0], { messages, max_tokens: budgetTokens, temperature: profile.temperature } as never);
       const { text, usage } = parseTextResult(raw);
       if (!text) throw new Error("empty");
       const u = usage ?? { input: inputApprox, output: approxTokens(text) };
       const cost = estimateTextCostUsd(m, u);
       await recordUsage(env, "workers_ai", cost, false);
-      return { text, provider: "workers_ai", model: m.model, inputTokens: u.input, outputTokens: u.output, costUsd: cost };
+      const fallback = prefs.strategy !== "cloudflare_only";
+      await logInvocation(env, { ...base, provider: "workers_ai", model: m.model, status: "ok", latencyMs: Date.now() - started, inputTokens: u.input, outputTokens: u.output, estimatedCostUsd: cost, costState: "estimated", isFallback: fallback });
+      return { text, provider: "workers_ai", model: m.model, inputTokens: u.input, outputTokens: u.output, costUsd: cost, fallback, attempts };
     } catch (e) {
-      attempts.push(`${m.model}:${String((e as Error).message ?? e).slice(0, 60)}`);
-      log("warn", "ai.model_failed", { provider: "workers_ai", model: m.model, error: String((e as Error).message ?? e).slice(0, 120) });
+      const code = String((e as Error).message ?? e).slice(0, 60);
+      attempts.push(`${m.model}:${code}`);
+      log("warn", "ai.model_failed", { provider: "workers_ai", model: m.model, error: code });
       await recordUsage(env, "workers_ai", 0, true);
+      await logInvocation(env, { ...base, provider: "workers_ai", model: m.model, status: "failed", errorCode: code, latencyMs: Date.now() - started, costState: "estimated", isFallback: true });
     }
   }
 
-  if (env.OPENROUTER_API_KEY) {
-    const { text: models } = await openRouterFreeModels(deps);
-    for (const model of models.slice(0, 4)) {
-      try {
-        const json = await openRouterChat(env, deps, model, { messages, max_tokens: maxTokens, temperature: 0.4 });
-        const { text, usage } = parseTextResult(json);
-        if (!text) throw new Error("empty");
-        await recordUsage(env, "openrouter", 0, false);
-        return { text, provider: "openrouter", model, inputTokens: usage?.input ?? inputApprox, outputTokens: usage?.output ?? approxTokens(text), costUsd: 0 };
-      } catch (e) {
-        attempts.push(`${model}:${String((e as Error).message ?? e).slice(0, 60)}`);
-        await recordUsage(env, "openrouter", 0, true);
-      }
-    }
-  }
-
-  if (env.GEMINI_API_KEY) {
+  // 3. Gemini (free tier may use prompts to improve Google products → skipped in privacy-first mode)
+  if (env.GEMINI_API_KEY && !prefs.privacyFirst && prefs.strategy !== "cloudflare_only") {
     const model = "gemini-flash-latest";
+    const started = Date.now();
     try {
       const system = messages.filter((m) => m.role === "system").map((m) => m.content).join("\n");
       const contents = messages.filter((m) => m.role !== "system").map((m) => ({ role: m.role === "assistant" ? "model" : "user", parts: [{ text: m.content }] }));
       const res = await deps.fetchImpl(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
         method: "POST",
         headers: { "content-type": "application/json", "x-goog-api-key": env.GEMINI_API_KEY },
-        body: JSON.stringify({ systemInstruction: { parts: [{ text: system }] }, contents, generationConfig: { maxOutputTokens: maxTokens, temperature: 0.4 } }),
+        body: JSON.stringify({ systemInstruction: { parts: [{ text: system }] }, contents, generationConfig: { maxOutputTokens: Math.max(maxTokens, 1024), temperature: profile.temperature } }),
         signal: AbortSignal.timeout(45_000),
       });
       if (!res.ok) throw new Error(`gemini_${res.status}`);
-      const j = (await res.json()) as { candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>; usageMetadata?: { promptTokenCount?: number; candidatesTokenCount?: number } };
-      const text = (j.candidates?.[0]?.content?.parts ?? []).map((p) => p.text ?? "").join("").trim();
+      const j = (await res.json()) as { candidates?: Array<{ content?: { parts?: Array<{ text?: string; thought?: boolean }> } }>; usageMetadata?: { promptTokenCount?: number; candidatesTokenCount?: number } };
+      const text = (j.candidates?.[0]?.content?.parts ?? []).filter((p) => !p.thought).map((p) => p.text ?? "").join("").trim();
       if (!text) throw new Error("empty");
       await recordUsage(env, "gemini", 0, false);
-      return { text, provider: "gemini", model, inputTokens: j.usageMetadata?.promptTokenCount ?? inputApprox, outputTokens: j.usageMetadata?.candidatesTokenCount ?? approxTokens(text), costUsd: 0 };
+      const inT = j.usageMetadata?.promptTokenCount ?? inputApprox;
+      const outT = j.usageMetadata?.candidatesTokenCount ?? approxTokens(text);
+      await logInvocation(env, { ...base, provider: "gemini", model, status: "ok", latencyMs: Date.now() - started, inputTokens: inT, outputTokens: outT, costState: "zero_expected", isFallback: true });
+      return { text, provider: "gemini", model, inputTokens: inT, outputTokens: outT, costUsd: 0, fallback: true, attempts };
     } catch (e) {
-      attempts.push(`${model}:${String((e as Error).message ?? e).slice(0, 60)}`);
+      const code = String((e as Error).message ?? e).slice(0, 60);
+      attempts.push(`${model}:${code}`);
       await recordUsage(env, "gemini", 0, true);
+      await logInvocation(env, { ...base, provider: "gemini", model, status: "failed", errorCode: code, latencyMs: Date.now() - started, costState: "zero_expected", isFallback: true });
     }
   }
 
-  log("error", "ai.text_unavailable", { attempts });
-  throw new AiUnavailableError(attempts);
+  log("error", "ai.text_unavailable", { attempts, task });
+  throw new AiUnavailableError(attempts, quotaExhausted);
 }
 
-// ── Images ───────────────────────────────────────────────────────────────────────────────────
+// ── Images (Workers AI FLUX only: OpenRouter has no free image-generation model in the catalogue) ─
 function b64ToBytes(b64: string): Uint8Array {
   const bin = atob(b64);
   const out = new Uint8Array(bin.length);
@@ -205,10 +311,12 @@ export function sniffImageType(b: Uint8Array): string | null {
   return null;
 }
 
-export async function generateImage(env: Env, deps: Deps, prompt: string): Promise<ImageResult> {
+export async function generateImage(env: Env, _deps: Deps, prompt: string, ctx: { orgId?: string | null; userId?: string | null; requestRef?: string } = {}): Promise<ImageResult> {
   const attempts: string[] = [];
   const estimate = estimateImageCostUsd();
+  const base = { orgId: ctx.orgId ?? null, userId: ctx.userId ?? null, requestRef: ctx.requestRef ?? uuid(), task: "image_generation", strategy: "cloudflare_only" };
   if (await workersAiAllowed(env, estimate)) {
+    const started = Date.now();
     try {
       const raw = (await env.AI!.run(WORKERS_AI_IMAGE_MODEL.model as Parameters<Ai["run"]>[0], { prompt, steps: WORKERS_AI_IMAGE_MODEL.steps } as never)) as { image?: string };
       if (!raw?.image) throw new Error("empty");
@@ -216,34 +324,15 @@ export async function generateImage(env: Env, deps: Deps, prompt: string): Promi
       const contentType = sniffImageType(bytes);
       if (!contentType) throw new Error("not_an_image");
       await recordUsage(env, "workers_ai", estimate, false);
+      await logInvocation(env, { ...base, provider: "workers_ai", model: WORKERS_AI_IMAGE_MODEL.model, status: "ok", latencyMs: Date.now() - started, estimatedCostUsd: estimate, costState: "estimated", isFallback: false });
       return { bytes, contentType, provider: "workers_ai", model: WORKERS_AI_IMAGE_MODEL.model, costUsd: estimate };
     } catch (e) {
-      attempts.push(`${WORKERS_AI_IMAGE_MODEL.model}:${String((e as Error).message ?? e).slice(0, 60)}`);
+      const code = String((e as Error).message ?? e).slice(0, 60);
+      attempts.push(`${WORKERS_AI_IMAGE_MODEL.model}:${code}`);
       await recordUsage(env, "workers_ai", 0, true);
+      await logInvocation(env, { ...base, provider: "workers_ai", model: WORKERS_AI_IMAGE_MODEL.model, status: "failed", errorCode: code, latencyMs: Date.now() - started, costState: "estimated", isFallback: false });
     }
-  } else attempts.push(`${WORKERS_AI_IMAGE_MODEL.model}:skipped_budget`);
-
-  if (env.OPENROUTER_API_KEY) {
-    const { image: models } = await openRouterFreeModels(deps);
-    for (const model of models.slice(0, 3)) {
-      try {
-        const json = (await openRouterChat(env, deps, model, { messages: [{ role: "user", content: prompt }], modalities: ["image", "text"] })) as {
-          choices?: Array<{ message?: { images?: Array<{ image_url?: { url?: string } }> } }>;
-        };
-        const url = json.choices?.[0]?.message?.images?.[0]?.image_url?.url ?? "";
-        const m = /^data:image\/(png|jpeg|webp);base64,(.+)$/.exec(url);
-        if (!m) throw new Error("no_image");
-        const bytes = b64ToBytes(m[2]!);
-        const contentType = sniffImageType(bytes);
-        if (!contentType) throw new Error("not_an_image");
-        await recordUsage(env, "openrouter", 0, false);
-        return { bytes, contentType, provider: "openrouter", model, costUsd: 0 };
-      } catch (e) {
-        attempts.push(`${model}:${String((e as Error).message ?? e).slice(0, 60)}`);
-        await recordUsage(env, "openrouter", 0, true);
-      }
-    }
-  }
+  } else attempts.push(`${WORKERS_AI_IMAGE_MODEL.model}:presupuesto_diario`);
   log("error", "ai.image_unavailable", { attempts });
   throw new AiUnavailableError(attempts);
 }
@@ -251,9 +340,12 @@ export async function generateImage(env: Env, deps: Deps, prompt: string): Promi
 /** Public, secret-free status for the UI. */
 export async function aiStatus(env: Env) {
   const spent = await spentToday(env, "workers_ai");
+  const or = await openRouterAvailability(env);
   return {
     workersAi: !!env.AI,
     openRouter: !!env.OPENROUTER_API_KEY,
+    openRouterUsable: or.usable,
+    openRouterReason: or.reason,
     gemini: !!env.GEMINI_API_KEY,
     images: !!env.AI && !!env.MEDIA,
     dailyBudgetUsd: budget(env),

@@ -17,6 +17,7 @@ import { emailHtml, mailMode, sendMail } from "../lib/mail";
 import { rateLimit } from "../lib/ratelimit";
 import { createSession, destroySession } from "../lib/session";
 import { addSeconds, hashIp, nowIso, uuid } from "../lib/util";
+import { isPlatformAdmin } from "../middleware";
 
 const MAX_FAILED = 5;
 const LOCK_MINUTES = 15;
@@ -179,5 +180,5 @@ auth.get("/me", async (c) => {
   )
     .bind(u.id)
     .all<{ id: string; name: string; slug: string; plan_code: string; role: string }>();
-  return c.json({ user: { id: u.id, email: u.email, name: u.name, emailVerified: u.emailVerified }, memberships: results });
+  return c.json({ user: { id: u.id, email: u.email, name: u.name, emailVerified: u.emailVerified, isPlatformAdmin: await isPlatformAdmin(c.env, u) }, memberships: results });
 });

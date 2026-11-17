@@ -93,3 +93,10 @@ npx wrangler d1 time-travel info dni-growth-db
 npx wrangler d1 time-travel restore dni-growth-db --bookmark=<marcador>
 ```
 Copias exportadas antes de cada migración en `backups/` (fuera de git).
+
+## Despliegue 2026-11-18 (dominio + Model Hub + Content Studio)
+- Versión actual: `286b5a81-6ead-4114-928f-a566e48c4718` · anterior: `11831c6d-b194-4d2e-9810-d7631a9e0d1d`.
+- Rollback de código: `npx wrangler rollback 11831c6d-b194-4d2e-9810-d7631a9e0d1d` (desde `apps/api`). La migración 0005 es aditiva: el código anterior la ignora, no hace falta revertirla.
+- Copia de D1 previa a 0005: `backups/dni-growth-db-pre-0005-20261118-0019.sql` (fuera de git).
+- Detener OpenRouter al instante: Centro de IA → «Detener OpenRouter (global)» (o `POST /api/v1/admin/ai/openrouter/kill-switch {"enabled":false}`). Tras una parada automática por cobro, revisar la cuenta de OpenRouter antes de «Quitar bloqueo de seguridad».
+- Redirección www → apex: regla «Redirigir de WWW a raíz» en Reglas de redireccionamiento de la zona dnigrowth.com.

@@ -64,16 +64,45 @@ export const UpdateTaskInput = z.object({
 
 export const CheckoutInput = z.object({ planCode: z.enum(["starter", "growth", "pro", "agency"]) });
 
-export const AdvisorInput = z.object({
+// Strict: the client can never inject a model id, provider, price, endpoint or credit amount.
+export const AdvisorInput = z.strictObject({
   question: z.string().trim().min(2, "Escribe tu pregunta.").max(2000),
   conversationId: z.uuid().optional(),
   brandId: z.uuid().optional(),
+  /** Explicit consent to use automatic fallback after a manually selected free model failed. */
+  allowFallback: z.boolean().optional(),
 });
 
-export const ImageInput = z.object({
+export const ImageInput = z.strictObject({
   prompt: z.string().trim().min(5, "Describe la imagen (mínimo 5 caracteres).").max(1000),
   format: z.enum(["square", "landscape", "portrait"]).default("square"),
 });
+
+/** Organization AI preferences. Model ids are re-validated server-side against the allowlist. */
+export const AiPreferencesInput = z.strictObject({
+  strategy: z.enum(["automatic_free", "manual_free", "openrouter_free_router", "cloudflare_only"]),
+  manualModelId: z.string().trim().max(120).regex(/^[a-z0-9][a-z0-9._-]*\/[a-z0-9][a-z0-9._:-]*$/i, "Modelo no válido.").nullable().optional(),
+  fallbackPolicy: z.enum(["auto", "ask"]).default("auto"),
+  privacyFirst: z.boolean().default(false),
+  openrouterEnabled: z.boolean().default(true),
+});
+
+export const CONTENT_KINDS = ["blog_article", "landing_copy", "faq_aeo", "meta_tags", "social_post", "entity_summary"] as const;
+export const ContentCreateInput = z.strictObject({
+  kind: z.enum(CONTENT_KINDS),
+  title: z.string().trim().min(3, "Escribe un título o tema.").max(160),
+  keyword: z.string().trim().max(120).default(""),
+  audience: z.string().trim().max(300).default(""),
+  angle: z.string().trim().max(600).default(""),
+  sources: z.string().trim().max(3000).default(""),
+  brandId: z.uuid().optional(),
+});
+export const ContentUpdateInput = z.strictObject({
+  title: z.string().trim().min(3).max(160).optional(),
+  bodyMd: z.string().max(60_000).optional(),
+  expectedVersion: z.number().int().positive().optional(),
+});
+export const ContentReviewInput = z.strictObject({ note: z.string().trim().max(1000).default("") });
 
 /** Measurement types required by CLAUDE.md for every metric. */
 export type Measurement = "observed" | "derived" | "estimated" | "demo";
