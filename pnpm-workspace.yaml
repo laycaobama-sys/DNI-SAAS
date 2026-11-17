@@ -1,0 +1,10 @@
+packages:
+  - "apps/*"
+  - "packages/*"
+
+# Supply-chain: only these packages may run install scripts.
+allowBuilds:
+  esbuild: true
+  workerd: true
+  sharp: false
+  "@tailwindcss/oxide": true

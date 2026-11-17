@@ -1,0 +1,50 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "dni-growth",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-11-01",
+  "compatibility_flags": ["nodejs_compat"],
+  "workers_dev": true,
+  "preview_urls": false,
+
+  // Landing + SPA built by apps/web. The Worker runs first only for API and app routes.
+  "assets": {
+    "directory": "../web/dist",
+    "binding": "ASSETS",
+    "not_found_handling": "404-page",
+    "run_worker_first": ["/api/*", "/app", "/app/*"]
+  },
+
+  // D1 created with jurisdiction=eu (data stays in the EU).
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "dni-growth-db",
+      "database_id": "1d423865-538d-444c-946b-30ae60828aeb",
+      "migrations_dir": "migrations"
+    }
+  ],
+
+  "queues": {
+    "producers": [{ "binding": "JOBS_QUEUE", "queue": "dni-growth-jobs" }],
+    "consumers": [
+      {
+        "queue": "dni-growth-jobs",
+        "max_batch_size": 1,
+        "max_batch_timeout": 1,
+        "max_retries": 3,
+        "dead_letter_queue": "dni-growth-jobs-dlq"
+      }
+    ]
+  },
+
+  // Outbox drain + stuck-job recovery.
+  "triggers": { "crons": ["* * * * *"] },
+
+  "vars": {
+    "ENVIRONMENT": "production",
+    "APP_ORIGIN": "https://dni-growth.ibraguimova19.workers.dev"
+  },
+
+  "observability": { "enabled": true, "head_sampling_rate": 1 }
+}

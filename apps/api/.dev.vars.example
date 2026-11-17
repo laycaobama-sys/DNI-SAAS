@@ -1,0 +1,10 @@
+# Copy to apps/api/.dev.vars for local development (never commit .dev.vars).
+ENVIRONMENT=development
+APP_ORIGIN=http://localhost:8787
+IP_HASH_SALT=change-me-local-only
+# Optional — leave empty to use the local dev mailbox:
+# RESEND_API_KEY=
+# MAIL_FROM="DNI Growth <no-reply@tu-dominio.com>"
+# Optional — leave empty and checkout returns 503 provider_not_configured:
+# STRIPE_SECRET_KEY=
+# STRIPE_WEBHOOK_SECRET=

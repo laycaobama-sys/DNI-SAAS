@@ -1,0 +1,96 @@
+import { z } from "zod";
+import { ROLES } from "./rbac";
+
+/** Zod schemas shared by API (validation at the boundary) and web (typed client). */
+export const EmailSchema = z.email().max(254).transform((e) => e.toLowerCase().trim());
+export const PasswordSchema = z
+  .string()
+  .min(12, "Mínimo 12 caracteres")
+  .max(128)
+  .refine((p) => /[a-zA-Z]/.test(p) && /\d/.test(p), "Incluye letras y números");
+
+export const RegisterInput = z.object({
+  email: EmailSchema,
+  password: PasswordSchema,
+  name: z.string().trim().min(1).max(120),
+});
+export const LoginInput = z.object({ email: EmailSchema, password: z.string().min(1).max(128) });
+export const TokenInput = z.object({ token: z.string().regex(/^[0-9a-f]{64}$/) });
+export const ResendInput = z.object({ email: EmailSchema });
+export const ResetConfirmInput = z.object({ token: z.string().regex(/^[0-9a-f]{64}$/), password: PasswordSchema });
+
+export const CreateOrgInput = z.object({ name: z.string().trim().min(2).max(120) });
+export const InviteInput = z.object({ email: EmailSchema, role: z.enum(ROLES) });
+export const UpdateMemberInput = z.object({ role: z.enum(ROLES) });
+
+export const CreateBrandInput = z.object({
+  name: z.string().trim().min(1).max(120),
+  domain: z.string().trim().max(253).optional(),
+});
+
+export const AnalyzeInput = z.object({
+  url: z.string().trim().min(4).max(2048),
+  brandId: z.uuid().optional(),
+  brandName: z.string().trim().min(1).max(120).optional(),
+});
+
+const FactSchema = z.object({
+  id: z.string().max(40),
+  key: z.string().max(40),
+  label: z.string().max(80),
+  value: z.string().trim().min(1).max(500),
+  sourceUrl: z.string().max(2048).nullable(),
+  method: z.string().max(20),
+  confidence: z.enum(["high", "medium", "low"]),
+  status: z.enum(["extracted", "edited", "rejected", "added"]),
+});
+
+export const UpdateBrandProfileInput = z.object({
+  facts: z.array(FactSchema).max(200),
+  audience: z.string().trim().max(2000).default(""),
+  tone: z.string().trim().max(1000).default(""),
+  objective: z.enum(["traffic", "leads", "sales", "reputation", ""]).default(""),
+  prohibitedClaims: z.array(z.string().trim().min(1).max(200)).max(50).default([]),
+  competitors: z.array(z.string().trim().min(3).max(253)).max(20).default([]),
+});
+
+export const UpdateTaskInput = z.object({
+  status: z.enum(["todo", "doing", "done", "dismissed"]).optional(),
+  title: z.string().trim().min(1).max(200).optional(),
+  description: z.string().trim().max(2000).optional(),
+  week: z.number().int().min(1).max(4).optional(),
+  estimateHours: z.number().min(0).max(200).optional(),
+});
+
+export const CheckoutInput = z.object({ planCode: z.enum(["starter", "growth", "pro", "agency"]) });
+
+/** Measurement types required by CLAUDE.md for every metric. */
+export type Measurement = "observed" | "derived" | "estimated" | "demo";
+export interface Metric<T = number> {
+  metric: string;
+  value: T;
+  unit: string;
+  measurement: Measurement;
+  source: string;
+  observedAt: string;
+  period?: { start: string; end: string } | null;
+  limitations: string[];
+}
+
+/** Commercial plans (hypothesis from PRD §9 — configurable, not hard-coded in UI). */
+export interface PlanDef {
+  code: string;
+  name: string;
+  priceEurMonth: number | null;
+  limits: { brands: number; seats: number; analysesPerMonth: number; pagesPerCrawl: number; monthlyCredits: number };
+}
+
+export type ProviderStatus = "not_configured" | "connected" | "error" | "demo" | "blocked_external_approval" | "planned";
+export interface ProviderManifestEntry {
+  key: string;
+  name: string;
+  category: string;
+  phase: string;
+  status: ProviderStatus;
+  note: string;
+}

@@ -1,0 +1,89 @@
+﻿fase,modulo,prioridad,historia,criterio_aceptacion,dependencia
+F0,Core,P0,Configurar monorepo y CI,pnpm install lint typecheck test build OK; README reproducible,repo
+F0,Core,P0,Design system responsive,Componentes accesibles reutilizables; light/dark; estados y mobile QA,repo
+F0,Auth,P0,Registro y login seguro,Verificación email y sesión renovable; pruebas login invalid/expired,F0 foundation
+F0,Tenancy,P0,Organizaciones y membresías,Org A nunca puede acceder a datos de B; E2E y RLS,Auth
+F0,Security,P0,Políticas PostgreSQL RLS,Forced RLS y cross-tenant FK; tests direct SQL/API,Tenancy
+F0,Security,P0,RBAC scopes por acción,No autorizar gasto o publicación a Viewer,Tenancy
+F0,Security,P0,Gestión segura de secretos,"No secretos en DB plain text, front-end o logs",Core
+F0,Jobs,P0,Queue durable BullMQ,"Retry, idempotency, cancel, DLQ, log, status UI",Core
+F0,Jobs,P0,Outbox transaction,No doble ejecución ante webhooks duplicados,Jobs
+F0,Billing,P0,Stripe sandbox y planes,"Checkout sandbox, firma webhook, ledger y entitlements",Tenancy
+F0,Observability,P0,Logs trazas y audit,Trace ID y logs redactados por tenant,Core
+F0,UX,P1,Navegación completa,"Rutas sin backend muestran Not available, nunca métricas falsas",Design system
+F0,QA,P0,QA seguridad multi-tenant,Pruebas IDOR/RLS end-to-end en API DB y storage,RLS
+F1,Crawler,P0,Validar URLs y SSRF,"Bloqueo localhost, rangos privados, redirects y DNS rebinding",Jobs
+F1,Crawler,P0,Rastreo robots y sitemap,"Limitar páginas, rate, tiempo y tamaño; sin rastreo intrusivo",Crawler SSRF
+F1,Crawler,P0,Extraer estructura web,"URLs, metadata, headings, schema, links y evidencia",Crawl
+F1,Brand,P0,Extraer identidad y oferta,Hechos extraídos con fuente y editable; no inventar precios,Crawler
+F1,Brand,P0,Confirmar brand profile,"Usuario revisa y acepta hechos, tono y restricciones",Brand
+F1,Audit,P0,Reglas SEO deterministas,"Cada issue regla, URL, severidad y evidencia",Crawler
+F1,Audit,P1,Priorizador oportunidades,"Impacto, esfuerzo, certeza, orden reproducible",Audit
+F1,Dashboard,P0,Dashboard onboarding y jobs,Progress real y estado; cards con fuente/frescura,Jobs
+F1,Strategy,P1,Plan de crecimiento editable,"Tareas orgánicas/pago, coste estimado y approvals",Brand Audit
+F1,QA,P0,E2E URL a Growth Plan,"Pasa domain benigno, bloquea URL maliciosa",F1 features
+F2,Keywords,P0,Adapter proveedor keywords,Sin fuente real no mostrar volumen/dificultad inventados,Integrations
+F2,Keywords,P1,Clusters e intención,"Grupo, prioridad, idioma y país por keyword",Keywords
+F2,Content,P0,Calendario editorial,"Crear, reprogramar, cancelar y editar topics",Brand
+F2,Content,P0,Brief con fuentes,"Fuente, fecha y claims en brief editorial",Keywords
+F2,Content,P0,Editor versionado,"Diff, autosave, FAQ y metadata con tests",Brief
+F2,Content,P0,Quality gate fact-check,"Alerta claims sin fuente, traducción y duplicados",Editor
+F2,CMS,P0,Publicación WordPress,"Preview, approve, push real, remote URL, rollback si soporta",Editor approvals
+F2,CMS,P1,Export markdown/HTML,Export real cuando no hay credenciales,Editor
+F2,CMS,P1,Más CMS por adapters,Cada conexión validada en staging; no fake integrations,CMS adapter
+F2,Links,P1,Internal linking legítimo,Enlaces contextuales con páginas existentes,Content
+F2,Authority,P2,PR y menciones sin spam,No intercambios masivos ni venta de link equity,Audit
+F3,Google,P0,OAuth GSC seguro,"Lectura propiedad permitida, refresh y desconectar",Auth
+F3,Google,P0,GA4 ingest seguro,"Datos por período, propiedad y timestamp",Auth
+F3,Analytics,P0,SEO panel de clicks e impresiones,Datos observados; ausencia visible sin cuenta conectada,GSC
+F3,GEO,P0,Biblioteca de prompts,"Preguntas, motor, intención, idioma y región",Brand
+F3,GEO,P0,Monitor AI por APIs válidas,"Almacenar muestra y fecha, no simular respuesta real",Prompt library
+F3,GEO,P1,Mentions/citations comparables,"Score muestra, intervalo, competidores y fuente",Monitor
+F3,GEO,P1,GEO recomendaciones explicables,Gap -> página/acción y limitaciones de inferencia,GEO samples
+F3,Analytics,P1,Reportes de rendimiento exportables,CSV/JSON/PDF con fuentes y disclaimers,GA4 GSC GEO
+F4,Creative,P0,Assets y brand kit visual,"Licencias, storage protegido, versiones y alt",Brand
+F4,Creative,P0,Editor imagen y plantillas,"Canvas/layers, export correcto 1:1/4:5/9:16/16:9",Assets
+F4,Creative,P1,Variantes y creative QA,"Safezone, legibilidad, brand consistency y aprobaciones",Editor
+F4,Video,P0,Storyboards por escenas,"Timeline estructurado, hooks CTA y versión",Brand
+F4,Video,P0,TTS provider adapter,"Voces licenciadas, coste y voz real cuando conectado",Jobs
+F4,Video,P0,Remotion render async,MP4 de ejemplo reproducible; render worker separado,Timeline
+F4,Video,P0,Subtítulos y audio QA,"Timing SRT/VTT, no clipping, preview audio",Render
+F4,Video,P1,Editor de miniaturas y formatos,"Thumbnail por vídeo, ratio distinto, safezone",Video
+F4,Video,P1,Re-render y consumo ledger,"Reintentos idempotentes, costes y no duplicación",Billing
+F5,Landing,P0,Landing builder por bloques,"Responsive con CTA y form, preview, versionado",Design system
+F5,Landing,P0,Hosting y dominio seguro,"HTTPS, verificación DNS, published status real",Landing
+F5,Landing,P0,Consentimiento por finalidad,No pixels antes de consentimiento válido cuando necesario,Landing
+F5,CRM,P0,Captación anti-spam,"Lead capture con validación, dedup, atribución UTM",Landing
+F5,CRM,P0,Pipeline y tasks,"Asignación, estado, history, acceso por rol",Lead
+F5,CRM,P1,Notificaciones/email WhatsApp,"API autorizada, plantillas y políticas de opt-in",CRM
+F5,Automation,P1,Workflow de seguimiento,"Aprobación, rate, logs, quiet hours",CRM
+F6,Ads,P0,Meta OAuth y capacidad,Scopes y cuentas reales; errores visibles,Auth
+F6,Ads,P0,Draft campaña Meta,"Presupuesto, público y assets validados sin activar",Meta
+F6,Ads,P0,Approval y Spend Guardian,"No lanzar sin permiso, límite y saldo; log de decisión",Draft
+F6,Ads,P0,Publicar/pausar mediante API,Confirmar remote campaign ID y estado real,Approval
+F6,Ads,P1,Importar insights Meta,"Spend, CTR, CPC, leads y fechas sin confundir conversiones",Meta
+F6,Ads,P1,Alertas de fatiga y recambios,Solo sustituir creatividades previamente aprobadas,Insights
+F6,Ads,P0,Kill switch y presupuesto límite,Detener en fallo/anomalía; double click idempotente,Meta publish
+F7,Experiment,P0,Landing A/B test,"Asignación reproducible, métricas y muestra mínima",Landing
+F7,Attribution,P0,Modelo eventos normalizados,Dedup y ventana; observado vs estimado explícito,Analytics
+F7,Attribution,P0,Ingresos CRM o commerce,"Sales y revenue verificados, currency correct",CRM
+F7,Finance,P1,Unit economics y margen,Separar gasto ads vs fee software y coste de IA,Ledger
+F7,Agents,P1,Aprendizaje de creatividades propias,Comparar hooks y resultados con control por muestra,Ads insights
+F7,Experiment,P1,Recomendaciones con aprobación,"Propuestas reversibles, nunca gasto silencioso",Experiments
+F8,Agency,P0,Agencias subclientes,"RBAC cruzado, portal cliente y RLS testeado",Tenancy
+F8,Agency,P1,White label y reportes,Marca y dominio propios con límites correctos,Agency
+F8,Enterprise,P1,Auditoría y retención datos,"DSAR export delete, retention y logs",Security
+F8,API,P1,OpenAPI y webhooks firmados,Documentación y credenciales scopeadas,Core
+F8,MCP,P2,MCP read-only por defecto,Acción de escritura requiere gate explícito,API
+F8,Enterprise,P2,SSO roles y SCIM,Sólo si proveedor y pruebas de acceso disponibles,Identity
+F8,Reliability,P0,Disaster recovery y SLO,"Restore probado, runbook y alertas observadas",Infra
+F9,MultiAds,P1,Google Ads adapter,"Permisos actuales validados, test campaign seguro",AdsProvider
+F9,MultiAds,P2,TikTok Ads adapter,App review y permisos confirmados,AdsProvider
+F9,MultiAds,P2,LinkedIn Ads adapter,App review y permisos confirmados,AdsProvider
+F9,MultiAds,P2,Microsoft Ads adapter,OAuth y quotas confirmados,AdsProvider
+F9,Agency,P1,Profitability cockpit,"Costos de cuentas, tiempo y revenue por cliente",Finance
+GLOBAL,Security,P0,Penetration test prelaunch,No fallos críticos abiertos; evidencia de corrección,F0-F9
+GLOBAL,Quality,P0,Accesibilidad WCAG 2.2 AA,"Teclado, foco, contraste y lectores; smoke manual",UI
+GLOBAL,Quality,P0,Test data realism,Production nunca presenta fixtures como datos reales,UI
+GLOBAL,Compliance,P0,RGPD y EU AI Act screening,"Bases legales, transparencia y disclosures aplicables",Policy
+GLOBAL,Operations,P0,Estado de proveedores,"Integración real, demo, blocked y failure claramente visible",Integrations

@@ -1,0 +1,35 @@
+{
+  "name": "dni-growth",
+  "private": true,
+  "version": "0.1.0",
+  "description": "DNI Growth — SaaS multi-tenant de crecimiento digital (SEO, GEO, AEO, Ads, CRM) sobre Cloudflare",
+  "type": "module",
+  "packageManager": "pnpm@11.15.1",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "dev": "pnpm --filter @dni/web build && pnpm --filter @dni/api dev",
+    "dev:web": "pnpm --filter @dni/web dev",
+    "build": "pnpm -r build",
+    "typecheck": "pnpm -r typecheck",
+    "lint": "eslint .",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:e2e": "vitest run --project api -t \"E2E\"",
+    "db:migrate": "pnpm --filter @dni/api db:migrate:local",
+    "db:migrate:remote": "pnpm --filter @dni/api db:migrate:remote",
+    "deploy": "pnpm build && pnpm --filter @dni/api deploy",
+    "security:scan": "node scripts/secret-scan.mjs && pnpm audit --prod --audit-level high",
+    "verify": "pnpm lint && pnpm typecheck && pnpm test && pnpm build && node scripts/secret-scan.mjs"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@types/node": "^26.6.6",
+    "eslint": "10.15.0",
+    "globals": "^17.14.0",
+    "typescript": "6.0.3",
+    "typescript-eslint": "^8.70.0",
+    "vitest": "5.1.0"
+  }
+}
