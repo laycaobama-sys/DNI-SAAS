@@ -29,7 +29,7 @@ Pruebas automáticas: `pnpm verify` → lint, typecheck, **144 tests** (71 de AP
 | Google Search Console | VERIFICADO EN PRODUCCIÓN | propiedad `https://dni-growth.ibraguimova19.workers.dev/` verificada (archivo HTML servido por el Worker); sitemap enviado, pendiente de primera lectura por Google |
 | Cabeceras de seguridad (CSP, HSTS, XFO, nosniff) | VERIFICADO EN PRODUCCIÓN | `curl -I /app/login` |
 | Configuración única de URL (`APP_ORIGIN` en `wrangler.jsonc` → cookies, OAuth, emails, sitemap) | VERIFICADO SOLO EN LOCAL | `vite.config.ts` lee `APP_ORIGIN`; `problem.type` usa URN (ningún dominio inventado) |
-| CI en GitHub | BLOQUEADO POR PERMISOS | `.github/workflows/ci.yml` listo; el token de GitHub no tiene el permiso `workflow` |
+| CI en GitHub (lint, typecheck, tests, build, secret scan, audit) | VERIFICADO EN GITHUB | Actions run 44169626957 en verde (commit `85cfbbe`), añadido desde la web de GitHub |
 
 ## F1 — URL → análisis seguro → perfil de marca → plan
 
@@ -60,6 +60,5 @@ Content Studio + CMS (F2), keywords con proveedor licenciado (F2), Search Consol
 | Dominio para email y marca | Comprar el dominio y añadirlo a Cloudflare; después: onboarding en Email Service, `MAIL_FROM`, `EMAIL_SENDING_ENABLED=true`, `APP_ORIGIN` |
 | Google sign-in | Aceptar la política de datos de Google en el proyecto «DNI Growth», crear el cliente OAuth y ejecutar `npx wrangler secret put GOOGLE_CLIENT_SECRET` |
 | OpenRouter / Gemini (opcionales) | `npx wrangler secret put OPENROUTER_API_KEY` y/o `GEMINI_API_KEY` |
-| CI en GitHub | Permitir el permiso `workflow` (`gh auth refresh -s workflow`) o crear el archivo desde la web |
 | Stripe | Decidir activarlo (ver `STRIPE_PLAN.md`) |
 | Textos legales definitivos | Datos fiscales del titular |
