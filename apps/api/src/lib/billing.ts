@@ -50,3 +50,26 @@ export async function analysesThisMonth(db: D1Database, orgId: string): Promise<
     .first<{ n: number }>();
   return r?.n ?? 0;
 }
+
+/**
+ * Atomic credit reservation for synchronous usage (AI requests): a single INSERT…SELECT that only
+ * writes when the balance covers the amount, so concurrent requests cannot overspend.
+ * Lifecycle: reserve → (settle + release) on success, or release on failure. Idempotent by refId.
+ */
+export async function reserveCredits(db: D1Database, e: { orgId: string; refId: string; amount: number; category: string }): Promise<boolean> {
+  const r = await db
+    .prepare(
+      `INSERT OR IGNORE INTO credit_ledger (id, organization_id, category, amount, entry_kind, source_event_id)
+       SELECT ?, ?, ?, ?, 'reserve', ?
+       WHERE (SELECT COALESCE(SUM(amount), 0) FROM credit_ledger WHERE organization_id = ?) >= ?`,
+    )
+    .bind(uuid(), e.orgId, e.category, -Math.abs(e.amount), `usage:${e.refId}:reserve`, e.orgId, Math.abs(e.amount))
+    .run();
+  return (r.meta.changes ?? 0) > 0;
+}
+
+export function usageLedgerStmt(db: D1Database, e: { orgId: string; refId: string; kind: "settle" | "release"; amount: number; category: string; provider?: string }) {
+  return db
+    .prepare("INSERT OR IGNORE INTO credit_ledger (id, organization_id, category, amount, entry_kind, provider, source_event_id) VALUES (?, ?, ?, ?, ?, ?, ?)")
+    .bind(uuid(), e.orgId, e.category, e.kind === "settle" ? -Math.abs(e.amount) : Math.abs(e.amount), e.kind, e.provider ?? "internal", `usage:${e.refId}:${e.kind}`);
+}

@@ -12,7 +12,7 @@
     "directory": "../web/dist",
     "binding": "ASSETS",
     "not_found_handling": "404-page",
-    "run_worker_first": ["/api/*", "/app", "/app/*"]
+    "run_worker_first": ["/api/*", "/app", "/app/*", "/google*.html"]
   },
 
   // D1 created with jurisdiction=eu (data stays in the EU).
@@ -38,12 +38,29 @@
     ]
   },
 
+  // Workers AI (advisor + images). Spend is capped in code by AI_DAILY_BUDGET_USD.
+  "ai": { "binding": "AI" },
+
+  // Generated media (EU jurisdiction, private; served only through tenant-checked API routes).
+  "r2_buckets": [{ "binding": "MEDIA", "bucket_name": "dni-growth-media", "jurisdiction": "eu" }],
+
+  // Cloudflare Email Service (transactional). Sending only starts when EMAIL_SENDING_ENABLED="true"
+  // and MAIL_FROM belongs to a domain onboarded in Compute > Email Service > Email Sending.
+  "send_email": [{ "name": "EMAIL" }],
+
   // Outbox drain + stuck-job recovery.
   "triggers": { "crons": ["* * * * *"] },
 
+  // Single source of truth for public URLs: APP_ORIGIN drives cookies, OAuth redirect URIs,
+  // email links, canonical URLs and the sitemap (apps/web/vite.config.ts reads it from here).
   "vars": {
     "ENVIRONMENT": "production",
-    "APP_ORIGIN": "https://dni-growth.ibraguimova19.workers.dev"
+    "APP_ORIGIN": "https://dni-growth.ibraguimova19.workers.dev",
+    "EMAIL_SENDING_ENABLED": "false",
+    "MAIL_FROM": "",
+    "GOOGLE_CLIENT_ID": "",
+    "BILLING_ENABLED": "false",
+    "AI_DAILY_BUDGET_USD": "0.10"
   },
 
   "observability": { "enabled": true, "head_sampling_rate": 1 }

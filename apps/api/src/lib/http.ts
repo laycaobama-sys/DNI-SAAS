@@ -21,7 +21,8 @@ export const unauthorized = () => new ApiError(401, "unauthorized", "Inicia sesi
 export function problem(c: Context<AppEnv>, err: ApiError) {
   return c.body(
     JSON.stringify({
-      type: `https://dni-growth.app/problems/${err.code}`,
+      // URN instead of a URL: no hardcoded domain that we do not own (RFC 9457 allows any URI).
+      type: `urn:dni-growth:problem:${err.code}`,
       title: err.message,
       status: err.status,
       code: err.code,

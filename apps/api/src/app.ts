@@ -4,9 +4,11 @@ import type { AppEnv, Deps } from "./env";
 import { ApiError, problem } from "./lib/http";
 import { log } from "./lib/util";
 import { csrf, requestId, requireMembership, requireScope, requireUser, securityHeaders, session } from "./middleware";
+import { ai } from "./routes/ai";
 import { auth } from "./routes/auth";
 import { billing, providerManifest, webhooks } from "./routes/billing";
 import { insights } from "./routes/insights";
+import { oauth } from "./routes/oauth";
 import { org, orgsPublic } from "./routes/orgs";
 import { work } from "./routes/work";
 
@@ -24,6 +26,7 @@ export function createApp(deps: Deps) {
   app.get("/api/v1/providers", (c) => c.json({ items: providerManifest(c.env) }));
 
   app.route("/api/v1/auth", auth);
+  app.route("/api/v1/auth", oauth);
   app.route("/api/v1/webhooks", webhooks);
   app.route("/api/v1", orgsPublic);
 
@@ -34,6 +37,7 @@ export function createApp(deps: Deps) {
   tenant.route("/", work);
   tenant.route("/", insights);
   tenant.route("/", billing);
+  tenant.route("/", ai);
   tenant.get("/integrations", requireScope("integrations:read"), (c) => c.json({ items: providerManifest(c.env) }));
   app.route("/api/v1/orgs/:orgId", tenant);
 
@@ -54,6 +58,10 @@ export function createApp(deps: Deps) {
     log("error", "unhandled", { path: c.req.path, requestId: c.get("requestId"), error: err instanceof Error ? err.message : String(err) });
     return problem(c, new ApiError(500, "internal_error", "Error interno. Inténtalo de nuevo."));
   });
+
+  // Google Search Console ownership file (URL-prefix property). Served by the Worker so the exact
+  // .html path answers 200 without the Static Assets extension redirect. The token is public.
+  app.get("/google07bca8a276fd14a6.html", (c) => c.text("google-site-verification: google07bca8a276fd14a6.html", 200, { "content-type": "text/html; charset=utf-8" }));
 
   // Non-API routes: static landing + SPA shell served from Workers Static Assets.
   app.get("*", async (c) => {

@@ -48,4 +48,4 @@ pnpm db:migrate:remote
 pnpm deploy
 ```
 
-Secretos (`wrangler secret put <NOMBRE>` desde `apps/api`): `IP_HASH_SALT` (configurado), `RESEND_API_KEY` + `MAIL_FROM` (pendiente), `STRIPE_SECRET_KEY` + `STRIPE_WEBHOOK_SECRET` (pendiente). Ver [RUNBOOK](docs/RUNBOOK.md).
+Configuración pública en `apps/api/wrangler.jsonc` (`vars`, con `APP_ORIGIN` como única fuente de la URL). Secretos (`wrangler secret put <NOMBRE>` desde `apps/api`): `IP_HASH_SALT` y `DATA_ENC_KEY` (configurados); `GOOGLE_CLIENT_SECRET`, `OPENROUTER_API_KEY`, `GEMINI_API_KEY` (opcionales, los pone el titular); Stripe más adelante detrás de `BILLING_ENABLED`. Email transaccional con **Cloudflare Email Service**. Ver [RUNBOOK](docs/RUNBOOK.md) y [estado](docs/IMPLEMENTATION_STATUS.md).

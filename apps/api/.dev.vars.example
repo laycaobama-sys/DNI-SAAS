@@ -2,9 +2,12 @@
 ENVIRONMENT=development
 APP_ORIGIN=http://localhost:8787
 IP_HASH_SALT=change-me-local-only
-# Optional — leave empty to use the local dev mailbox:
-# RESEND_API_KEY=
-# MAIL_FROM="DNI Growth <no-reply@tu-dominio.com>"
-# Optional — leave empty and checkout returns 503 provider_not_configured:
+# Email: in development the local dev mailbox is used (nothing is sent).
+# Optional AI fallbacks (Workers AI needs no key):
+# OPENROUTER_API_KEY=
+# GEMINI_API_KEY=
+# Optional Google sign-in (also set GOOGLE_CLIENT_ID in wrangler.jsonc vars):
+# GOOGLE_CLIENT_SECRET=
+# Stripe stays off while BILLING_ENABLED != "true":
 # STRIPE_SECRET_KEY=
 # STRIPE_WEBHOOK_SECRET=

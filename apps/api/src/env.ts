@@ -6,10 +6,28 @@ export interface Env {
   JOBS_QUEUE?: Queue<JobMessage>;
   ENVIRONMENT: "development" | "staging" | "production" | "test";
   APP_ORIGIN: string;
+  /** Cloudflare Email Service `send_email` binding (requires an onboarded sending domain). */
+  EMAIL?: SendEmail;
+  /** Workers AI binding. */
+  AI?: Ai;
+  /** R2 bucket for generated media (media/<organization_id>/<id>.png). */
+  MEDIA?: R2Bucket;
+  /** Vars (wrangler.jsonc). */
+  MAIL_FROM?: string;
+  MAIL_REPLY_TO?: string;
+  /** "true" only once the sending domain is onboarded in Email Service. */
+  EMAIL_SENDING_ENABLED?: string;
+  GOOGLE_CLIENT_ID?: string;
+  /** Stripe stays off until the owner decides: "true" enables checkout/webhook. */
+  BILLING_ENABLED?: string;
+  /** Platform daily ceiling (USD, estimated) for paid AI usage. Default 0.10 ≈ Workers AI free allocation. */
+  AI_DAILY_BUDGET_USD?: string;
   /** Secrets (wrangler secret put …). Never logged, never stored in D1. */
   IP_HASH_SALT?: string;
-  RESEND_API_KEY?: string;
-  MAIL_FROM?: string;
+  DATA_ENC_KEY?: string;
+  GOOGLE_CLIENT_SECRET?: string;
+  OPENROUTER_API_KEY?: string;
+  GEMINI_API_KEY?: string;
   STRIPE_SECRET_KEY?: string;
   STRIPE_WEBHOOK_SECRET?: string;
 }

@@ -4,7 +4,7 @@ import type { AppEnv } from "../env";
 import { auditStmt } from "../lib/audit";
 import { creditBalance, ensureMonthlyGrant, getPlan, grantStmt, orgPlan, analysesThisMonth } from "../lib/billing";
 import { ApiError, assertUuid, forbidden, notFound, parseBody } from "../lib/http";
-import { sendMail } from "../lib/mail";
+import { emailHtml, sendMail } from "../lib/mail";
 import { rateLimit } from "../lib/ratelimit";
 import { addSeconds, monthKey, nowIso, slugify, uuid } from "../lib/util";
 import { requireScope, requireUser } from "../middleware";
@@ -151,11 +151,19 @@ org.post("/invitations", requireScope("members:invite"), async (c) => {
     ),
     auditStmt(c.env.DB, { organizationId: t.orgId, actorUserId: user.id, action: "member.invite", entityType: "invitation", entityId: id, after: { email: input.email, role: input.role }, requestId: c.get("requestId") }),
   ]);
-  const delivery = await sendMail(c.env, {
-    to: input.email,
-    subject: `Invitación a ${orgRow?.name ?? "una organización"} en DNI Growth`,
-    text: `${user.name} te invita a unirte a ${orgRow?.name} en DNI Growth.\n\nAcepta aquí (caduca en 7 días):\n${c.env.APP_ORIGIN}/app/invite?token=${token}`,
-  });
+  const url = `${c.env.APP_ORIGIN}/app/invite?token=${token}`;
+  const orgName = orgRow?.name ?? "una organización";
+  const result = await sendMail(
+    c.env,
+    {
+      to: input.email,
+      subject: `Invitación a ${orgName} en DNI Growth`,
+      text: `${user.name} te invita a unirte a ${orgName} en DNI Growth.\n\nAcepta aquí (caduca en 7 días):\n${url}`,
+      html: emailHtml(`Te invitan a ${orgName}`, [`${user.name} te invita a unirte a ${orgName} en DNI Growth.`, "La invitación caduca en 7 días."], { label: "Aceptar invitación", url }),
+    },
+    { kind: "invitation", idempotencyKey: `invitation:${id}`, organizationId: t.orgId },
+  );
+  const delivery = result === "not_configured" ? "not_configured" : result === "dev_mailbox" ? "dev_mailbox" : result === "accepted" ? "sent" : "queued";
   return c.json({ id, delivery }, 201);
 });
 

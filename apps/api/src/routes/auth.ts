@@ -13,7 +13,7 @@ import {
 import type { AppEnv, Env } from "../env";
 import { auditStmt } from "../lib/audit";
 import { ApiError, parseBody } from "../lib/http";
-import { sendMail, type MailDelivery } from "../lib/mail";
+import { emailHtml, mailMode, sendMail } from "../lib/mail";
 import { rateLimit } from "../lib/ratelimit";
 import { createSession, destroySession } from "../lib/session";
 import { addSeconds, hashIp, nowIso, uuid } from "../lib/util";
@@ -42,13 +42,19 @@ async function consumeEmailToken(env: Env, token: string, purpose: "verify_email
   return row.user_id;
 }
 
-async function sendVerification(env: Env, user: { id: string; email: string; name: string }): Promise<MailDelivery> {
+async function sendVerification(env: Env, user: { id: string; email: string; name: string }) {
   const token = await issueEmailToken(env, user.id, "verify_email", 24 * 3600);
-  return sendMail(env, {
-    to: user.email,
-    subject: "Verifica tu correo en DNI Growth",
-    text: `Hola ${user.name},\n\nConfirma tu correo abriendo este enlace (caduca en 24 h):\n${env.APP_ORIGIN}/app/verify?token=${token}\n\nSi no has creado una cuenta, ignora este mensaje.`,
-  });
+  const url = `${env.APP_ORIGIN}/app/verify?token=${token}`;
+  return sendMail(
+    env,
+    {
+      to: user.email,
+      subject: "Verifica tu correo en DNI Growth",
+      text: `Hola ${user.name},\n\nConfirma tu correo abriendo este enlace (caduca en 24 h):\n${url}\n\nSi no has creado una cuenta, ignora este mensaje.`,
+      html: emailHtml("Confirma tu correo", [`Hola ${user.name},`, "Confirma tu dirección para activar tu cuenta de DNI Growth. El enlace caduca en 24 horas."], { label: "Confirmar correo", url }),
+    },
+    { kind: "verify_email", idempotencyKey: `verify_email:${await sha256Hex(token)}` },
+  );
 }
 
 export const auth = new Hono<AppEnv>();
@@ -57,19 +63,19 @@ auth.post("/register", async (c) => {
   await rateLimit(c.env.DB, `register:${await hashIp(c.env, c.req.header("cf-connecting-ip"))}`, 10, 3600);
   const input = await parseBody(c, RegisterInput);
   const existing = await c.env.DB.prepare("SELECT id FROM users WHERE email = ?").bind(input.email).first();
-  let delivery: MailDelivery = "sent";
   if (!existing) {
     const id = uuid();
     await c.env.DB.batch([
       c.env.DB.prepare("INSERT INTO users (id, email, name, password_hash) VALUES (?, ?, ?, ?)").bind(id, input.email, input.name, await hashPassword(input.password)),
       auditStmt(c.env.DB, { organizationId: null, actorUserId: id, action: "user.register", entityType: "user", entityId: id, requestId: c.get("requestId") }),
     ]);
-    delivery = await sendVerification(c.env, { id, email: input.email, name: input.name });
+    await sendVerification(c.env, { id, email: input.email, name: input.name });
   } else {
     await (dummyHash ??= hashPassword("dummy-password-0"));
   }
-  // Identical response whether or not the email exists (anti-enumeration).
-  return c.json({ ok: true, delivery: delivery === "not_configured" ? "not_configured" : "sent" }, 202);
+  // Identical response whether or not the email exists (anti-enumeration): the delivery mode is a
+  // platform property, never a per-user outcome.
+  return c.json({ ok: true, delivery: mailMode(c.env) === "not_configured" ? "not_configured" : "sent" }, 202);
 });
 
 auth.post("/verify-email", async (c) => {
@@ -137,11 +143,17 @@ auth.post("/password-reset/request", async (c) => {
   const u = await c.env.DB.prepare("SELECT id, name FROM users WHERE email = ?").bind(email).first<{ id: string; name: string }>();
   if (u) {
     const token = await issueEmailToken(c.env, u.id, "reset_password", 3600);
-    await sendMail(c.env, {
-      to: email,
-      subject: "Restablece tu contraseña de DNI Growth",
-      text: `Hola ${u.name},\n\nPara elegir una nueva contraseña abre este enlace (caduca en 1 h):\n${c.env.APP_ORIGIN}/app/reset?token=${token}\n\nSi no lo has pedido tú, ignora este mensaje.`,
-    });
+    const url = `${c.env.APP_ORIGIN}/app/reset?token=${token}`;
+    await sendMail(
+      c.env,
+      {
+        to: email,
+        subject: "Restablece tu contraseña de DNI Growth",
+        text: `Hola ${u.name},\n\nPara elegir una nueva contraseña abre este enlace (caduca en 1 h):\n${url}\n\nSi no lo has pedido tú, ignora este mensaje.`,
+        html: emailHtml("Restablece tu contraseña", [`Hola ${u.name},`, "Has pedido cambiar tu contraseña. El enlace caduca en 1 hora y solo se puede usar una vez."], { label: "Elegir nueva contraseña", url }),
+      },
+      { kind: "reset_password", idempotencyKey: `reset_password:${await sha256Hex(token)}` },
+    );
   }
   return c.json({ ok: true }, 202);
 });

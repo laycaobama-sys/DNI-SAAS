@@ -231,6 +231,23 @@ describe("E2E F1: URL → job → audit → brand → plan", () => {
   });
 });
 
+describe("Tenant fairness limits", () => {
+  it("at most 2 concurrent analyses per organization", async () => {
+    const { owner, orgId, h } = await setup();
+    await h.db.prepare("UPDATE organizations SET plan_code = 'growth' WHERE id = ?").bind(orgId).run();
+    expect((await owner.post(`/api/v1/orgs/${orgId}/sites/analyze`, { url: "panaderia-luna.es" })).status).toBe(202);
+    expect((await owner.post(`/api/v1/orgs/${orgId}/sites/analyze`, { url: "panaderia-luna.es" })).status).toBe(202);
+    await h.drain();
+    // Simulate two analyses still in progress (a real crawl takes seconds to minutes).
+    await h.db.prepare("UPDATE jobs SET state = 'running', started_at = ? WHERE organization_id = ?").bind(new Date().toISOString(), orgId).run();
+    const third = await owner.post(`/api/v1/orgs/${orgId}/sites/analyze`, { url: "panaderia-luna.es" });
+    expect(third.status).toBe(429);
+    expect(third.json.code).toBe("too_many_active_jobs");
+    await h.db.prepare("UPDATE jobs SET state = 'completed' WHERE organization_id = ?").bind(orgId).run();
+    expect((await owner.post(`/api/v1/orgs/${orgId}/sites/analyze`, { url: "panaderia-luna.es" })).status).toBe(202);
+  });
+});
+
 describe("Billing (Stripe sandbox contract)", () => {
   const secret = "whsec_fixture_secret";
   async function signed(body: object, t = Math.floor(Date.now() / 1000)) {
@@ -242,8 +259,20 @@ describe("Billing (Stripe sandbox contract)", () => {
     return { status: res.status, json: (await res.json()) as Record<string, unknown> };
   }
 
+  it("billing is off by default (BILLING_ENABLED unset): checkout and webhook refuse", async () => {
+    const { h, owner, orgId } = await setup();
+    h.env.STRIPE_WEBHOOK_SECRET = secret;
+    const r = await owner.post(`/api/v1/orgs/${orgId}/billing/checkout`, { planCode: "pro" });
+    expect(r.status).toBe(503);
+    expect(r.json.code).toBe("billing_disabled");
+    const { raw, header } = await signed({ id: "evt_off", type: "checkout.session.completed", data: { object: {} } });
+    expect((await postWebhook(h, raw, header)).json.code).toBe("billing_disabled");
+    expect(await h.db.prepare("SELECT COUNT(*) AS n FROM webhook_events").first("n")).toBe(0);
+  });
+
   it("checkout is honestly unavailable without Stripe credentials", async () => {
-    const { owner, orgId } = await setup();
+    const { h, owner, orgId } = await setup();
+    h.env.BILLING_ENABLED = "true";
     const r = await owner.post(`/api/v1/orgs/${orgId}/billing/checkout`, { planCode: "pro" });
     expect(r.status).toBe(503);
     expect(r.json.code).toBe("provider_not_configured");
@@ -252,6 +281,7 @@ describe("Billing (Stripe sandbox contract)", () => {
   it("verifies signatures and processes each event exactly once", async () => {
     const { h, owner, orgId } = await setup();
     h.env.STRIPE_WEBHOOK_SECRET = secret;
+    h.env.BILLING_ENABLED = "true";
     const event = { id: "evt_test_001", type: "checkout.session.completed", data: { object: { subscription: "sub_123", metadata: { organization_id: orgId, plan_code: "growth" } } } };
     const { raw, header } = await signed(event);
 

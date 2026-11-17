@@ -37,6 +37,8 @@ work.post("/brands", requireScope("brand:write"), async (c) => {
   return c.json({ id }, 201);
 });
 
+export const MAX_ACTIVE_JOBS = 2;
+
 /**
  * POST /sites/analyze — validates the URL synchronously (SSRF policy), checks plan quota and credits,
  * then commits brand/site + job + credit reservation + outbox row in ONE atomic batch.
@@ -69,6 +71,9 @@ work.post("/sites/analyze", requireScope("site:analyze"), async (c) => {
   if ((await analysesThisMonth(db, t.orgId)) >= plan.limits.analysesPerMonth) {
     throw new ApiError(402, "plan_limit", `Has usado los ${plan.limits.analysesPerMonth} análisis de tu plan ${plan.name} este mes.`);
   }
+  // Fairness: at most MAX_ACTIVE_JOBS concurrent analyses per organization.
+  const active = await db.prepare("SELECT COUNT(*) AS n FROM jobs WHERE organization_id = ? AND state IN ('queued','validating','running')").bind(t.orgId).first<{ n: number }>();
+  if ((active?.n ?? 0) >= MAX_ACTIVE_JOBS) throw new ApiError(429, "too_many_active_jobs", `Ya tienes ${MAX_ACTIVE_JOBS} análisis en curso. Espera a que termine alguno.`);
   const reserve = plan.limits.pagesPerCrawl;
   if ((await creditBalance(db, t.orgId)) < reserve) throw new ApiError(402, "insufficient_credits", "No tienes créditos suficientes para este análisis.");
 

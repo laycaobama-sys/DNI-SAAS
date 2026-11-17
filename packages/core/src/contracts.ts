@@ -64,6 +64,17 @@ export const UpdateTaskInput = z.object({
 
 export const CheckoutInput = z.object({ planCode: z.enum(["starter", "growth", "pro", "agency"]) });
 
+export const AdvisorInput = z.object({
+  question: z.string().trim().min(2, "Escribe tu pregunta.").max(2000),
+  conversationId: z.uuid().optional(),
+  brandId: z.uuid().optional(),
+});
+
+export const ImageInput = z.object({
+  prompt: z.string().trim().min(5, "Describe la imagen (mínimo 5 caracteres).").max(1000),
+  format: z.enum(["square", "landscape", "portrait"]).default("square"),
+});
+
 /** Measurement types required by CLAUDE.md for every metric. */
 export type Measurement = "observed" | "derived" | "estimated" | "demo";
 export interface Metric<T = number> {

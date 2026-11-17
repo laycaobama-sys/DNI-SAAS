@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { Link, Navigate, useNavigate, useSearchParams } from "react-router";
 import { MailCheck } from "lucide-react";
-import { ApiError, post } from "../lib/api";
+import { api, ApiError, post } from "../lib/api";
 import { useAuth } from "../lib/auth";
 import { Logo } from "../shell";
 import { Button, ErrorState, Notice, TextField } from "../ui";
@@ -21,6 +21,55 @@ function AuthLayout({ title, subtitle, children, footer }: { title: string; subt
         </div>
         {footer && <div className="mt-4 text-center text-sm text-mute">{footer}</div>}
       </div>
+    </div>
+  );
+}
+
+type AuthOptions = { google: boolean; emailDelivery: "enabled" | "dev_mailbox" | "not_configured" };
+let optionsCache: Promise<AuthOptions> | null = null;
+function useAuthOptions() {
+  const [opts, setOpts] = useState<AuthOptions | null>(null);
+  useEffect(() => {
+    let alive = true;
+    (optionsCache ??= api<AuthOptions>("/auth/options").catch(() => ({ google: false, emailDelivery: "enabled" as const })))
+      .then((o) => alive && setOpts(o));
+    return () => {
+      alive = false;
+    };
+  }, []);
+  return opts;
+}
+
+const OAUTH_ERRORS: Record<string, string> = {
+  google_denied: "Has cancelado el acceso con Google.",
+  google_not_configured: "El acceso con Google todavía no está activado.",
+  email_not_verified_by_google: "Tu cuenta de Google no tiene el correo verificado.",
+  state_mismatch: "La sesión de acceso con Google ha caducado o no es válida. Inténtalo de nuevo.",
+  state_expired: "La sesión de acceso con Google ha caducado. Inténtalo de nuevo.",
+};
+
+function GoogleButton({ next, label }: { next?: string | null; label: string }) {
+  const target = next && next.startsWith("/") && !next.startsWith("//") ? `/app${next}` : "/app/";
+  return (
+    <a
+      href={`/api/v1/auth/google/start?next=${encodeURIComponent(target)}`}
+      className="inline-flex min-h-11 w-full items-center justify-center gap-3 rounded-full border border-line bg-white px-4 text-sm font-semibold text-[#1f1f1f] transition hover:bg-[#f2f2f2] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+    >
+      <svg aria-hidden viewBox="0 0 48 48" className="size-5">
+        <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z" />
+        <path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z" />
+        <path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z" />
+        <path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z" />
+      </svg>
+      {label}
+    </a>
+  );
+}
+
+function OrDivider() {
+  return (
+    <div className="my-5 flex items-center gap-3 text-xs uppercase tracking-wider text-mute" role="separator">
+      <span className="h-px flex-1 bg-line" />o con tu email<span className="h-px flex-1 bg-line" />
     </div>
   );
 }
@@ -55,6 +104,8 @@ export function LoginPage() {
   const { busy, error, run } = useSubmit();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const opts = useAuthOptions();
+  const oauthError = params.get("oauth_error");
   if (me?.user) return <Navigate to={params.get("next") ?? "/"} replace />;
   const onSubmit = (e: FormEvent) => {
     e.preventDefault();
@@ -66,6 +117,17 @@ export function LoginPage() {
   };
   return (
     <AuthLayout title="Bienvenido" subtitle="Entra en tu cuenta de DNI Growth." footer={<>¿No tienes cuenta? <Link className="text-accent-text hover:underline" to="/register">Crea una gratis</Link></>}>
+      {oauthError && (
+        <div className="mb-4">
+          <Notice tone="warn">{OAUTH_ERRORS[oauthError] ?? "No hemos podido completar el acceso con Google. Inténtalo de nuevo."}</Notice>
+        </div>
+      )}
+      {opts?.google && (
+        <>
+          <GoogleButton next={params.get("next")} label="Continuar con Google" />
+          <OrDivider />
+        </>
+      )}
       <form onSubmit={onSubmit} className="space-y-4" noValidate>
         <TextField label="Email" type="email" autoComplete="email" required value={email} onChange={(e) => setEmail(e.target.value)} />
         <TextField label="Contraseña" type="password" autoComplete="current-password" required value={password} onChange={(e) => setPassword(e.target.value)} />
@@ -99,6 +161,7 @@ export function RegisterPage() {
   const { busy, error, fieldErrors, run } = useSubmit();
   const [form, setForm] = useState({ name: "", email: "", password: "" });
   const [done, setDone] = useState<null | "sent" | "not_configured">(null);
+  const opts = useAuthOptions();
   const pendingUrl = (() => {
     try {
       return sessionStorage.getItem("dni.pendingUrl");
@@ -120,7 +183,7 @@ export function RegisterPage() {
           <MailCheck className="size-10 text-accent-text" aria-hidden />
           {done === "not_configured" && (
             <Notice tone="warn" title="Envío de correo no configurado en este entorno">
-              El administrador debe activar el proveedor de email o verificar tu cuenta manualmente. No te hemos enviado nada.
+              Todavía no podemos enviar correos desde DNI Growth, así que no te hemos enviado nada.{opts?.google ? " Puedes entrar ya con tu cuenta de Google." : ""}
             </Notice>
           )}
           <Link className="text-sm text-accent-text hover:underline" to="/login">
@@ -135,6 +198,19 @@ export function RegisterPage() {
       subtitle={pendingUrl ? `Después analizaremos ${pendingUrl}.` : "Audita tu web gratis. Sin tarjeta."}
       footer={<>¿Ya tienes cuenta? <Link className="text-accent-text hover:underline" to="/login">Entrar</Link></>}
     >
+      {opts?.google && (
+        <>
+          <GoogleButton next={null} label="Registrarte con Google" />
+          <OrDivider />
+        </>
+      )}
+      {opts?.emailDelivery === "not_configured" && (
+        <div className="mb-4">
+          <Notice tone="warn" title="Registro por email en pausa">
+            El envío de correos de verificación aún no está activo.{opts.google ? " Usa «Registrarte con Google» para entrar ahora." : " Vuelve pronto."}
+          </Notice>
+        </div>
+      )}
       <form onSubmit={onSubmit} className="space-y-4" noValidate>
         <TextField label="Nombre" autoComplete="name" required value={form.name} error={fieldErrors.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
         <TextField label="Email" type="email" autoComplete="email" required value={form.email} error={fieldErrors.email} onChange={(e) => setForm({ ...form, email: e.target.value })} />

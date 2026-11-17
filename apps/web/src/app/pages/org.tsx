@@ -58,7 +58,9 @@ export function TeamPage() {
       setNotice(
         r.delivery === "not_configured"
           ? { tone: "warn", text: "Invitación creada, pero el envío de email no está configurado: el invitado no recibirá el enlace hasta que se active el proveedor." }
-          : { tone: "ok", text: `Invitación enviada a ${email}. Caduca en 7 días.` },
+          : r.delivery === "queued"
+            ? { tone: "ok", text: `Invitación creada para ${email}. El correo está en cola y se reintentará automáticamente. Caduca en 7 días.` }
+            : { tone: "ok", text: `Invitación enviada a ${email}. Caduca en 7 días.` },
       );
       setEmail("");
       await reload();

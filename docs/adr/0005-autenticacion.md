@@ -12,4 +12,4 @@
 
 ## Pendiente
 - 2FA (TOTP/WebAuthn) y SSO/SAML para planes Enterprise (fase F8).
-- Proveedor de email real (Resend) — sin él, en producción los correos **no** se envían y la UI lo dice.
+- Proveedor de email: Cloudflare Email Service (ADR 0006). Sin dominio incorporado, en producción los correos **no** se envían y la UI lo dice.

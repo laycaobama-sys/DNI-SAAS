@@ -15,5 +15,5 @@ Un único Worker `dni-growth` con:
 - Hyperdrive + Postgres externo: rompe el requisito "todo en Cloudflare".
 
 ## Riesgos abiertos
-- **Límite de CPU**: en el plan Workers Free el límite es de 10 ms de CPU por invocación; el parseo HTML de un rastreo puede superarlo. Recomendado **Workers Paid** antes de clientes reales (no verificado en producción, ver IMPLEMENTATION_STATUS).
+- **Límite de CPU**: la cuenta tiene **Workers Paid** (verificado el 2026-11-17, modelo Standard, límite por defecto de 30 s de CPU). El rastreo cabe con margen; no se sube el límite sin necesidad. Ver `docs/CLOUDFLARE_ACCOUNT_VERIFICATION.md`.
 - D1 tiene un límite de 10 GB por base de datos; con crecimiento se fragmentará por cliente o se archivarán `crawl_pages` antiguas en R2.

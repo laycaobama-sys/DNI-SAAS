@@ -6,8 +6,12 @@ import { creditBalance, ensureMonthlyGrant, getPlan, grantStmt, orgPlan } from "
 import { ApiError, parseBody } from "../lib/http";
 import { log, monthKey, nowIso, uuid } from "../lib/util";
 import { requireScope } from "../middleware";
+import { mailMode } from "../lib/mail";
 
 export const stripeConfigured = (env: Env) => !!env.STRIPE_SECRET_KEY && !!env.STRIPE_WEBHOOK_SECRET;
+/** Payments stay off until the owner flips BILLING_ENABLED="true" (wrangler.jsonc vars). */
+export const billingEnabled = (env: Env) => env.BILLING_ENABLED === "true";
+const billingDisabled = () => new ApiError(503, "billing_disabled", "Los pagos todavía no están activados en DNI Growth. No se ha realizado ningún cargo.");
 
 /** Tenant billing routes (mounted under /orgs/:orgId). */
 export const billing = new Hono<AppEnv>();
@@ -28,7 +32,7 @@ billing.get("/billing", requireScope("billing:read"), async (c) => {
     balance,
     ledger: ledger.results,
     plans: plans.results,
-    stripe: { configured: stripeConfigured(c.env), mode: c.env.STRIPE_SECRET_KEY?.startsWith("sk_live_") ? "live" : "test" },
+    stripe: { enabled: billingEnabled(c.env), configured: stripeConfigured(c.env), mode: c.env.STRIPE_SECRET_KEY?.startsWith("sk_live_") ? "live" : "test" },
     notes: ["Precios sin IVA. El gasto publicitario (cuando exista) se factura aparte y nunca se mezcla con la cuota del software."],
   });
 });
@@ -36,6 +40,7 @@ billing.get("/billing", requireScope("billing:read"), async (c) => {
 billing.post("/billing/checkout", requireScope("billing:manage"), async (c) => {
   const t = c.get("tenant");
   const { planCode } = await parseBody(c, CheckoutInput);
+  if (!billingEnabled(c.env)) throw billingDisabled();
   if (!stripeConfigured(c.env)) {
     throw new ApiError(503, "provider_not_configured", "Los pagos no están configurados todavía (Stripe no conectado). No se ha realizado ningún cargo.");
   }
@@ -74,6 +79,7 @@ billing.post("/billing/checkout", requireScope("billing:manage"), async (c) => {
 export const webhooks = new Hono<AppEnv>();
 
 webhooks.post("/stripe", async (c) => {
+  if (!billingEnabled(c.env)) throw billingDisabled();
   if (!c.env.STRIPE_WEBHOOK_SECRET) throw new ApiError(503, "provider_not_configured", "Stripe no configurado.");
   const raw = await c.req.text();
   if (raw.length > 512_000) throw new ApiError(413, "payload_too_large", "Payload demasiado grande.");
@@ -130,13 +136,21 @@ webhooks.post("/stripe", async (c) => {
   }
 });
 
+function emailEntry(env: Env): ProviderManifestEntry {
+  const mode = mailMode(env);
+  const base = { key: "email", name: "Email transaccional (Cloudflare Email Service)", category: "Comunicación", phase: "F0" };
+  if (mode === "enabled") return { ...base, status: "connected", note: "Envío activo mediante el binding send_email; cola con reintentos." };
+  if (mode === "dev_mailbox") return { ...base, status: "demo", note: "Buzón de desarrollo local (no envía correos)." };
+  return { ...base, status: "not_configured", note: "Falta un dominio remitente verificado en Cloudflare Email Service: los correos no se envían." };
+}
+
 /** Honest provider manifest — nothing is shown as connected unless it really is. */
 export function providerManifest(env: Env): ProviderManifestEntry[] {
   return [
     { key: "stripe", name: "Stripe (pagos)", category: "Facturación", phase: "F0", status: stripeConfigured(env) ? "connected" : "not_configured", note: stripeConfigured(env) ? "Claves presentes; valida con un pago de prueba." : "Faltan STRIPE_SECRET_KEY y STRIPE_WEBHOOK_SECRET." },
-    { key: "email", name: "Email transaccional (Resend)", category: "Comunicación", phase: "F0", status: env.RESEND_API_KEY ? "connected" : env.ENVIRONMENT === "development" ? "demo" : "not_configured", note: env.RESEND_API_KEY ? "Envío real activado." : env.ENVIRONMENT === "development" ? "Buzón de desarrollo local (no envía correos)." : "Falta RESEND_API_KEY + MAIL_FROM: los correos no se envían." },
+    emailEntry(env),
     { key: "crawler", name: "Rastreador público DNIGrowthBot", category: "Auditoría", phase: "F1", status: "connected", note: "Funciona sin credenciales: solo HTML público, respeta robots.txt." },
-    { key: "ai_gateway", name: "Proveedor de IA (explicaciones)", category: "IA", phase: "F1+", status: "not_configured", note: "Las auditorías son deterministas; la capa explicativa con IA no está conectada." },
+    { key: "workers_ai", name: "IA (Workers AI + respaldo OpenRouter/Gemini)", category: "IA", phase: "F1+", status: env.AI ? "connected" : "not_configured", note: env.AI ? "Asesor y generación de imágenes con presupuesto diario y respaldo automático entre modelos." : "Falta el binding AI en wrangler.jsonc." },
     { key: "google_search_console", name: "Google Search Console", category: "Datos", phase: "F3", status: "planned", note: "OAuth con scope mínimo de solo lectura." },
     { key: "ga4", name: "Google Analytics 4", category: "Datos", phase: "F3", status: "planned", note: "Ingesta por propiedad y periodo." },
     { key: "keywords", name: "Proveedor de keywords/SERP", category: "SEO", phase: "F2", status: "planned", note: "Sin proveedor no se muestran volúmenes ni dificultad." },

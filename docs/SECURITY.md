@@ -10,7 +10,12 @@
 | Robo de sesión | token opaco, solo hash en BD, HttpOnly/Secure, caducidad deslizante + absoluta, revocación en reset | `auth.test.ts` |
 | Fuerza bruta / enumeración | bloqueo 5 fallos/15 min, rate limit por IP hasheada, respuestas idénticas | `auth.test.ts` |
 | Doble cobro / doble ejecución | idempotencia HTTP, claim atómico de jobs, ledger con `source_event_id UNIQUE`, webhooks únicos | `flow.test.ts` |
-| Inyección de prompts desde webs rastreadas | el contenido rastreado es **dato**: hoy no se envía a ningún LLM; las reglas son deterministas | — |
+| Inyección de prompts (webs rastreadas, perfil de marca) | el contenido de terceros va al asesor envuelto en `<datos>`, saneado (sin etiquetas de cierre ni caracteres de control) y con instrucciones de sistema que prohíben obedecerlo; la IA no tiene herramientas ni puede publicar ni gastar | `ai.test.ts` |
+| Abuso de coste de IA | créditos con reserva atómica, rate limit por usuario y empresa, tope diario de plataforma `AI_DAILY_BUDGET_USD`, OpenRouter solo modelos a precio 0 | `ai.test.ts` |
+| Contenido generado dañino | filtro previo de prompts de imagen (sexual, menores, gore, odio, marcas, personas reales) | `ai.test.ts` |
+| Toma de cuenta vía Google | OIDC + PKCE, state de un solo uso ligado a cookie, nonce, `email_verified`; al vincular una cuenta no verificada se desactiva su contraseña y se revocan sesiones | `oauth.test.ts` |
+| Enlaces de email en reposo | cola de emails cifrada con AES-256-GCM (`DATA_ENC_KEY`), destinatario solo como hash + máscara, contenido purgado al aceptarse | `mail.test.ts` |
+| Acceso a imágenes de otra empresa | claves R2 bajo `media/<organization_id>/`, servidas solo tras comprobar membresía y prefijo | `ai.test.ts` |
 | Fuga de secretos/PII en logs | `redact()` en logs y auditoría; secretos solo como Workers Secrets; `scripts/secret-scan.mjs` en CI | `security.test.ts` |
 | XSS / clickjacking | React escapa por defecto; CSP `script-src 'self'`; `frame-ancestors 'none'` | cabeceras en prod |
 

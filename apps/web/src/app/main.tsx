@@ -9,6 +9,7 @@ import { Spinner } from "./ui";
 import { ForgotPage, InvitePage, LoginPage, RegisterPage, ResetPage, VerifyPage } from "./pages/auth";
 import { DashboardPage, OnboardingPage } from "./pages/dashboard";
 import { AnalyzePage, JobPage, JobsPage } from "./pages/analyze";
+import { AdvisorPage, CreativePage } from "./pages/ai";
 import { AuditDetailPage, AuditsPage, BrandPage, BrandsPage, PlanPage } from "./pages/insights";
 import { AuditLogPage, BillingPage, IntegrationsPage, ModulePage, NotFoundPage, TeamPage } from "./pages/org";
 
@@ -65,6 +66,8 @@ function App() {
           <Route path="brands" element={<BrandsPage />} />
           <Route path="brands/:brandId" element={<BrandPage />} />
           <Route path="plans/:planId" element={<PlanPage />} />
+          <Route path="advisor" element={<AdvisorPage />} />
+          <Route path="creative" element={<CreativePage />} />
           <Route path="team" element={<TeamPage />} />
           <Route path="billing" element={<BillingPage />} />
           <Route path="integrations" element={<IntegrationsPage />} />

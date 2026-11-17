@@ -8,7 +8,10 @@ Todos los comandos se ejecutan desde `apps/api` con Wrangler autenticado en la c
 | Worker | `dni-growth` → https://dni-growth.ibraguimova19.workers.dev |
 | D1 (UE) | `dni-growth-db` |
 | Queues | `dni-growth-jobs`, DLQ `dni-growth-jobs-dlq` |
-| Cron | cada minuto (outbox + recuperación) |
+| Cron | cada minuto (outbox de trabajos, cola de emails, recuperación) |
+| R2 (UE) | `dni-growth-media` (imágenes generadas) |
+| Workers AI | binding `AI` (tope diario `AI_DAILY_BUDGET_USD`) |
+| Email Service | binding `EMAIL`; envío desactivado hasta tener dominio |
 
 ## Desplegar
 ```bash
@@ -17,17 +20,43 @@ pnpm deploy                # build de la web + wrangler deploy
 ```
 Antes de cada release: `pnpm verify`.
 
-## Secretos
+## Configuración (un solo sitio)
+Variables públicas en `apps/api/wrangler.jsonc` → `vars`: `APP_ORIGIN` (de ella salen cookies, redirección OAuth, enlaces de email, canonical y sitemap), `EMAIL_SENDING_ENABLED`, `MAIL_FROM`, `GOOGLE_CLIENT_ID`, `BILLING_ENABLED`, `AI_DAILY_BUDGET_USD`.
+
+## Secretos (los introduce el titular; nunca en el chat)
 ```bash
-npx wrangler secret put RESEND_API_KEY
-npx wrangler secret put MAIL_FROM            # p. ej. "DNI Growth <no-reply@tudominio.com>"
-npx wrangler secret put STRIPE_SECRET_KEY
+npx wrangler secret put GOOGLE_CLIENT_SECRET   # cliente OAuth web de Google
+npx wrangler secret put OPENROUTER_API_KEY     # opcional: respaldo con modelos gratuitos
+npx wrangler secret put GEMINI_API_KEY         # opcional: último respaldo
+npx wrangler secret put STRIPE_SECRET_KEY      # solo cuando se active Stripe
 npx wrangler secret put STRIPE_WEBHOOK_SECRET
 npx wrangler secret list
 ```
-`IP_HASH_SALT` ya está configurado (valor aleatorio, no recuperable).
+Ya configurados (aleatorios, no recuperables): `IP_HASH_SALT`, `DATA_ENC_KEY` (cifra la cola de emails; si se rota, los emails pendientes pasan a `dead`).
 
-### Stripe
+## Activar el email (Cloudflare Email Service)
+1. Tener el dominio en Cloudflare (DNS gestionado por Cloudflare).
+2. Panel → Compute → Email Service → Email Sending → incorporar el dominio y aceptar los registros DNS (SPF/DKIM) que propone.
+3. En `wrangler.jsonc`: `"MAIL_FROM": "no-reply@tudominio"`, `"EMAIL_SENDING_ENABLED": "true"`, y `APP_ORIGIN` al dominio final.
+4. `pnpm deploy` y registrar una cuenta de prueba propia: el email debe llegar y `email_outbox` mostrar `accepted`.
+```bash
+npx wrangler d1 execute DB --remote --command "SELECT kind, status, attempts, last_error_code, created_at FROM email_outbox ORDER BY created_at DESC LIMIT 20"
+```
+`accepted` significa que Cloudflare aceptó el mensaje, no que llegó a la bandeja.
+
+## Activar Google
+1. Google Cloud → proyecto **DNI Growth** → Google Auth Platform: completar la marca y aceptar la política de datos.
+2. Clientes → Crear cliente → Aplicación web. Origen: `APP_ORIGIN`. URI de redirección: `<APP_ORIGIN>/api/v1/auth/google/callback`.
+3. Copiar el ID de cliente en `vars.GOOGLE_CLIENT_ID` y guardar el secreto con `npx wrangler secret put GOOGLE_CLIENT_SECRET`.
+4. Público: en modo «Prueba» solo entran los usuarios de prueba añadidos; para abrirlo a todos, «Publicar app» (scopes básicos `openid email profile`, sin revisión de Google).
+5. Al cambiar de dominio, añadir el nuevo origen y URI de redirección en el cliente.
+
+## IA
+- Estado y gasto del día: `GET /api/v1/orgs/<org>/ai/status` o
+  `npx wrangler d1 execute DB --remote --command "SELECT * FROM ai_usage_daily ORDER BY day DESC LIMIT 10"`
+- Fallos por modelo en logs: evento `ai.model_failed`.
+
+## Stripe (solo cuando se active `BILLING_ENABLED`)
 1. Crear un producto y precio mensual por plan (starter, growth, pro, agency).
 2. Guardar cada `price_…` en D1:
    ```bash
@@ -35,12 +64,6 @@ npx wrangler secret list
    ```
 3. Webhook → `https://<dominio>/api/v1/webhooks/stripe` con eventos `checkout.session.completed`, `customer.subscription.created|updated|deleted`.
 4. Probar primero con claves `sk_test_…` y un pago de prueba.
-
-## Verificar manualmente a un usuario (mientras no haya proveedor de email)
-Solo para personas cuya identidad conoces:
-```bash
-npx wrangler d1 execute DB --remote --command "UPDATE users SET email_verified_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE email = 'persona@empresa.com' AND email_verified_at IS NULL"
-```
 
 ## Trabajos atascados o en DLQ
 ```bash
@@ -57,11 +80,16 @@ Los logs son JSON con datos sensibles redactados.
 ## Dominio propio
 1. Añadir el dominio a Cloudflare.
 2. En `wrangler.jsonc` añadir `"routes": [{ "pattern": "growth.tudominio.com", "custom_domain": true }]` y cambiar `APP_ORIGIN`.
-3. Recompilar la web con `SITE_URL=https://growth.tudominio.com` y desplegar.
+3. `pnpm deploy` (la web toma `APP_ORIGIN` de `wrangler.jsonc`). Actualizar Google OAuth y Search Console con el nuevo origen.
 
 ## Revertir
 ```bash
 npx wrangler deployments list
 npx wrangler rollback <version-id>
 ```
-Las migraciones de D1 son solo hacia delante; D1 Time Travel permite restaurar la base de datos a un punto de los últimos 30 días.
+Las migraciones de D1 son solo hacia delante; D1 Time Travel permite restaurar la base de datos a un punto de los últimos 30 días:
+```bash
+npx wrangler d1 time-travel info dni-growth-db
+npx wrangler d1 time-travel restore dni-growth-db --bookmark=<marcador>
+```
+Copias exportadas antes de cada migración en `backups/` (fuera de git).
