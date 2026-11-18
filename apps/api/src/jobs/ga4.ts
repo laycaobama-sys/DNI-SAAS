@@ -33,11 +33,12 @@ export async function runGa4Sync(ctx: JobContext, input: { propertyId: string })
     // The account must still be able to read this property right now.
     await storeGa4Properties(db, orgId, conn.integrationId, await listProperties(deps, accessToken));
     const prop = await db
-      .prepare("SELECT id, property, accessible FROM ga4_properties WHERE organization_id = ? AND id = ?")
+      .prepare("SELECT id, property, accessible, selected FROM ga4_properties WHERE organization_id = ? AND id = ?")
       .bind(orgId, input.propertyId)
-      .first<{ id: string; property: string; accessible: number }>();
+      .first<{ id: string; property: string; accessible: number; selected: number }>();
     if (!prop) throw new PermanentJobError("ga4_property_not_found", "La propiedad ya no existe en esta organización.");
     if (prop.accessible !== 1) throw new PermanentJobError("ga4_property_not_allowed", "La cuenta de Google conectada ya no puede leer esta propiedad de Analytics.");
+    if (prop.selected !== 1) throw new PermanentJobError("ga4_property_not_selected", "La propiedad ya no está elegida para sincronizar; no se importa nada.");
     await ctx.checkpoint();
     await ctx.progress(25);
 

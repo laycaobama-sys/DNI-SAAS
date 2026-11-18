@@ -133,14 +133,8 @@ export async function storeGa4Properties(db: D1Database, orgId: string, integrat
       .prepare(`UPDATE ga4_properties SET accessible = 0, selected = 0 WHERE organization_id = ?${seen.length ? ` AND property NOT IN (${seen.map(() => "?").join(",")})` : ""}`)
       .bind(orgId, ...seen),
   );
-  // A single readable property is selected automatically; otherwise the admin chooses.
-  if (props.length === 1) {
-    stmts.push(
-      db
-        .prepare("UPDATE ga4_properties SET selected = 1 WHERE organization_id = ? AND property = ? AND NOT EXISTS (SELECT 1 FROM ga4_properties WHERE organization_id = ? AND selected = 1)")
-        .bind(orgId, props[0]!.property, orgId),
-    );
-  }
+  // Never selected automatically: one Google account often reaches properties of other brands or
+  // clients, so importing data always needs an explicit, audited choice by an admin.
   await db.batch(stmts);
 }
 

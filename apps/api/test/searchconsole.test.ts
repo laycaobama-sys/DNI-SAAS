@@ -83,13 +83,21 @@ function setup(opts: FakeOpts = {}) {
     return { loc, cb, location: cb.headers.get("location") ?? "" };
   }
 
+  /** Explicit choice of the readable property (nothing is ever selected automatically). */
+  async function pick(client: InstanceType<typeof h.Client>, orgId: string) {
+    const g = (await client.get(`/api/v1/orgs/${orgId}/search-console`)).json;
+    const pid = g.properties.find((p: any) => p.siteUrl === "sc-domain:example.com").id;
+    expect((await client.put(`/api/v1/orgs/${orgId}/search-console/property`, { propertyId: pid })).status).toBe(200);
+    return pid as string;
+  }
+
   async function ownerOrg(email = "owner@example.com") {
     const owner = await h.signup(email);
     const orgId = await h.createOrg(owner, "Org GSC");
     await h.db.prepare("UPDATE organizations SET plan_code = 'agency' WHERE id = ?").bind(orgId).run();
     return { owner, orgId };
   }
-  return { h, calls, connect, ownerOrg, state };
+  return { h, calls, connect, pick, ownerOrg, state };
 }
 
 describe("Search Console (F3): OAuth de solo lectura", () => {
@@ -115,7 +123,7 @@ describe("Search Console (F3): OAuth de solo lectura", () => {
     expect(location).toBe(`/app/o/${orgId}/search-console?gsc=connected`);
   });
 
-  it("stores the refresh token only encrypted, lists readable properties and auto-selects the single readable one", async () => {
+  it("stores the refresh token only encrypted, lists properties and never selects one automatically", async () => {
     const { h, connect, ownerOrg } = setup();
     const { owner, orgId } = await ownerOrg();
     await connect(owner, orgId);
@@ -123,9 +131,10 @@ describe("Search Console (F3): OAuth de solo lectura", () => {
     expect(g.status).toBe(200);
     expect(g.json.connection.status).toBe("connected");
     expect(g.json.connection.account).toBe("duena@gmail.com");
-    expect(g.json.properties.map((p: any) => p.siteUrl)).toEqual(["sc-domain:example.com", "https://other.example/"]);
-    expect(g.json.properties[0]).toMatchObject({ readable: true, selected: true });
-    expect(g.json.properties[1]).toMatchObject({ readable: false, selected: false });
+    expect(g.json.properties.map((p: any) => p.siteUrl).sort()).toEqual(["https://other.example/", "sc-domain:example.com"]);
+    expect(g.json.properties.find((p: any) => p.siteUrl === "sc-domain:example.com")).toMatchObject({ readable: true, selected: false });
+    expect(g.json.properties.find((p: any) => p.siteUrl === "https://other.example/")).toMatchObject({ readable: false, selected: false });
+    expect(g.json.report).toBeNull();
     expect(JSON.stringify(g.json)).not.toContain(RT);
     // Nothing in the database holds the plain token.
     for (const table of ["integrations", "integration_secrets", "audit_logs", "job_events", "oauth_states"]) {
@@ -140,9 +149,11 @@ describe("Search Console (F3): OAuth de solo lectura", () => {
   });
 
   it("sync stores observed daily data and top rows, with source, period and caveats, at zero credits", async () => {
-    const { h, calls, connect, ownerOrg } = setup();
+    const { h, calls, connect, pick, ownerOrg } = setup();
     const { owner, orgId } = await ownerOrg();
     await connect(owner, orgId);
+    expect((await owner.post(`/api/v1/orgs/${orgId}/search-console/sync`)).json.code).toBe("gsc_no_property");
+    await pick(owner, orgId);
     const s = await owner.post(`/api/v1/orgs/${orgId}/search-console/sync`);
     expect(s.status).toBe(202);
     await h.drain();
@@ -246,16 +257,17 @@ describe("Search Console (F3): OAuth de solo lectura", () => {
     const { connect, ownerOrg } = setup();
     const { owner, orgId } = await ownerOrg();
     await connect(owner, orgId);
-    const unverified = (await owner.get(`/api/v1/orgs/${orgId}/search-console`)).json.properties[1].id;
+    const unverified = (await owner.get(`/api/v1/orgs/${orgId}/search-console`)).json.properties.find((p: any) => p.siteUrl === "https://other.example/").id;
     const r = await owner.put(`/api/v1/orgs/${orgId}/search-console/property`, { propertyId: unverified });
     expect(r.status).toBe(403);
     expect(r.json.code).toBe("gsc_property_not_allowed");
   });
 
   it("revoked grant at Google → job fails permanently and the connection asks to reconnect", async () => {
-    const { h, connect, ownerOrg, state } = setup();
+    const { h, connect, pick, ownerOrg, state } = setup();
     const { owner, orgId } = await ownerOrg();
     await connect(owner, orgId);
+    await pick(owner, orgId);
     state.refreshError = "invalid_grant";
     const s = await owner.post(`/api/v1/orgs/${orgId}/search-console/sync`);
     await h.drain();
@@ -267,9 +279,10 @@ describe("Search Console (F3): OAuth de solo lectura", () => {
   });
 
   it("disconnect revokes at Google, deletes the encrypted token and keeps or purges data on request", async () => {
-    const { h, calls, connect, ownerOrg } = setup();
+    const { h, calls, connect, pick, ownerOrg } = setup();
     const { owner, orgId } = await ownerOrg();
     await connect(owner, orgId);
+    await pick(owner, orgId);
     await owner.post(`/api/v1/orgs/${orgId}/search-console/sync`);
     await h.drain();
     const d = await owner.del(`/api/v1/orgs/${orgId}/search-console`);
@@ -281,7 +294,7 @@ describe("Search Console (F3): OAuth de solo lectura", () => {
     expect(g.connection.status).toBe("disconnected");
     expect(g.report.totals.clicks).toBe(40);
     const audit = await h.db.prepare("SELECT action FROM audit_logs WHERE organization_id = ? AND action LIKE 'integration.%' ORDER BY created_at").bind(orgId).all<{ action: string }>();
-    expect(audit.results.map((r) => r.action)).toEqual(["integration.connect", "integration.gsc_sync", "integration.disconnect"]);
+    expect(audit.results.map((r) => r.action)).toEqual(["integration.connect", "integration.gsc_property_select", "integration.gsc_sync", "integration.disconnect"]);
     // Reconnect, then disconnect with purge.
     await connect(owner, orgId);
     const p = await owner.del(`/api/v1/orgs/${orgId}/search-console?purge=true`);
@@ -301,13 +314,43 @@ describe("Search Console (F3): OAuth de solo lectura", () => {
   });
 
   it("cron schedules one automatic refresh per selected property per day", async () => {
-    const { h, connect, ownerOrg } = setup();
+    const { h, connect, pick, ownerOrg } = setup();
     const { owner, orgId } = await ownerOrg();
     await connect(owner, orgId);
+    expect(await scheduleGscSyncs(h.env)).toHaveLength(0); // nothing selected → nothing imported
+    await pick(owner, orgId);
     const first = await scheduleGscSyncs(h.env);
     expect(first).toHaveLength(1);
     expect(await scheduleGscSyncs(h.env)).toHaveLength(0);
     const n = await h.db.prepare("SELECT COUNT(*) AS n FROM jobs WHERE organization_id = ? AND kind = 'gsc_sync'").bind(orgId).first<{ n: number }>();
     expect(n!.n).toBe(1);
+  });
+
+  it("deselecting stops syncs, cancels pending ones and can purge the imported data", async () => {
+    const { h, connect, pick, ownerOrg } = setup();
+    const { owner, orgId } = await ownerOrg();
+    await connect(owner, orgId);
+    const pid = await pick(owner, orgId);
+    await owner.post(`/api/v1/orgs/${orgId}/search-console/sync`);
+    await h.drain();
+    // A sync queued before the deselection imports nothing.
+    const stale = await owner.post(`/api/v1/orgs/${orgId}/search-console/sync`);
+    await h.drain();
+    await h.db.prepare("UPDATE jobs SET state = 'queued', cancel_requested_at = NULL WHERE id = ?").bind(stale.json.jobId).run();
+    const editor = await h.invite(owner, orgId, "editor@example.com", "editor");
+    expect((await editor.del(`/api/v1/orgs/${orgId}/search-console/property`)).status).toBe(403);
+    const d = await owner.del(`/api/v1/orgs/${orgId}/search-console/property?purge=true`);
+    expect(d.json).toEqual({ ok: true, dataPurged: true });
+    const g = (await owner.get(`/api/v1/orgs/${orgId}/search-console`)).json;
+    expect(g.connection.status).toBe("connected");
+    expect(g.report).toBeNull();
+    expect(g.properties.find((p: any) => p.id === pid)).toMatchObject({ selected: false, lastSyncAt: null });
+    for (const t of ["gsc_daily_metrics", "gsc_top_rows"]) expect((await h.db.prepare(`SELECT COUNT(*) AS n FROM ${t}`).first<{ n: number }>())!.n).toBe(0);
+    expect(await scheduleGscSyncs(h.env)).toHaveLength(0);
+    const cancelled = await h.db.prepare("SELECT cancel_requested_at FROM jobs WHERE id = ?").bind(stale.json.jobId).first<{ cancel_requested_at: string | null }>();
+    expect(cancelled!.cancel_requested_at).toBeTruthy();
+    const audit = await h.db.prepare("SELECT after_redacted FROM audit_logs WHERE action = 'integration.gsc_property_deselect'").first<{ after_redacted: string }>();
+    expect(JSON.parse(audit!.after_redacted)).toEqual({ siteUrl: "sc-domain:example.com", dataPurged: true });
+    expect((await owner.del(`/api/v1/orgs/${orgId}/search-console/property`)).status).toBe(404);
   });
 });

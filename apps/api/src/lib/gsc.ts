@@ -114,17 +114,8 @@ export async function storeProperties(db: D1Database, orgId: string, integration
       )
       .bind(orgId, ...seen),
   );
-  // A single readable property is selected automatically; otherwise the admin chooses.
-  const readable = sites.filter((s) => READABLE_PERMISSIONS.has(s.permissionLevel));
-  if (readable.length === 1) {
-    stmts.push(
-      db
-        .prepare(
-          "UPDATE gsc_properties SET selected = 1 WHERE organization_id = ? AND site_url = ? AND NOT EXISTS (SELECT 1 FROM gsc_properties WHERE organization_id = ? AND selected = 1)",
-        )
-        .bind(orgId, readable[0]!.siteUrl, orgId),
-    );
-  }
+  // Never selected automatically: one Google account often reaches properties of other brands or
+  // clients, so importing data always needs an explicit, audited choice by an admin.
   await db.batch(stmts);
 }
 

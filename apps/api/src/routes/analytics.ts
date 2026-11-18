@@ -9,7 +9,7 @@ import { ApiError, notFound, parseBody } from "../lib/http";
 import { rateLimit } from "../lib/ratelimit";
 import { dispatchOutbox } from "../jobs/queue";
 import { requireScope } from "../middleware";
-import { uuid } from "../lib/util";
+import { nowIso, uuid } from "../lib/util";
 import { completeGoogleConnect, disconnectGoogle, startGoogleConnect } from "./googleConnect";
 
 /** Caveats shown next to every Google Analytics figure. */
@@ -226,6 +226,45 @@ analytics.put("/analytics/property", requireScope("integrations:manage"), async 
     }),
   ]);
   return c.json({ ok: true });
+});
+
+/**
+ * Stops using the selected property: no more syncs (pending ones are cancelled). With `purge=true`
+ * the data already imported from it is deleted too. The Google connection itself stays.
+ */
+analytics.delete("/analytics/property", requireScope("integrations:manage"), async (c) => {
+  const t = c.get("tenant");
+  const db = c.env.DB;
+  const purge = c.req.query("purge") === "true";
+  const p = await db
+    .prepare("SELECT id, property, display_name FROM ga4_properties WHERE organization_id = ? AND selected = 1")
+    .bind(t.orgId)
+    .first<{ id: string; property: string; display_name: string }>();
+  if (!p) throw notFound("Propiedad seleccionada");
+  await db.batch([
+    db.prepare("UPDATE ga4_properties SET selected = 0 WHERE organization_id = ? AND id = ?").bind(t.orgId, p.id),
+    db
+      .prepare("UPDATE jobs SET cancel_requested_at = ? WHERE organization_id = ? AND kind = 'ga4_sync' AND state IN ('queued','validating','running') AND cancel_requested_at IS NULL")
+      .bind(nowIso(), t.orgId),
+    ...(purge
+      ? [
+          ...["ga4_daily_metrics", "ga4_period_totals", "ga4_top_rows"].map((tbl) => db.prepare(`DELETE FROM ${tbl} WHERE organization_id = ? AND property_id = ?`).bind(t.orgId, p.id)),
+          db
+            .prepare("UPDATE ga4_properties SET last_sync_at = NULL, last_error = NULL, time_zone = NULL, currency_code = NULL, last_thresholded = 0, last_sampled = 0 WHERE organization_id = ? AND id = ?")
+            .bind(t.orgId, p.id),
+        ]
+      : []),
+    auditStmt(db, {
+      organizationId: t.orgId,
+      actorUserId: t.userId,
+      action: "integration.ga4_property_deselect",
+      entityType: "ga4_property",
+      entityId: p.id,
+      after: { property: p.property, displayName: p.display_name, dataPurged: purge },
+      requestId: c.get("requestId"),
+    }),
+  ]);
+  return c.json({ ok: true, dataPurged: purge });
 });
 
 /** Queues a sync of the selected property (durable job; one at a time per organization). */

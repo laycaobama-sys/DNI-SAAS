@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { processJobMessage } from "../src/jobs/consumer";
 import { gaDate, scheduleGa4Syncs, validProperty } from "../src/lib/ga4";
 import { createHarness } from "./helpers";
 
@@ -181,13 +182,50 @@ describe("Google Analytics 4 (F3): ingesta de solo lectura", () => {
     expect(integ.json.items.find((i: any) => i.key === "ga4").status).toBe("connected");
   });
 
-  it("a single readable property is selected automatically", async () => {
-    const { connect, ownerOrg } = setup({ oneProperty: true });
+  it("even a single readable property is never selected automatically (it may belong to another brand)", async () => {
+    const { h, connect, ownerOrg } = setup({ oneProperty: true });
     const { owner, orgId } = await ownerOrg();
     await connect(owner, orgId);
     const g = (await owner.get(`/api/v1/orgs/${orgId}/analytics`)).json;
     expect(g.properties).toHaveLength(1);
-    expect(g.properties[0]).toMatchObject({ property: "properties/111", selected: true });
+    expect(g.properties[0]).toMatchObject({ property: "properties/111", selected: false });
+    expect(g.report).toBeNull();
+    expect(await scheduleGa4Syncs(h.env)).toHaveLength(0);
+    expect((await owner.post(`/api/v1/orgs/${orgId}/analytics/sync`)).json.code).toBe("ga4_no_property");
+  });
+
+  it("deselecting stops syncs, makes queued ones import nothing and can purge the imported data", async () => {
+    const { h, connectAndPick, ownerOrg } = setup();
+    const { owner, orgId } = await ownerOrg();
+    const pid = await connectAndPick(owner, orgId);
+    await owner.post(`/api/v1/orgs/${orgId}/analytics/sync`);
+    await h.drain();
+    expect((await h.db.prepare("SELECT COUNT(*) AS n FROM ga4_daily_metrics").first<{ n: number }>())!.n).toBe(2);
+    const stale = await owner.post(`/api/v1/orgs/${orgId}/analytics/sync`);
+    await h.drain();
+    await h.db.prepare("UPDATE jobs SET state = 'queued', cancel_requested_at = NULL WHERE id = ?").bind(stale.json.jobId).run();
+    const viewer = await h.invite(owner, orgId, "viewer@example.com", "client_viewer");
+    expect((await viewer.del(`/api/v1/orgs/${orgId}/analytics/property`)).status).toBe(403);
+    const d = await owner.del(`/api/v1/orgs/${orgId}/analytics/property?purge=true`);
+    expect(d.json).toEqual({ ok: true, dataPurged: true });
+    for (const t of ["ga4_daily_metrics", "ga4_period_totals", "ga4_top_rows"]) {
+      expect((await h.db.prepare(`SELECT COUNT(*) AS n FROM ${t}`).first<{ n: number }>())!.n).toBe(0);
+    }
+    const g = (await owner.get(`/api/v1/orgs/${orgId}/analytics`)).json;
+    expect(g.connection.status).toBe("connected");
+    expect(g.report).toBeNull();
+    expect(g.properties.find((p: any) => p.id === pid)).toMatchObject({ selected: false, lastSyncAt: null });
+    // The stale job was asked to cancel; even if it runs, it re-checks the selection and imports nothing.
+    const job = await h.db.prepare("SELECT cancel_requested_at FROM jobs WHERE id = ?").bind(stale.json.jobId).first<{ cancel_requested_at: string | null }>();
+    expect(job!.cancel_requested_at).toBeTruthy();
+    await h.db.prepare("UPDATE jobs SET cancel_requested_at = NULL WHERE id = ?").bind(stale.json.jobId).run();
+    await processJobMessage(h.env, { jobId: stale.json.jobId, organizationId: orgId, outboxId: "test" } as any, h.deps);
+    const after = await h.db.prepare("SELECT state, failure_code FROM jobs WHERE id = ?").bind(stale.json.jobId).first();
+    expect(after).toMatchObject({ state: "failed", failure_code: "ga4_property_not_selected" });
+    expect((await h.db.prepare("SELECT COUNT(*) AS n FROM ga4_daily_metrics").first<{ n: number }>())!.n).toBe(0);
+    expect(await scheduleGa4Syncs(h.env)).toHaveLength(0);
+    const audit = await h.db.prepare("SELECT after_redacted FROM audit_logs WHERE action = 'integration.ga4_property_deselect'").first<{ after_redacted: string }>();
+    expect(JSON.parse(audit!.after_redacted)).toEqual({ property: "properties/111", displayName: "Web principal", dataPurged: true });
   });
 
   it("sync stores observed daily data, de-duplicated period totals and top rows, with source, caveats and zero credits", async () => {

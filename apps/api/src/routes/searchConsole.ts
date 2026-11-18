@@ -20,7 +20,7 @@ import { ApiError, notFound, parseBody } from "../lib/http";
 import { rateLimit } from "../lib/ratelimit";
 import { dispatchOutbox } from "../jobs/queue";
 import { requireScope } from "../middleware";
-import { uuid } from "../lib/util";
+import { nowIso, uuid } from "../lib/util";
 import { completeGoogleConnect, disconnectGoogle, startGoogleConnect } from "./googleConnect";
 
 /** Caveats shown next to every Search Console figure. */
@@ -184,6 +184,41 @@ searchConsole.put("/search-console/property", requireScope("integrations:manage"
     auditStmt(db, { organizationId: t.orgId, actorUserId: t.userId, action: "integration.gsc_property_select", entityType: "gsc_property", entityId: p.id, after: { siteUrl: p.site_url }, requestId: c.get("requestId") }),
   ]);
   return c.json({ ok: true });
+});
+
+/**
+ * Stops using the selected property: no more syncs (pending ones are cancelled). With `purge=true`
+ * the data already imported from it is deleted too. The Google connection itself stays.
+ */
+searchConsole.delete("/search-console/property", requireScope("integrations:manage"), async (c) => {
+  const t = c.get("tenant");
+  const db = c.env.DB;
+  const purge = c.req.query("purge") === "true";
+  const p = await db.prepare("SELECT id, site_url FROM gsc_properties WHERE organization_id = ? AND selected = 1").bind(t.orgId).first<{ id: string; site_url: string }>();
+  if (!p) throw notFound("Propiedad seleccionada");
+  await db.batch([
+    db.prepare("UPDATE gsc_properties SET selected = 0 WHERE organization_id = ? AND id = ?").bind(t.orgId, p.id),
+    db
+      .prepare("UPDATE jobs SET cancel_requested_at = ? WHERE organization_id = ? AND kind = 'gsc_sync' AND state IN ('queued','validating','running') AND cancel_requested_at IS NULL")
+      .bind(nowIso(), t.orgId),
+    ...(purge
+      ? [
+          db.prepare("DELETE FROM gsc_daily_metrics WHERE organization_id = ? AND property_id = ?").bind(t.orgId, p.id),
+          db.prepare("DELETE FROM gsc_top_rows WHERE organization_id = ? AND property_id = ?").bind(t.orgId, p.id),
+          db.prepare("UPDATE gsc_properties SET last_sync_at = NULL, last_error = NULL WHERE organization_id = ? AND id = ?").bind(t.orgId, p.id),
+        ]
+      : []),
+    auditStmt(db, {
+      organizationId: t.orgId,
+      actorUserId: t.userId,
+      action: "integration.gsc_property_deselect",
+      entityType: "gsc_property",
+      entityId: p.id,
+      after: { siteUrl: p.site_url, dataPurged: purge },
+      requestId: c.get("requestId"),
+    }),
+  ]);
+  return c.json({ ok: true, dataPurged: purge });
 });
 
 /** Queues a sync of the selected property (durable job; one at a time per organization). */

@@ -42,13 +42,14 @@ export async function runGscSync(ctx: JobContext, input: { propertyId: string })
     // "Lectura de propiedad permitida": the account must still have read access right now.
     await storeProperties(db, orgId, conn.integrationId, await listSites(deps, accessToken));
     const prop = await db
-      .prepare("SELECT id, site_url, permission_level FROM gsc_properties WHERE organization_id = ? AND id = ?")
+      .prepare("SELECT id, site_url, permission_level, selected FROM gsc_properties WHERE organization_id = ? AND id = ?")
       .bind(orgId, input.propertyId)
-      .first<{ id: string; site_url: string; permission_level: string }>();
+      .first<{ id: string; site_url: string; permission_level: string; selected: number }>();
     if (!prop) throw new PermanentJobError("gsc_property_not_found", "La propiedad ya no existe en esta organización.");
     if (!READABLE_PERMISSIONS.has(prop.permission_level)) {
       throw new PermanentJobError("gsc_property_not_allowed", "La cuenta de Google conectada ya no tiene permiso de lectura sobre esta propiedad.");
     }
+    if (prop.selected !== 1) throw new PermanentJobError("gsc_property_not_selected", "La propiedad ya no está elegida para sincronizar; no se importa nada.");
     await ctx.checkpoint();
     await ctx.progress(25);
 

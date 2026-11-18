@@ -89,6 +89,8 @@ export function AnalyticsPage() {
   const [showTable, setShowTable] = useState(false);
   const [confirmOff, setConfirmOff] = useState(false);
   const [purge, setPurge] = useState(false);
+  const [confirmDesel, setConfirmDesel] = useState(false);
+  const [purgeSel, setPurgeSel] = useState(false);
 
   const run = async (key: string, fn: () => Promise<unknown>, poll = false) => {
     setErr(null);
@@ -235,6 +237,11 @@ export function AnalyticsPage() {
                         <Button onClick={() => run("props", () => post(`/orgs/${orgId}/analytics/properties/refresh`))} loading={busy === "props"} disabled={!data.configured}>
                           Actualizar propiedades
                         </Button>
+                        {selected && (
+                          <Button variant="ghost" onClick={() => setConfirmDesel(true)}>
+                            Dejar de usar esta propiedad
+                          </Button>
+                        )}
                         <Button variant="ghost" onClick={() => setConfirmOff(true)}>
                           Desconectar
                         </Button>
@@ -244,6 +251,33 @@ export function AnalyticsPage() {
                     <Button variant="primary" onClick={connect} loading={busy === "connect"} disabled={!data.configured}>
                       Volver a conectar con Google
                     </Button>
+                  )}
+                  {confirmDesel && selected && (
+                    <div className="rounded-xl border border-line p-3 text-sm">
+                      <p>Se dejará de sincronizar «{selected.displayName}» y se cancelan las sincronizaciones pendientes. La conexión con Google se mantiene.</p>
+                      <label className="mt-2 flex items-center gap-2">
+                        <input type="checkbox" checked={purgeSel} onChange={(e) => setPurgeSel(e.target.checked)} />
+                        Borrar también los datos ya importados de esta propiedad (no se puede deshacer)
+                      </label>
+                      <div className="mt-3 flex gap-2">
+                        <Button
+                          variant="danger"
+                          loading={busy === "desel"}
+                          onClick={() =>
+                            run("desel", async () => {
+                              await del(`/orgs/${orgId}/analytics/property${purgeSel ? "?purge=true" : ""}`);
+                              setConfirmDesel(false);
+                              setPurgeSel(false);
+                            })
+                          }
+                        >
+                          Dejar de usar
+                        </Button>
+                        <Button variant="ghost" onClick={() => setConfirmDesel(false)}>
+                          Cancelar
+                        </Button>
+                      </div>
+                    </div>
                   )}
                   {confirmOff && (
                     <div className="rounded-xl border border-line p-3 text-sm">
@@ -278,7 +312,7 @@ export function AnalyticsPage() {
           </Card>
 
           {!report ? (
-            <EmptyState title="Elige una propiedad">Cuando elijas una propiedad de GA4 se importarán sus datos de los últimos 90 días.</EmptyState>
+            <EmptyState title="Elige una propiedad">No elegimos ninguna por ti: la cuenta de Google puede tener propiedades de otras marcas o clientes. Cuando elijas una propiedad de GA4 se importarán sus datos de los últimos 90 días.</EmptyState>
           ) : !t && daily.length === 0 ? (
             <EmptyState title={data.activeJob ? "Importando datos…" : "Sin datos importados todavía"}>
               {data.activeJob
