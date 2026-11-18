@@ -1,5 +1,6 @@
 import {
   approxTokens,
+  detectSensitiveData,
   estimateImageCostUsd,
   estimateTextCostUsd,
   parseTextResult,
@@ -183,9 +184,17 @@ export async function generateText(env: Env, deps: Deps, messages: ChatMessage[]
   const inputApprox = approxTokens(messages.map((m) => m.content).join("\n"));
   let quotaExhausted = false;
   let tried = 0;
+  // Privacy guard: personal or secret data typed by the user never goes to free third-party providers
+  // (they may log or train on prompts). Such requests are processed only by Workers AI (Cloudflare).
+  const sensitive = detectSensitiveData(messages.filter((m) => m.role !== "system").map((m) => m.content).join("\n"));
+  const thirdPartyAllowed = sensitive.length === 0;
+  if (!thirdPartyAllowed) {
+    attempts.push(`openrouter:datos_sensibles:${sensitive.join(",")}`);
+    await logInvocation(env, { ...base, provider: "openrouter", model: "-", status: "skipped", errorCode: `sensitive_data:${sensitive.join(",")}`, costState: "zero_expected", isFallback: false });
+  }
 
   // 1. OpenRouter FREE
-  if (prefs.strategy !== "cloudflare_only") {
+  if (prefs.strategy !== "cloudflare_only" && thirdPartyAllowed) {
     const avail = await openRouterAvailability(env, prefs.openrouterEnabled);
     if (!avail.usable) attempts.push(`openrouter:${avail.reason}`);
     else {
@@ -232,6 +241,7 @@ export async function generateText(env: Env, deps: Deps, messages: ChatMessage[]
     }
     if (prefs.strategy === "manual_free" && prefs.fallbackPolicy === "ask" && !o.allowFallback) throw new SelectedModelFailedError(attempts);
   }
+  const fellBack = prefs.strategy !== "cloudflare_only" || !thirdPartyAllowed;
 
   // 2. Workers AI (independent provider with its own daily budget)
   for (const m of WORKERS_AI_TEXT_MODELS) {
@@ -250,7 +260,7 @@ export async function generateText(env: Env, deps: Deps, messages: ChatMessage[]
       const u = usage ?? { input: inputApprox, output: approxTokens(text) };
       const cost = estimateTextCostUsd(m, u);
       await recordUsage(env, "workers_ai", cost, false);
-      const fallback = prefs.strategy !== "cloudflare_only";
+      const fallback = fellBack;
       await logInvocation(env, { ...base, provider: "workers_ai", model: m.model, status: "ok", latencyMs: Date.now() - started, inputTokens: u.input, outputTokens: u.output, estimatedCostUsd: cost, costState: "estimated", isFallback: fallback });
       return { text, provider: "workers_ai", model: m.model, inputTokens: u.input, outputTokens: u.output, costUsd: cost, fallback, attempts };
     } catch (e) {
@@ -263,7 +273,7 @@ export async function generateText(env: Env, deps: Deps, messages: ChatMessage[]
   }
 
   // 3. Gemini (free tier may use prompts to improve Google products → skipped in privacy-first mode)
-  if (env.GEMINI_API_KEY && !prefs.privacyFirst && prefs.strategy !== "cloudflare_only") {
+  if (env.GEMINI_API_KEY && !prefs.privacyFirst && prefs.strategy !== "cloudflare_only" && thirdPartyAllowed) {
     const model = "gemini-flash-latest";
     const started = Date.now();
     try {

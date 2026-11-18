@@ -466,3 +466,43 @@ describe("Single chokepoint: the only code that can reach OpenRouter chat", () =
     expect(chatCalls).toHaveLength(0);
   });
 });
+
+describe("Privacy guard: sensitive data never reaches free third-party providers", () => {
+  it("a question with a DNI, IBAN or password is answered by Workers AI only (no OpenRouter, no Gemini)", async () => {
+    const { h, owner, orgId, chatCalls, waiCalls } = await setup();
+    h.env.GEMINI_API_KEY = "test-gemini";
+    const geminiCalls: string[] = [];
+    const inner = h.deps.fetchImpl;
+    h.deps.fetchImpl = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input instanceof Request ? input.url : input);
+      if (url.includes("generativelanguage.googleapis.com")) geminiCalls.push(url);
+      return inner(input, init);
+    }) as typeof fetch;
+    await sync(h);
+    for (const question of [
+      "Mi DNI es 12345678Z, ¿puedo ponerlo en la web?",
+      "Factura a ES91 2100 0418 4502 0005 1332, ¿la incluyo?",
+      "La contraseña: Hunter2024! ¿es segura para el CMS?",
+    ]) {
+      const r = await owner.post(`/api/v1/orgs/${orgId}/advisor`, { question });
+      expect(r.status).toBe(200);
+      expect(r.json.message.provider).toBe("workers_ai");
+    }
+    expect(chatCalls).toHaveLength(0);
+    expect(geminiCalls).toHaveLength(0);
+    expect(waiCalls.length).toBeGreaterThanOrEqual(3);
+    const logs = await h.db.prepare("SELECT error_code FROM ai_invocations WHERE status = 'skipped' AND error_code LIKE 'sensitive_data:%'").all<{ error_code: string }>();
+    expect(logs.results.map((x) => x.error_code)).toEqual(["sensitive_data:dni_nie", "sensitive_data:iban", "sensitive_data:credencial"]);
+    // The raw sensitive value is never written to the AI activity log.
+    const dump = JSON.stringify((await h.db.prepare("SELECT * FROM ai_invocations").all()).results);
+    expect(dump).not.toMatch(/12345678Z|ES91|Hunter2024/);
+  });
+
+  it("an ordinary marketing question still uses the free OpenRouter route", async () => {
+    const { h, owner, orgId, chatCalls } = await setup();
+    await sync(h);
+    const r = await owner.post(`/api/v1/orgs/${orgId}/advisor`, { question: "¿Cómo mejoro el SEO local de mi panadería con 3 tiendas y 120 reseñas?" });
+    expect(r.json.message.provider).toBe("openrouter");
+    expect(chatCalls).toHaveLength(1);
+  });
+});

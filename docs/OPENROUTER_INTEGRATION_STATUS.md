@@ -13,6 +13,13 @@ La clave vive solo en los secretos de Cloudflare (`OPENROUTER_API_KEY`); nunca s
 5. **Después**: coste informado > 0 → parada global (`cobro_inesperado`); 402 → parada (`pago_requerido_402`, nunca se compran créditos); 401/403 → `clave_invalida`; modelo servido no gratuito → parada; subida del gasto de la clave (`/api/v1/key`) → `gasto_detectado_en_la_clave`.
 6. **Sin respaldo de pago**: el respaldo es Workers AI (incluido en Workers Paid, tope 0,10 USD/día) y, al final, Gemini (se omite en «privacidad primero» y «solo Cloudflare»). Si todo falla → 503 honesto y el crédito se libera.
 
+## Privacidad de los proveedores gratuitos
+Los endpoints `:free` de OpenRouter y el nivel gratuito de Gemini pueden registrar o usar las solicitudes para entrenar. Condición de DNI Growth:
+- **Guardia automática de datos sensibles** (`packages/core/src/privacy.ts` → `detectSensitiveData`): si lo que escribe el usuario contiene DNI/NIE (letra validada), IBAN (mod-97), tarjeta (Luhn), credenciales (claves `sk_…`, `AKIA…`, `AIza…`, claves privadas, «contraseña: …»), email o teléfono, la solicitud **no se envía** a OpenRouter ni a Gemini: se procesa solo en Workers AI (Cloudflare no entrena con los datos del cliente). Queda registrado en `ai_invocations` como `skipped` / `sensitive_data:<categorías>`, sin guardar el valor.
+- **Modo «privacidad primero»** por empresa: además pide `data_collection: "deny"` y `zdr: true` a OpenRouter y omite Gemini.
+- El prompt de sistema (instrucciones propias y perfil de marca a partir de la web pública) no activa la guardia; sí el texto del usuario, las fuentes pegadas y el historial.
+- Pruebas: `packages/core/test/privacy.test.ts` (17) y «Privacy guard» en `openrouter.test.ts` (ninguna llamada a OpenRouter ni a Gemini con DNI, IBAN o contraseña; el valor no aparece en el registro).
+
 ## Cuotas
 Contadores atómicos en D1 (`ai_quota_counters`): global por día (45, o el límite informado por OpenRouter − 5) y por minuto (15), por organización (20/día) y por usuario (10/día). Máximo 2 intentos de OpenRouter por solicitud; 429 → pausa global según `Retry-After`; 404/5xx/timeout → pausa del modelo.
 
