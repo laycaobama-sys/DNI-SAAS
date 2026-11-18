@@ -101,6 +101,7 @@ searchConsole.get("/search-console", requireScope("audit_results:read"), async (
     report = {
       propertyId: sel.id,
       siteUrl: sel.site_url,
+      lastSyncAt: sel.last_sync_at,
       source: "Google Search Console API · searchAnalytics.query (dataState=final)",
       observedAt,
       measurement: { daily: "observed", totals: "derived", topRows: "observed" },

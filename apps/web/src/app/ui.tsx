@@ -193,7 +193,7 @@ export function MetricCard({ m }: { m: { metric: string; label?: string; value: 
         <Badge tone={m.measurement === "observed" ? "ok" : m.measurement === "demo" ? "warn" : "info"}>{MEASUREMENT_LABEL[m.measurement] ?? m.measurement}</Badge>
       </div>
       <p className="mt-2 font-serif text-4xl leading-none tabular-nums">
-        {m.value ?? "—"}
+        {typeof m.value === "number" ? m.value.toLocaleString("es-ES") : "—"}
         <span className="ml-1 font-sans text-sm text-mute">{m.unit}</span>
       </p>
       <button type="button" onClick={() => setOpen((o) => !o)} className="mt-3 text-xs text-mute underline-offset-2 hover:underline" aria-expanded={open}>

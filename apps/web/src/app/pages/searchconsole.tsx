@@ -32,6 +32,8 @@ const STATUS: Record<string, { label: string; tone: "ok" | "warn" | "danger" | "
 };
 
 const nf = new Intl.NumberFormat("es-ES");
+/** Formats a Search Console calendar day (YYYY-MM-DD, already UTC) without inventing a time. */
+const fmtDay = (d: string) => new Date(`${d}T00:00:00Z`).toLocaleDateString("es-ES", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" });
 const nil = (v: unknown): v is null | undefined => v === null || v === undefined;
 const pct = (v: number | null | undefined) => (nil(v) ? null : `${(v * 100).toLocaleString("es-ES", { maximumFractionDigits: 1 })}`);
 const pos = (v: number | null | undefined) => (nil(v) ? null : v.toLocaleString("es-ES", { maximumFractionDigits: 1 }));
@@ -88,7 +90,7 @@ function DailyChart({ rows, metric }: { rows: any[]; metric: Metric }) {
               {hgt > 0 && (
                 <path
                   d={`M${x + 1},${H - pad.b} V${top + rad} Q${x + 1},${top} ${x + 1 + rad},${top} H${x + 1 + w - rad} Q${x + 1 + w},${top} ${x + 1 + w},${top + rad} V${H - pad.b} Z`}
-                  className={hover === i ? "fill-accent" : "fill-accent/70"}
+                  className={hover === i ? "fill-ink" : "fill-accent-text"}
                 />
               )}
               {i % step === 0 && (
@@ -114,7 +116,7 @@ function DailyChart({ rows, metric }: { rows: any[]; metric: Metric }) {
 
 function TopTable({ title, rows, kind }: { title: string; rows: any[]; kind: "query" | "page" }) {
   return (
-    <Card title={title} subtitle={rows[0] ? `${fmtDate(rows[0].period_start)} – ${fmtDate(rows[0].period_end)} · observado` : undefined}>
+    <Card className="min-w-0" title={title} subtitle={rows[0] ? `${fmtDay(rows[0].period_start)} – ${fmtDay(rows[0].period_end)} · observado` : undefined}>
       {rows.length === 0 ? (
         <p className="text-sm text-mute">Sin filas en este periodo. Google omite consultas anónimas o con muy pocas búsquedas.</p>
       ) : (
@@ -212,7 +214,11 @@ export function SearchConsolePage() {
             Ocultar aviso
           </button>
         )}
-        {!data.configured && <Notice tone="warn" title="No disponible en este entorno">Falta configurar el cliente de Google o la clave de cifrado. No se muestra ningún dato.</Notice>}
+        {!data.configured && (
+          <Notice tone="warn" title="Conexión no disponible en este entorno">
+            Falta configurar el cliente de Google o la clave de cifrado: no se puede conectar ni sincronizar.{data.report ? " Se muestran solo los datos ya importados." : ""}
+          </Notice>
+        )}
         <ErrorState error={err} />
       </div>
 
@@ -283,10 +289,10 @@ export function SearchConsolePage() {
                         </Select>
                       </div>
                       <div className="flex flex-wrap gap-2">
-                        <Button variant="primary" onClick={() => run("sync", () => post(`/orgs/${orgId}/search-console/sync`), true)} loading={busy === "sync"} disabled={!selected || !!data.activeJob}>
+                        <Button variant="primary" onClick={() => run("sync", () => post(`/orgs/${orgId}/search-console/sync`), true)} loading={busy === "sync"} disabled={!data.configured || !selected || !!data.activeJob}>
                           Sincronizar ahora
                         </Button>
-                        <Button onClick={() => run("props", () => post(`/orgs/${orgId}/search-console/properties/refresh`))} loading={busy === "props"}>
+                        <Button onClick={() => run("props", () => post(`/orgs/${orgId}/search-console/properties/refresh`))} loading={busy === "props"} disabled={!data.configured}>
                           Actualizar propiedades
                         </Button>
                         <Button variant="ghost" onClick={() => setConfirmOff(true)}>
@@ -335,13 +341,17 @@ export function SearchConsolePage() {
             <EmptyState title="Elige una propiedad">Cuando elijas una propiedad con permiso de lectura se importarán sus datos de los últimos 90 días.</EmptyState>
           ) : !t ? (
             <EmptyState title={data.activeJob ? "Importando datos…" : "Sin datos importados todavía"}>
-              {data.activeJob ? "Primera sincronización en curso (normalmente unos segundos)." : `Propiedad ${report.siteUrl}: pulsa «Sincronizar ahora». Si Google no tiene datos para ella, aquí seguirá vacío.`}
+              {data.activeJob
+                ? "Primera sincronización en curso (normalmente unos segundos)."
+                : report.lastSyncAt
+                  ? `Sincronizado ${timeAgo(report.lastSyncAt)}: Google no tiene clics ni impresiones de ${report.siteUrl} en los últimos 90 días con datos definitivos. Es normal en un sitio recién añadido o con poco tráfico de búsqueda; se vuelve a consultar automáticamente cada día. No mostramos estimaciones.`
+                  : `Propiedad ${report.siteUrl}: pulsa «Sincronizar ahora».`}
             </EmptyState>
           ) : (
             <>
               <p className="text-sm text-mute">
-                {report.siteUrl} · {fmtDate(report.period.start)} – {fmtDate(report.period.end)} ({t.days} días con datos)
-                {report.previousPeriod ? ` · comparado con ${fmtDate(report.previousPeriod.start)} – ${fmtDate(report.previousPeriod.end)}` : ""}
+                {report.siteUrl} · {fmtDay(report.period.start)} – {fmtDay(report.period.end)} ({t.days} días con datos)
+                {report.previousPeriod ? ` · comparado con ${fmtDay(report.previousPeriod.start)} – ${fmtDay(report.previousPeriod.end)}` : ""}
               </p>
               <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
                 {(
