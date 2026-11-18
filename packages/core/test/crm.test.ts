@@ -3,7 +3,7 @@ import { AllowedOrigins, LeadSubmission, pageUrlWithoutQuery, referrerHost, spam
 
 describe("LeadSubmission", () => {
   it("cleans control/bidi characters, normalises email and reads HTML checkboxes", () => {
-    const r = LeadSubmission.parse({ name: " Ana‮ Pérez ", email: " ANA@Example.COM", consent: "on", marketing: "", extra: "ignored" });
+    const r = LeadSubmission.parse({ name: " Ana\u202e Pérez ", email: " ANA@Example.COM", consent: "on", marketing: "", extra: "ignored" });
     expect(r).toMatchObject({ name: "Ana Pérez", email: "ana@example.com", consent: true, marketing: false });
     expect("extra" in r).toBe(false);
   });

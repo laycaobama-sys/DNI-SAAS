@@ -24,6 +24,10 @@ export interface MailMessage {
   subject: string;
   text: string;
   html?: string;
+  /** Display name of the sender (address is always MAIL_FROM). */
+  fromName?: string;
+  /** Where replies go (e.g. the organisation's own inbox for automatic replies to its leads). */
+  replyTo?: string;
 }
 export type SendResult = { ok: true; messageId: string | null } | { ok: false; code: string; retryable: boolean };
 
@@ -47,12 +51,12 @@ export class CloudflareEmailProvider implements TransactionalEmailProvider {
   async send(msg: MailMessage): Promise<SendResult> {
     try {
       const r = await this.binding.send({
-        from: { email: this.from, name: "DNI Growth" },
+        from: { email: this.from, name: msg.fromName ?? "DNI Growth" },
         to: msg.to,
         subject: msg.subject,
         text: msg.text,
         ...(msg.html ? { html: msg.html } : {}),
-        ...(this.replyTo ? { replyTo: this.replyTo } : {}),
+        ...(msg.replyTo || this.replyTo ? { replyTo: msg.replyTo ?? this.replyTo } : {}),
       });
       return { ok: true, messageId: r?.messageId ?? null };
     } catch (e) {
@@ -102,7 +106,7 @@ export type EnqueueResult = "queued" | "accepted" | "dev_mailbox" | "not_configu
 export async function sendMail(
   env: Env,
   msg: MailMessage,
-  opts: { kind: MailKind; idempotencyKey: string; organizationId?: string | null },
+  opts: { kind: MailKind; idempotencyKey: string; organizationId?: string | null; /** ISO time: queue now, send from then on (quiet hours). */ notBefore?: string },
 ): Promise<EnqueueResult> {
   const provider = resolveProvider(env);
   const key = encKey(env);
@@ -117,9 +121,10 @@ export async function sendMail(
     // Timestamps come from the Worker clock (not the DB clock) so the immediate claim below is always due.
     `INSERT OR IGNORE INTO email_outbox (id, organization_id, kind, to_hash, to_masked, payload_enc, idempotency_key, next_attempt_at, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   )
-    .bind(id, opts.organizationId ?? null, opts.kind, await sha256Hex(msg.to.toLowerCase()), maskEmail(msg.to), payload, opts.idempotencyKey, now, now, now)
+    .bind(id, opts.organizationId ?? null, opts.kind, await sha256Hex(msg.to.toLowerCase()), maskEmail(msg.to), payload, opts.idempotencyKey, opts.notBefore && opts.notBefore > now ? opts.notBefore : now, now, now)
     .run();
   if (!ins.meta.changes) return provider.name === "dev_mailbox" ? "dev_mailbox" : "queued";
+  if (opts.notBefore && opts.notBefore > now) return "queued";
   const status = await dispatchEmail(env, id, provider);
   if (provider.name === "dev_mailbox") return "dev_mailbox";
   return status === "accepted" ? "accepted" : "queued";

@@ -9,6 +9,7 @@ import { ai } from "./routes/ai";
 import { aihub } from "./routes/aihub";
 import { content } from "./routes/content";
 import { crm, crmPublic } from "./routes/crm";
+import { landings, servePublicLanding } from "./routes/landings";
 import { auth } from "./routes/auth";
 import { billing, providerManifest, webhooks } from "./routes/billing";
 import { insights } from "./routes/insights";
@@ -64,6 +65,7 @@ export function createApp(deps: Deps) {
   tenant.route("/", geo);
   tenant.route("/", reports);
   tenant.route("/", crm);
+  tenant.route("/", landings);
   tenant.get("/integrations", requireScope("integrations:read"), async (c) => {
     // Per-organization connection state overrides the platform-level availability.
     const { results } = await c.env.DB.prepare("SELECT provider, status, last_sync_at FROM integrations WHERE organization_id = ?")
@@ -105,6 +107,9 @@ export function createApp(deps: Deps) {
 
   // Google Search Console ownership file (URL-prefix property). Served by the Worker so the exact
   // .html path answers 200 without the Static Assets extension redirect. The token is public.
+  // Published landing pages (F5): /l/<organisation slug>/<page slug>. No cookies, own CSP with nonce.
+  app.get("/l/:orgSlug/:slug", (c) => servePublicLanding(c));
+
   app.get("/google07bca8a276fd14a6.html", (c) => c.text("google-site-verification: google07bca8a276fd14a6.html", 200, { "content-type": "text/html; charset=utf-8" }));
 
   // Non-API routes: static landing + SPA shell served from Workers Static Assets.

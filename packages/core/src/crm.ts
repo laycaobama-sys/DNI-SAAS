@@ -24,7 +24,7 @@ export const DEFAULT_MARKETING_TEXT = "Quiero recibir comunicaciones comerciales
 export const DEFAULT_SUCCESS_MESSAGE = "Gracias. Hemos recibido tu mensaje y te responderemos lo antes posible.";
 
 // eslint-disable-next-line no-control-regex
-const CONTROL = new RegExp("[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f-\u009f​-‏ -‮⁠-⁯﻿]", "g");
+const CONTROL = new RegExp("[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f-\u009f\u200b-\u200f\u2028-\u202e\u2060-\u206f\ufeff]", "g");
 /** Single-line field: control/bidi characters removed, whitespace collapsed. */
 export const cleanLine = (s: string) => s.replace(CONTROL, " ").replace(/\s+/g, " ").trim();
 /** Multi-line field: keeps line breaks (max. 2 in a row). */
@@ -78,6 +78,9 @@ export const LeadSubmission = z.object({
   utm_campaign: optLine(200),
   utm_term: optLine(200),
   utm_content: optLine(200),
+  // Landing page that sent the form and its A/B variant (validated server-side against the org).
+  _lp: z.string().max(40).optional(),
+  _v: z.string().max(2).optional(),
 });
 export type LeadSubmission = z.infer<typeof LeadSubmission>;
 

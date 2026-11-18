@@ -28,6 +28,8 @@ import { emailHtml, sendMail } from "../lib/mail";
 import { rateLimit } from "../lib/ratelimit";
 import { hashIp, log, nowIso, parseJson, toCsv, uuid } from "../lib/util";
 import { requireScope } from "../middleware";
+import { AutoReplyConfig, FollowUpConfig, runLeadAutomations } from "../lib/automations";
+import { recordLandingConversion } from "./landings";
 
 /**
  * F5 — Lead capture (public, anti-spam, consent per purpose, UTM attribution, dedup by email)
@@ -187,14 +189,23 @@ async function handleSubmission(c: Context<AppEnv>, form: FormRow | null) {
     c.env.DB.prepare("UPDATE lead_forms SET submissions = submissions + 1, updated_at = ? WHERE organization_id = ? AND id = ?").bind(now, form.organization_id, form.id),
     auditStmt(c.env.DB, { organizationId: form.organization_id, actorUserId: null, action: "lead.captured", entityType: "lead", entityId: row.id, after: { formId: form.id, isNew, consentMarketing: !!marketing }, ipHash, requestId: c.get("requestId") }),
   ]);
-  if (form.notify) {
+  const lp = await recordLandingConversion(c.env, form.organization_id, s._lp, s._v);
+  if (lp)
+    await c.env.DB.prepare("UPDATE leads SET landing_id = COALESCE(landing_id, ?), landing_variant = COALESCE(landing_variant, ?) WHERE organization_id = ? AND id = ?")
+      .bind(lp.landingId, lp.variant, form.organization_id, row.id)
+      .run();
+  {
     const p = (async () => {
-      try {
-        await rateLimit(c.env.DB, `lead:notify:${form.organization_id}`, 50, 86400);
-        await notifyTeam(c.env, form, row.id, row.submissions);
-      } catch (e) {
-        log("warn", "lead.notify_skipped", { formId: form.id, error: e instanceof ApiError ? e.code : "error" });
+      if (form.notify) {
+        try {
+          await rateLimit(c.env.DB, `lead:notify:${form.organization_id}`, 50, 86400);
+          await notifyTeam(c.env, form, row.id, row.submissions);
+        } catch (e) {
+          log("warn", "lead.notify_skipped", { formId: form.id, error: e instanceof ApiError ? e.code : "error" });
+        }
       }
+      const org = await c.env.DB.prepare("SELECT name FROM organizations WHERE id = ?").bind(form.organization_id).first<{ name: string }>();
+      await runLeadAutomations(c.env, { orgId: form.organization_id, orgName: org?.name ?? "", formId: form.id, leadId: row.id, isNew, name: s.name, email: s.email });
     })();
     try {
       c.executionCtx.waitUntil(p);
@@ -458,6 +469,8 @@ crm.delete("/crm/leads/:leadId", requireScope("crm:delete"), async (c) => {
     c.env.DB.prepare("DELETE FROM crm_tasks WHERE organization_id = ? AND lead_id = ?").bind(t.orgId, lead.id),
     c.env.DB.prepare("DELETE FROM lead_events WHERE organization_id = ? AND lead_id = ?").bind(t.orgId, lead.id),
     c.env.DB.prepare("DELETE FROM leads WHERE organization_id = ? AND id = ?").bind(t.orgId, lead.id),
+    // Erasure also cancels automatic replies still waiting (quiet hours) and drops their encrypted copy.
+    c.env.DB.prepare("UPDATE email_outbox SET status = 'dead', payload_enc = NULL, last_error_code = 'lead_erased', updated_at = ? WHERE organization_id = ? AND idempotency_key LIKE ? AND status IN ('queued','failed')").bind(nowIso(), t.orgId, `auto-reply:%:${lead.id}`),
     auditStmt(c.env.DB, { organizationId: t.orgId, actorUserId: c.get("user")!.id, action: "lead.erase", entityType: "lead", entityId: lead.id, after: { stage: lead.stage, isTest: !!lead.is_test }, requestId: c.get("requestId") }),
   ]);
   return c.json({ ok: true });
@@ -577,4 +590,48 @@ crm.patch("/crm/forms/:formId", requireScope("forms:manage"), async (c) => {
   }
   const row = await c.env.DB.prepare(`SELECT ${FORM_COLS} FROM lead_forms WHERE organization_id = ? AND id = ?`).bind(t.orgId, id).first();
   return c.json(shapeForm(row!));
+});
+
+// ── Follow-up automations (per form; off by default; changes audited) ──────────────────────────────
+async function loadFormId(c: Context<AppEnv>, orgId: string) {
+  const id = assertUuid(c.req.param("formId"), "Formulario");
+  const f = await c.env.DB.prepare("SELECT id FROM lead_forms WHERE organization_id = ? AND id = ?").bind(orgId, id).first<{ id: string }>();
+  if (!f) throw notFound("Formulario");
+  return f.id;
+}
+
+crm.get("/crm/forms/:formId/automations", requireScope("crm:read"), async (c) => {
+  const t = c.get("tenant");
+  const formId = await loadFormId(c, t.orgId);
+  const [rules, runs] = await Promise.all([
+    c.env.DB.prepare("SELECT id, kind, enabled, config_json, updated_at FROM crm_automations WHERE organization_id = ? AND form_id = ?").bind(t.orgId, formId).all<{ id: string; kind: string; enabled: number; config_json: string; updated_at: string }>(),
+    c.env.DB.prepare(
+      `SELECT r.status, r.detail, r.created_at, a.kind FROM crm_automation_runs r JOIN crm_automations a ON a.id = r.automation_id AND a.organization_id = r.organization_id
+       WHERE r.organization_id = ? AND a.form_id = ? ORDER BY r.created_at DESC LIMIT 30`,
+    )
+      .bind(t.orgId, formId)
+      .all(),
+  ]);
+  return c.json({ items: rules.results.map((r) => ({ ...r, enabled: !!r.enabled, config: parseJson(r.config_json, {}), config_json: undefined })), runs: runs.results });
+});
+
+const AutomationInput = z.discriminatedUnion("kind", [
+  z.strictObject({ kind: z.literal("auto_reply"), enabled: z.boolean(), config: AutoReplyConfig }),
+  z.strictObject({ kind: z.literal("follow_up_task"), enabled: z.boolean(), config: FollowUpConfig }),
+]);
+crm.put("/crm/forms/:formId/automations", requireScope("forms:manage"), async (c) => {
+  const t = c.get("tenant");
+  const user = c.get("user")!;
+  const formId = await loadFormId(c, t.orgId);
+  const b = await parseBody(c, AutomationInput);
+  if (b.kind === "follow_up_task" && b.config.assignTo) await assertAssignee(c.env, t.orgId, b.config.assignTo);
+  const now = nowIso();
+  await c.env.DB.batch([
+    c.env.DB.prepare(
+      `INSERT INTO crm_automations (id, organization_id, form_id, kind, enabled, config_json, updated_by, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT(organization_id, form_id, kind) DO UPDATE SET enabled = excluded.enabled, config_json = excluded.config_json, updated_by = excluded.updated_by, updated_at = excluded.updated_at`,
+    ).bind(uuid(), t.orgId, formId, b.kind, b.enabled ? 1 : 0, JSON.stringify(b.config), user.id, now, now),
+    auditStmt(c.env.DB, { organizationId: t.orgId, actorUserId: user.id, action: b.enabled ? "crm.automation_enable" : "crm.automation_disable", entityType: "lead_form", entityId: formId, after: { kind: b.kind }, requestId: c.get("requestId") }),
+  ]);
+  return c.json({ ok: true });
 });

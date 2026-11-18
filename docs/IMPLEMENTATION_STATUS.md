@@ -1,6 +1,6 @@
 # Estado de implementación — DNI Growth
 
-Última actualización: 2026-11-18 · Producción: **https://dnigrowth.com** (Worker `dni-growth`, versión `c43757da-16be-468f-ab26-8f41001a2f41`; workers.dev redirige con 301 a dnigrowth.com) · Workers Paid, sin servicios de pago adicionales ([verificación de la cuenta](CLOUDFLARE_ACCOUNT_VERIFICATION.md)).
+Última actualización: 2026-11-19 · Producción: **https://dnigrowth.com** (Worker `dni-growth`, versión `3457ae89-ae3b-4207-b43f-1440bcbf5ead`; workers.dev redirige con 301 a dnigrowth.com) · Workers Paid, sin servicios de pago adicionales ([verificación de la cuenta](CLOUDFLARE_ACCOUNT_VERIFICATION.md)).
 
 Leyenda:
 - **VERIFICADO EN PRODUCCIÓN**: probado contra la URL pública con una respuesta comprobable.
@@ -163,7 +163,21 @@ Pruebas E2E en producción del 2026-11-18 con la cuenta verificada de la titular
 | Roles (solo propietario, administración y marketing ven contactos; solo propietario/administración borran), aislamiento entre organizaciones | VERIFICADO SOLO EN LOCAL | `crm.test.ts`: editor/analista/lector 403; responsable sin acceso al CRM → 422; otra organización 404 en leer, cambiar, exportar y borrar |
 | Exportación CSV (auditada, contra fórmulas) y derecho de supresión | VERIFICADO EN PRODUCCIÓN | CSV 200 `contactos-2026-11-18.csv`; borrado 200 con auditoría `lead.erase` solo con ids |
 | Política de privacidad actualizada (formulario de contacto, plazos y formularios de clientes como encargado) | VERIFICADO EN PRODUCCIÓN | `/legal/privacidad#contacto` |
-| Pendiente F5 | NO IMPLEMENTADO | constructor de landings por bloques y dominio propio, avisos por WhatsApp y automatizaciones de seguimiento |
+| Borrado de un contacto cancela su respuesta automática pendiente | VERIFICADO EN PRODUCCIÓN | tras borrar el contacto de prueba, su envío programado pasó a `dead` / `lead_erased` y se eliminó la copia cifrada (consulta de estado sin datos personales) |
+| Pendiente F5 | NO IMPLEMENTADO | dominio propio por cliente para las landings (Cloudflare for SaaS, puede tener coste) y avisos por WhatsApp (verificación de empresa en Meta y conversaciones de pago) |
+
+## F5 — Landing pages por bloques · F7 — Tests A/B · F5 — Automatizaciones de seguimiento (nuevo, [ADR 0016](adr/0016-landings-ab-automatizaciones.md))
+| Elemento | Estado | Prueba |
+|---|---|---|
+| Migración 0014 (`landing_pages`, `landing_versions`, `landing_stats_daily`, `crm_automations`, `crm_automation_runs`, `leads.landing_id/landing_variant`, límite `landingPages` 1/5/20/50/200) | VERIFICADO EN PRODUCCIÓN | copia previa `backups/dni-growth-db-pre-0014-20261118-235930.sql`; aditiva; tablas añadidas a la guarda estática multitenant |
+| Constructor por bloques (portada, ventajas, texto, preguntas, llamada a la acción, formulario), SEO, color y modo; versiones con bloqueo optimista y restauración | VERIFICADO EN PRODUCCIÓN | landing «Prueba E2E (test)» creada desde la plantilla; versión 2 «Variante B (prueba)» guardada desde la interfaz; contenido solo texto (todo se escapa), solo enlaces `https://` o `#formulario` |
+| Vista previa privada y publicación en `dnigrowth.com/l/<organización>/<slug>` | VERIFICADO EN PRODUCCIÓN | vista previa 200 con `noindex`, banner y `form-action 'none'`; publicada → página pública con CSP con nonce, 1 solo script, sin cookies, sin desbordamiento a 572 px; despublicada → 404 |
+| Formulario del CRM en la landing con UTM y atribución a la landing | VERIFICADO EN PRODUCCIÓN | envío real desde la landing → contacto con UTM `verificacion/prueba/landing-e2e`; visita 1 y conversión 1 en la variante A (medición observada, sin robots ni HEAD) |
+| Test A/B (hipótesis obligatoria, reparto 5–95 %, asignación estable por conexión sin cookies, prueba z de dos proporciones, mínimos de 100 visitas por variante y 10 conversiones, avisos de «mirar demasiado») | VERIFICADO EN PRODUCCIÓN (iniciar, medir, detener) · LOCAL (reparto, promover B) | test iniciado desde la interfaz con la versión 2; veredicto «Aún sin datos suficientes»; detenido. `landings.test.ts` (40 conexiones: misma variante al repetir, ambas variantes vistas, promover B) y `core/landing.test.ts` |
+| Respuesta automática al contacto nuevo (asunto/mensaje con `{nombre}`, «responder a» propio, horas de silencio en hora de Madrid, tope 50/día, una sola vez por contacto, nunca con spam) | VERIFICADO EN PRODUCCIÓN (programación en horas de silencio) · LOCAL (envío inmediato) | contacto enviado a las 00:09 → ejecución `scheduled` hasta las 08:00 de Madrid; pruebas locales: un solo email aunque reenvíe, nada con spam, nada si está desactivada |
+| Tarea automática de seguimiento para el equipo | VERIFICADO EN PRODUCCIÓN | tarea «Llamar o escribir al nuevo contacto» con vencimiento a 24 h creada al llegar el contacto |
+| Roles y aislamiento | VERIFICADO SOLO EN LOCAL | editor edita pero no publica (403); analista solo lee; otra organización 404; límite de plan 402; automatizaciones solo con `forms:manage` |
+| Limpieza de la prueba en producción | HECHO | test detenido, landing despublicada (404) y archivada (0 de 1 usadas), automatizaciones desactivadas y contacto de prueba borrado |
 
 ## Marca DNI Growth (producción)
 | Elemento | Estado | Prueba |
@@ -173,7 +187,7 @@ Pruebas E2E en producción del 2026-11-18 con la cuenta verificada de la titular
 | Avisos del perfil que ya se resolvieron | VERIFICADO SOLO EN LOCAL | el aviso «varias variantes del nombre» y «Información no encontrada» se ocultan cuando ya están resueltos (antes seguían visibles tras rechazar/rellenar) |
 
 ## NO IMPLEMENTADO (fases siguientes)
-Keywords con proveedor licenciado (F2), Video Studio (F4), constructor de landings y automatizaciones (F5), Meta Ads con Spend Guardian (F6), experimentos (F7), agencia/white label, 2FA y SSO (F8), cobros con Stripe ([plan](STRIPE_PLAN.md)).
+Keywords con proveedor licenciado (F2), Video Studio (F4), dominio propio para landings y WhatsApp (F5), Meta Ads con Spend Guardian (F6), experimentos fuera de las landings (F7), agencia/white label, 2FA y SSO (F8), cobros con Stripe ([plan](STRIPE_PLAN.md)).
 
 ## Bloqueos que requieren al titular
 | Bloqueo | Acción mínima |

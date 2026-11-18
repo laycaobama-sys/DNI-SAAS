@@ -1,7 +1,7 @@
 import { useMemo, useState, type FormEvent } from "react";
 import { useParams, useSearchParams } from "react-router";
-import { CheckCircle2, Circle, Code2, Download, Mail, Phone, Plus, Search, Target, Trash2, UserPlus } from "lucide-react";
-import { ApiError, del, fmtDate, patch, post, timeAgo } from "../lib/api";
+import { CheckCircle2, Circle, Code2, Download, Mail, Phone, Plus, Search, Target, Trash2, UserPlus, Zap } from "lucide-react";
+import { ApiError, del, fmtDate, patch, post, put, timeAgo } from "../lib/api";
 import { useApi } from "../lib/hooks";
 import { Badge, Button, Card, EmptyState, ErrorState, Field, Input, Notice, PageHeader, Select, Spinner, Textarea, TextField, cx } from "../ui";
 import { useOrgAccess } from "./org";
@@ -609,6 +609,7 @@ function Forms({ base, canManage }: { base: string; canManage: boolean }) {
   const r = useApi<{ items: Form[]; usage: { used: number; limit: number; plan: string }; submitBase: string }>(`${base}/forms`);
   const [editing, setEditing] = useState<Form | "new" | null>(null);
   const [embed, setEmbed] = useState<string | null>(null);
+  const [auto, setAuto] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   if (r.error) return <ErrorState error={r.error} onRetry={r.reload} />;
   if (!r.data) return <Spinner />;
@@ -642,6 +643,9 @@ function Forms({ base, canManage }: { base: string; canManage: boolean }) {
                 <Button variant="ghost" onClick={() => (setEmbed(embed === f.id ? null : f.id), setCopied(false))}>
                   <Code2 className="size-4" aria-hidden /> Código
                 </Button>
+                <Button variant="ghost" aria-expanded={auto === f.id} onClick={() => setAuto(auto === f.id ? null : f.id)}>
+                  <Zap className="size-4" aria-hidden /> Automatizaciones
+                </Button>
                 {canManage && (
                   <>
                     <Button variant="ghost" onClick={() => setEditing(f)}>
@@ -662,6 +666,7 @@ function Forms({ base, canManage }: { base: string; canManage: boolean }) {
                   </Button>
                 </div>
               )}
+              {auto === f.id && <Automations base={base} formId={f.id} canManage={canManage} />}
             </li>
           ))}
         </ul>
@@ -746,5 +751,151 @@ function FormEditor({ base, form, onDone }: { base: string; form: Form | null; o
         </div>
       </form>
     </Card>
+  );
+}
+
+type AutomationItem = { id: string; kind: "auto_reply" | "follow_up_task"; enabled: boolean; config: Record<string, any>; updated_at: string };
+type AutomationRun = { status: "done" | "scheduled" | "skipped" | "failed"; detail: string | null; created_at: string; kind: string };
+const RUN_LABEL: Record<AutomationRun["status"], string> = { done: "Hecho", scheduled: "Programado (horas de silencio)", skipped: "Omitido (tope diario)", failed: "Falló" };
+
+function Automations({ base, formId, canManage }: { base: string; formId: string; canManage: boolean }) {
+  const r = useApi<{ items: AutomationItem[]; runs: AutomationRun[] }>(`${base}/forms/${formId}/automations`);
+  const members = useApi<{ members: Member[] }>(canManage ? base.replace(/\/crm$/, "/members") : null);
+  if (r.error) return <ErrorState error={r.error} onRetry={r.reload} />;
+  if (!r.data) return <Spinner />;
+  const items = r.data.items;
+  const find = (k: AutomationItem["kind"]) => items.find((x) => x.kind === k);
+  const team = (members.data?.members ?? []).filter((m) => m.status === "active" && CRM_ROLES.has(m.role));
+  return (
+    <div className="mt-3 w-full space-y-3 rounded-2xl border border-line p-4">
+      <p className="text-xs text-mute">Solo se ejecutan con contactos nuevos (no con reenvíos), una vez por contacto y nunca con envíos marcados como spam. Desactivadas por defecto.</p>
+      <AutoReplyEditor base={base} formId={formId} item={find("auto_reply")} canManage={canManage} onSaved={r.reload} />
+      <FollowUpEditor base={base} formId={formId} item={find("follow_up_task")} team={team} canManage={canManage} onSaved={r.reload} />
+      {r.data.runs.length > 0 && (
+        <div>
+          <p className="mb-1 text-sm font-medium">Últimas ejecuciones</p>
+          <ul className="space-y-1 text-xs text-mute">
+            {r.data.runs.map((x, i) => (
+              <li key={i}>
+                {fmtDate(x.created_at)} · {x.kind === "auto_reply" ? "Respuesta automática" : "Tarea de seguimiento"} · {RUN_LABEL[x.status]}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function useAutomationSave(base: string, formId: string, onSaved: () => void) {
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<{ tone: "ok" | "warn"; text: string } | null>(null);
+  const save = async (body: Record<string, unknown>) => {
+    setBusy(true);
+    setMsg(null);
+    try {
+      await put(`${base}/forms/${formId}/automations`, body);
+      setMsg({ tone: "ok", text: "Guardado." });
+      onSaved();
+    } catch (e) {
+      setMsg({ tone: "warn", text: errMsg(e) });
+    } finally {
+      setBusy(false);
+    }
+  };
+  return { busy, msg, save };
+}
+
+const DEFAULT_AUTO_REPLY = "Hola {nombre}:\n\nGracias por escribirnos. Hemos recibido tu mensaje y te responderemos lo antes posible.\n\nUn saludo.";
+
+function AutoReplyEditor({ base, formId, item, canManage, onSaved }: { base: string; formId: string; item?: AutomationItem; canManage: boolean; onSaved: () => void }) {
+  const c = item?.config ?? {};
+  const [f, setF] = useState({
+    enabled: item?.enabled ?? false,
+    subject: (c.subject as string) ?? "Hemos recibido tu mensaje",
+    body: (c.body as string) ?? DEFAULT_AUTO_REPLY,
+    replyTo: (c.replyTo as string) ?? "",
+    quietStart: (c.quietStart as string) ?? "21:00",
+    quietEnd: (c.quietEnd as string) ?? "08:00",
+  });
+  const s = useAutomationSave(base, formId, onSaved);
+  const id = `ar-${formId}`;
+  return (
+    <form
+      className="grid gap-3 rounded-xl border border-line p-3 sm:grid-cols-2"
+      onSubmit={(e) => {
+        e.preventDefault();
+        void s.save({ kind: "auto_reply", enabled: f.enabled, config: { subject: f.subject, body: f.body, replyTo: f.replyTo, quietStart: f.quietStart, quietEnd: f.quietEnd } });
+      }}
+    >
+      <label className="flex items-center gap-2 text-sm font-medium sm:col-span-2">
+        <input type="checkbox" checked={f.enabled} disabled={!canManage} onChange={(e) => setF({ ...f, enabled: e.target.checked })} /> Respuesta automática por email al contacto
+      </label>
+      <TextField label="Asunto" required minLength={3} maxLength={120} value={f.subject} disabled={!canManage} onChange={(e) => setF({ ...f, subject: e.target.value })} />
+      <TextField label="Responder a (tu email)" type="email" required maxLength={254} value={f.replyTo} disabled={!canManage} hint="Las respuestas del contacto te llegan aquí." onChange={(e) => setF({ ...f, replyTo: e.target.value })} />
+      <div className="sm:col-span-2">
+        <Field label="Mensaje" htmlFor={`${id}-body`} hint="Texto plano. {nombre} se sustituye por el nombre del contacto. Al final se añade por qué lo recibe.">
+          <Textarea id={`${id}-body`} rows={5} required minLength={10} maxLength={3000} value={f.body} disabled={!canManage} onChange={(e) => setF({ ...f, body: e.target.value })} />
+        </Field>
+      </div>
+      <TextField label="No enviar desde (hora de Madrid)" type="time" required value={f.quietStart} disabled={!canManage} onChange={(e) => setF({ ...f, quietStart: e.target.value })} />
+      <TextField label="Hasta" type="time" required value={f.quietEnd} disabled={!canManage} hint="Lo que llegue en ese horario se envía al terminar. Máximo 50 al día." onChange={(e) => setF({ ...f, quietEnd: e.target.value })} />
+      {s.msg && (
+        <div className="sm:col-span-2">
+          <Notice tone={s.msg.tone}>{s.msg.text}</Notice>
+        </div>
+      )}
+      {canManage && (
+        <div className="sm:col-span-2">
+          <Button variant="primary" type="submit" loading={s.busy}>
+            Guardar respuesta automática
+          </Button>
+        </div>
+      )}
+    </form>
+  );
+}
+
+function FollowUpEditor({ base, formId, item, team, canManage, onSaved }: { base: string; formId: string; item?: AutomationItem; team: Member[]; canManage: boolean; onSaved: () => void }) {
+  const c = item?.config ?? {};
+  const [f, setF] = useState({ enabled: item?.enabled ?? false, title: (c.title as string) ?? "Llamar o escribir al nuevo contacto", dueHours: Number(c.dueHours ?? 24), assignTo: (c.assignTo as string | null) ?? "" });
+  const s = useAutomationSave(base, formId, onSaved);
+  const id = `fu-${formId}`;
+  return (
+    <form
+      className="grid gap-3 rounded-xl border border-line p-3 sm:grid-cols-3"
+      onSubmit={(e) => {
+        e.preventDefault();
+        void s.save({ kind: "follow_up_task", enabled: f.enabled, config: { title: f.title, dueHours: f.dueHours, assignTo: f.assignTo || null } });
+      }}
+    >
+      <label className="flex items-center gap-2 text-sm font-medium sm:col-span-3">
+        <input type="checkbox" checked={f.enabled} disabled={!canManage} onChange={(e) => setF({ ...f, enabled: e.target.checked })} /> Crear una tarea de seguimiento para el equipo
+      </label>
+      <TextField label="Tarea" required minLength={3} maxLength={200} value={f.title} disabled={!canManage} onChange={(e) => setF({ ...f, title: e.target.value })} />
+      <TextField label="Vence en (horas)" type="number" required min={1} max={720} value={String(f.dueHours)} disabled={!canManage} onChange={(e) => setF({ ...f, dueHours: Number(e.target.value) })} />
+      <Field label="Responsable" htmlFor={`${id}-who`}>
+        <Select id={`${id}-who`} value={f.assignTo} disabled={!canManage} onChange={(e) => setF({ ...f, assignTo: e.target.value })}>
+          <option value="">Sin asignar</option>
+          {team.map((m) => (
+            <option key={m.user_id} value={m.user_id}>
+              {m.name}
+            </option>
+          ))}
+        </Select>
+      </Field>
+      {s.msg && (
+        <div className="sm:col-span-3">
+          <Notice tone={s.msg.tone}>{s.msg.text}</Notice>
+        </div>
+      )}
+      {canManage && (
+        <div className="sm:col-span-3">
+          <Button variant="primary" type="submit" loading={s.busy}>
+            Guardar tarea automática
+          </Button>
+        </div>
+      )}
+    </form>
   );
 }
