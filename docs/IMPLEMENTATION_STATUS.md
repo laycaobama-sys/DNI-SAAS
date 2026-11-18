@@ -1,6 +1,6 @@
 # Estado de implementación — DNI Growth
 
-Última actualización: 2026-11-18 · Producción: **https://dnigrowth.com** (Worker `dni-growth`, versión `7c6037e5-4d38-43eb-8bd4-e52a71ad4afb`; workers.dev redirige con 301 a dnigrowth.com) · Workers Paid, sin servicios de pago adicionales ([verificación de la cuenta](CLOUDFLARE_ACCOUNT_VERIFICATION.md)).
+Última actualización: 2026-11-18 · Producción: **https://dnigrowth.com** (Worker `dni-growth`, versión `88123eb7-3969-4089-9d66-92914ebe3c83`; workers.dev redirige con 301 a dnigrowth.com) · Workers Paid, sin servicios de pago adicionales ([verificación de la cuenta](CLOUDFLARE_ACCOUNT_VERIFICATION.md)).
 
 Leyenda:
 - **VERIFICADO EN PRODUCCIÓN**: probado contra la URL pública con una respuesta comprobable.
@@ -35,11 +35,13 @@ Pruebas E2E en producción del 2026-11-18 con la cuenta verificada de la titular
 | Monorepo pnpm, TS strict, Zod en fronteras (entradas de IA estrictas: no admiten `model`, `provider` ni precios) | VERIFICADO SOLO EN LOCAL | `pnpm verify` |
 | Registro, verificación, login, sesión, logout, CSRF | VERIFICADO EN PRODUCCIÓN | registro + verificación por email + login de la titular; la sesión sobrevive a la recarga y su cookie no es accesible desde JS (HttpOnly); logout → 200 y después `/auth/me` sin usuario y ruta protegida → 401; petición sin cabecera CSRF → 403. Bloqueo por fallos y rate limit solo en local (no se fuerzan en producción para no bloquear cuentas reales) |
 | Verificación de email | VERIFICADO EN PRODUCCIÓN | la titular verificó su cuenta con el enlace recibido |
-| **Inicio de sesión con Google** (OIDC + PKCE S256, nonce, vinculación segura) | BLOQUEADO POR PERMISOS | Google acepta la URL de retorno `https://dnigrowth.com/api/v1/auth/google/callback` (selector «Ir a dnigrowth.com», sin `redirect_uri_mismatch`); sin secreto, `/auth/google/start` redirige con `google_not_configured`. Falta `npx wrangler secret put GOOGLE_CLIENT_SECRET` por la titular |
+| **Inicio de sesión con Google** (OIDC + PKCE S256, nonce, vinculación segura) | VERIFICADO EN PRODUCCIÓN | 2026-11-18: `/auth/google/start` → 302 a Google con `code_challenge_method=S256`, `nonce` y `prompt=select_account`; tras elegir la cuenta de la titular entra en su panel; `user_identities` registra `google` vinculado a su usuario existente (siguen 2 usuarios: sin duplicado) |
 | Organizaciones, invitaciones, roles, aislamiento multiempresa | VERIFICADO EN PRODUCCIÓN (aislamiento) · LOCAL (invitaciones, roles) | prod: otra organización → 404 en `/dashboard` y `/content`; `tenancy.test.ts` (guard SQL estático ampliado a `content_items`, `content_versions`, `organization_ai_preferences`) |
 | Créditos con reserva → liquidación/liberación | VERIFICADO EN PRODUCCIÓN | ledger: concesión 50 → auditoría −10, asesor −1 ×2, borrador −3, imagen −5 = **30**; cada operación reserva/libera/liquida una sola vez |
 | Stripe detrás de `BILLING_ENABLED=false` | VERIFICADO EN PRODUCCIÓN | sin clave: webhook → 503 `billing_disabled` (versión 7c6037e5) |
-| Stripe: catálogo idempotente, portal, webhook gestionado con secreto cifrado, modo prueba solo para administradores, una suscripción por organización, eventos antiguos/cruzados ignorados | VERIFICADO SOLO EN LOCAL | `stripe.test.ts` (11); migración 0006 aplicada en producción con copia previa `backups/dni-growth-db-pre-0006-20261118-0336.sql`. En producción falta `STRIPE_SECRET_KEY` (la guarda la titular) |
+| Stripe (modo prueba): sincronización de catálogo, portal y webhook | VERIFICADO EN PRODUCCIÓN | contra la cuenta «DNI Growth» (entorno de prueba): 4 productos/precios EUR creados (39/89/179/349), portal `bpc_…` y webhook `we_…` en `https://dnigrowth.com/api/v1/webhooks/stripe` con firma gestionada y cifrada; segunda sincronización → todo `kept`/`updated` (sin duplicados) |
+| Stripe: checkout de prueba | VERIFICADO EN PRODUCCIÓN (apertura) | «Contratar este plan» (Starter) → Stripe Checkout del entorno de prueba «Suscribirse a DNI Growth Starter 39,00 € por mes». Pago con tarjeta de prueba pendiente de la titular |
+| Stripe: una suscripción por organización, plan según precio, eventos antiguos/cruzados ignorados, past_due → Free | VERIFICADO SOLO EN LOCAL | `stripe.test.ts` (11) |
 | Cabeceras de seguridad (CSP, HSTS, XFO, nosniff) | VERIFICADO EN PRODUCCIÓN | `curl -I https://dnigrowth.com/` |
 
 ## F1 — URL → análisis → marca → plan
@@ -85,6 +87,5 @@ Keywords con proveedor licenciado (F2), Search Console/GA4 dentro de la app y mo
 | Bloqueo | Acción mínima |
 |---|---|
 | Confirmar el perfil de marca | Revisar los datos en la pantalla de Marca y confirmar |
-| Google sign-in | `npx wrangler secret put GOOGLE_CLIENT_SECRET` (desde `apps/api`) con el secreto del cliente «DNI Growth Web» |
 | Stripe | Crear la cuenta «DNI Growth» en Stripe (decidido: no usar «RestoPanel»); después se configura en modo prueba y la titular guarda `STRIPE_SECRET_KEY` y `STRIPE_WEBHOOK_SECRET` con `wrangler secret put`. `BILLING_ENABLED=false` hasta su autorización |
 | Textos legales definitivos | Datos fiscales del titular |

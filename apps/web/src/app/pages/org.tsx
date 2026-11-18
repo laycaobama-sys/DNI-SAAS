@@ -212,7 +212,12 @@ function StripeAdminPanel({ onSynced }: { onSynced: () => void }) {
           <dt className="text-mute">Claves</dt>
           <dd className="flex flex-wrap gap-2">
             <span>STRIPE_SECRET_KEY {ok(data.secretKeyPresent)}</span>
-            <span>STRIPE_WEBHOOK_SECRET {ok(data.webhookSecretPresent)}</span>
+            <span>
+              Firma del webhook{" "}
+              <Badge tone={data.webhookVerifiable ? "ok" : "warn"}>
+                {data.webhookSecretPresent ? "secreto de la titular" : data.webhookVerifiable ? "gestionada y cifrada" : "pendiente: pulsa Sincronizar"}
+              </Badge>
+            </span>
           </dd>
         </div>
         <div className="sm:col-span-2">
