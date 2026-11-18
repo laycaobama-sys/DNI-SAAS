@@ -4,7 +4,7 @@ import { MailCheck } from "lucide-react";
 import { api, ApiError, post } from "../lib/api";
 import { useAuth } from "../lib/auth";
 import { Logo } from "../shell";
-import { Button, ErrorState, Notice, TextField } from "../ui";
+import { Button, ErrorState, LegalLinks, Notice, TextField } from "../ui";
 
 function AuthLayout({ title, subtitle, children, footer }: { title: string; subtitle?: ReactNode; children: ReactNode; footer?: ReactNode }) {
   return (
@@ -20,6 +20,7 @@ function AuthLayout({ title, subtitle, children, footer }: { title: string; subt
           <div className="mt-6">{children}</div>
         </div>
         {footer && <div className="mt-4 text-center text-sm text-mute">{footer}</div>}
+        <LegalLinks className="mt-6 justify-center" />
       </div>
     </div>
   );
@@ -220,7 +221,7 @@ export function RegisterPage() {
           Crear cuenta
         </Button>
         <p className="text-xs text-mute">
-          Al registrarte aceptas el tratamiento descrito en la <a className="underline" href="/legal/privacidad">política de privacidad</a>.
+          Al crear la cuenta aceptas las <a className="underline" href="/legal/condiciones">condiciones de uso</a>. Cómo tratamos tus datos: <a className="underline" href="/legal/privacidad">política de privacidad</a>.
         </p>
       </form>
     </AuthLayout>

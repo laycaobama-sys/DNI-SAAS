@@ -36,7 +36,7 @@ import {
 import { post } from "./lib/api";
 import { useAuth } from "./lib/auth";
 import { useTheme } from "./lib/hooks";
-import { cx } from "./ui";
+import { cx, LegalLinks } from "./ui";
 
 export const MODULES: Record<string, { label: string; phase: string; description: string }> = {
   "seo-tecnico": { label: "SEO técnico", phase: "F2", description: "Rastreos programados, histórico, hreflang, enlaces rotos y Core Web Vitals con datos de campo." },
@@ -165,6 +165,7 @@ export function AppShell() {
             <LogOut className="size-4" />
           </button>
         </div>
+        <LegalLinks className="mt-2 px-1" />
       </div>
     </div>
   );

@@ -23,6 +23,11 @@ Antes de cada release: `pnpm verify`.
 ## Configuración (un solo sitio)
 Variables públicas en `apps/api/wrangler.jsonc` → `vars`: `APP_ORIGIN` (de ella salen cookies, redirección OAuth, enlaces de email, canonical y sitemap), `EMAIL_SENDING_ENABLED`, `MAIL_FROM`, `GOOGLE_CLIENT_ID`, `BILLING_ENABLED`, `AI_DAILY_BUDGET_USD`.
 
+## Datos legales del titular
+- Fuente única: `apps/web/legal/legal-identity.local.json` (copia de `legal-identity.example.json`). Está en `.gitignore` porque el repositorio es público: no se sube nunca.
+- `pnpm build` en local falla si el archivo falta; en CI (`CI=true`) se compila con el aviso «datos del titular no configurados». Desplegar siempre desde una máquina que tenga el archivo.
+- Solo se usa en `/legal/aviso-legal`, `/legal/privacidad` y `/legal/condiciones` (marcadores `<!--LEGAL:...-->` y `__LEGAL_...__`).
+
 ## Secretos (los introduce el titular; nunca en el chat)
 ```bash
 npx wrangler secret put GOOGLE_CLIENT_SECRET   # cliente OAuth web de Google
@@ -96,7 +101,8 @@ Copias exportadas antes de cada migración en `backups/` (fuera de git).
 
 ## Despliegue 2026-11-18 (dominio + Model Hub + Content Studio)
 - Versión actual: `286b5a81-6ead-4114-928f-a566e48c4718` · anterior: `11831c6d-b194-4d2e-9810-d7631a9e0d1d`.
-- Versión actual (política de privacidad completa): `88f00104-f0e8-4b76-b92e-2693fb18af44` · anterior `b4fd58a3-6282-4c8a-af4b-3db82534a95b` (sin selección automática de propiedades de Google; sin migración).
+- Versión actual (configuración legal centralizada + condiciones de uso): `74c3b3ef-27cc-4ce9-aa7b-5fe1f8525528` · anterior `88f00104-f0e8-4b76-b92e-2693fb18af44` (sin migración).
+- Versión política de privacidad completa: `88f00104-f0e8-4b76-b92e-2693fb18af44` · anterior `b4fd58a3-6282-4c8a-af4b-3db82534a95b` (sin selección automática de propiedades de Google; sin migración).
 - Versión GA4 + política con datos de Google: `bfe01bbc-dae4-4b30-bbb9-c24ef4cae12c` · anterior `ab2bbe5a-6081-4e35-886e-83cbba110f67`.
 - Versión con Google Analytics 4 (F3): `ab2bbe5a-6081-4e35-886e-83cbba110f67` · anterior `dd5caec3-b99f-4d80-ab49-ba871406cde5` (compatible con la migración 0009: solo añade tablas e índice). Copia previa: `backups/dni-growth-db-pre-0009-20261118-1301.sql`.
 - Versión anterior (ajustes del panel de Search Console): `dd5caec3-b99f-4d80-ab49-ba871406cde5` · anterior `d5b448f0-41dd-4306-8680-592b0972e630`.

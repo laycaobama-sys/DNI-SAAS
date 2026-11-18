@@ -1,0 +1,22 @@
+/* Shared layout for /legal/* pages (Aviso legal, Privacidad, Condiciones). */
+.legal{max-width:760px;margin:0 auto;padding:120px var(--gutter) 64px}
+.legal h1{font-family:var(--serif);font-weight:400;font-size:clamp(40px,6vw,72px);line-height:1.05;margin:0 0 12px}
+.legal h2{font-size:20px;margin:36px 0 8px;scroll-margin-top:96px}
+.legal h3{font-size:16px;margin:20px 0 6px}
+.legal p,.legal li,.legal dd{color:#c4c4cc;overflow-wrap:anywhere}
+.legal ul{padding-left:20px}
+.legal li{margin:4px 0}
+.legal a{color:#e8e8ee;text-decoration:underline;text-underline-offset:3px}
+.legal a:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:2px}
+.legal table{width:100%;border-collapse:collapse;font-size:14px;margin:8px 0}
+.legal th,.legal td{border-top:1px solid #2a2a33;padding:8px 6px;text-align:left;vertical-align:top;color:#c4c4cc}
+.legal th{color:#e8e8ee}
+.legal .tw{overflow-x:auto}
+.legal .idbox{display:grid;grid-template-columns:minmax(150px,auto) 1fr;gap:8px 20px;margin:12px 0;padding:16px 18px;border:1px solid #2a2a33;border-radius:14px;background:#141416}
+.legal .idbox dt{color:#e8e8ee;font-weight:600}
+.legal .idbox dd{margin:0}
+@media (max-width:560px){.legal .idbox{grid-template-columns:1fr;gap:2px}.legal .idbox dd{margin-bottom:10px}}
+.legal .draft-inline{color:var(--accent)}
+.legal-foot{max-width:760px;margin:0 auto;padding:24px var(--gutter) 64px;border-top:1px solid #2a2a33;display:flex;flex-wrap:wrap;gap:12px 24px;font-size:15px}
+.legal-foot a{color:#c4c4cc;text-decoration:underline;text-underline-offset:3px;padding:6px 0}
+.legal-foot a[aria-current="page"]{color:#e8e8ee;text-decoration:none;font-weight:600}

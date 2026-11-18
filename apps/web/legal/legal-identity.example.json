@@ -1,0 +1,15 @@
+{
+  "commercialName": "DNI Growth",
+  "siteUrl": "https://dnigrowth.com",
+  "legalName": "Nombre y apellidos del titular",
+  "entityType": "individual",
+  "taxId": "NIF/NIE del titular",
+  "taxIdLabel": "NIF/NIE",
+  "streetAddress": "Calle y número",
+  "postalCode": "00000",
+  "city": "Ciudad",
+  "province": "Provincia",
+  "country": "España",
+  "email": "correo@ejemplo.com",
+  "phone": "+34 600 000 000"
+}

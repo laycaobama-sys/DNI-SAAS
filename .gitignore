@@ -14,3 +14,6 @@ playwright-report/
 test-results/
 .claude/
 backups/
+
+# Legal identity of the owner (public repo: only published on the site, never committed)
+apps/web/legal/legal-identity.local.json

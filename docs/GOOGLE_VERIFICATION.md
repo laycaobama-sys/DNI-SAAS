@@ -44,5 +44,5 @@ Subir a YouTube como «No listado», copiar el enlace y pegarlo en Google Auth P
 > The privacy policy at https://dnigrowth.com/legal/privacidad is a complete, static HTML page in Spanish (about 1,800 words, 13 sections): data collected, a dedicated "Datos de usuario de Google" section describing exactly what each scope (openid, email, webmasters.readonly, analytics.readonly) reads, how it is used, stored (AES-256-GCM), revoked and deleted, an explicit Limited Use statement linking the Google API Services User Data Policy, purposes and legal bases, AI processing (Google data is never sent to AI), processors, international transfers, retention periods, cookies, security, minors, user rights and changes. It is linked from the homepage footer. We believe the automated check failed to parse the Spanish content.
 
 ## Si Google pide cambios
-- Responder al correo de Google desde `ibraguimova19@gmail.com` (contacto del desarrollador).
+- Responder al correo de Google desde la dirección de contacto del desarrollador configurada en Google Auth Platform.
 - Cualquier cambio de permisos en el código exige actualizar «Acceso a los datos», la política de privacidad y este documento.

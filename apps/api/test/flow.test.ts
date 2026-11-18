@@ -285,7 +285,9 @@ describe("Billing (Stripe sandbox contract)", () => {
     const event = { id: "evt_test_001", type: "checkout.session.completed", data: { object: { subscription: "sub_123", metadata: { organization_id: orgId, plan_code: "growth" } } } };
     const { raw, header } = await signed(event);
 
-    expect((await postWebhook(h, raw, header.replace(/v1=./, "v1=0"))).status).toBe(400);
+    // Flip the first hex digit to a DIFFERENT one (replacing it with a fixed digit was a no-op 1/16 of the time).
+    const tampered = header.replace(/v1=(.)/, (_m, d: string) => `v1=${d === "0" ? "1" : "0"}`);
+    expect((await postWebhook(h, raw, tampered)).status).toBe(400);
     expect((await postWebhook(h, raw, `t=1,v1=${header.split("v1=")[1]}`)).status).toBe(400);
 
     const first = await postWebhook(h, raw, header);

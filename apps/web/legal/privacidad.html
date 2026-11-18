@@ -8,19 +8,18 @@
     <link rel="canonical" href="__SITE_URL__/legal/privacidad" />
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
     <link rel="stylesheet" href="/src/landing/landing.css" />
-    <style>.legal{max-width:760px;margin:0 auto;padding:120px var(--gutter) 80px}.legal h1{font-family:var(--serif);font-weight:400;font-size:clamp(40px,6vw,72px);margin:0 0 12px}.legal h2{font-size:20px;margin:36px 0 8px}.legal h3{font-size:16px;margin:20px 0 6px}.legal p,.legal li{color:#c4c4cc}.legal ul{padding-left:20px}.legal li{margin:4px 0}.legal table{width:100%;border-collapse:collapse;font-size:14px;margin:8px 0}.legal th,.legal td{border-top:1px solid #2a2a33;padding:8px 6px;text-align:left;vertical-align:top;color:#c4c4cc}.legal th{color:#e8e8ee}.legal .tw{overflow-x:auto}.draft{border:1px solid var(--accent);color:var(--accent);padding:12px 16px;border-radius:12px;font-size:15px}</style>
+    <link rel="stylesheet" href="/src/landing/legal.css" />
   </head>
   <body>
     <header class="nav is-solid"><a class="brand" href="/"><span class="brand-mark" aria-hidden="true">DNI</span><span class="brand-word">Growth</span></a><a class="btn" href="/">Volver</a></header>
     <main class="legal" id="main">
       <h1>Política de privacidad</h1>
       <p>Última actualización: 18 de noviembre de 2026.</p>
-      <p class="draft">Pendiente de revisión legal: los datos identificativos del responsable y el correo de privacidad (entre corchetes) se completarán antes del lanzamiento comercial. El resto describe cómo funciona hoy la aplicación.</p>
-
       <p>DNI Growth (<a href="/">dnigrowth.com</a>) es un software de crecimiento digital para empresas y agencias: auditoría técnica de webs, perfil de marca, plan de crecimiento, asesor y estudio creativo con IA, y paneles de datos de Google Search Console y Google Analytics. Esta política explica qué datos personales tratamos cuando usas la web y la aplicación, para qué, con quién los compartimos, cuánto tiempo los guardamos y cómo ejercer tus derechos, conforme al Reglamento General de Protección de Datos (RGPD) y la Ley Orgánica 3/2018 (LOPDGDD).</p>
 
-      <h2>1. Responsable del tratamiento</h2>
-      <p>[Pendiente: razón social, NIF y domicilio del titular de DNI Growth]. Contacto de privacidad: [pendiente: correo de privacidad].</p>
+      <h2 id="responsable">1. Responsable del tratamiento</h2>
+      <!--LEGAL:RESPONSABLE-->
+      <p>No se ha designado delegado de protección de datos. Para cualquier cuestión sobre tus datos, usa el correo de privacidad indicado.</p>
 
       <h2>2. Qué datos tratamos</h2>
       <h3>Datos que nos das</h3>
@@ -93,7 +92,7 @@
         <li>Datos de facturación: el plazo que exija la normativa fiscal y mercantil.</li>
       </ul>
 
-      <h2>9. Cookies y almacenamiento en el navegador</h2>
+      <h2 id="cookies">9. Cookies y almacenamiento en el navegador</h2>
       <p>Solo usamos elementos técnicos necesarios para que el servicio funcione, que no requieren consentimiento:</p>
       <div class="tw"><table>
         <thead><tr><th>Nombre</th><th>Tipo</th><th>Para qué</th><th>Duración</th></tr></thead>
@@ -112,11 +111,17 @@
       <h2>11. Menores</h2>
       <p>DNI Growth es un servicio profesional y no está dirigido a menores de 14 años. No creamos cuentas a sabiendas para menores de esa edad.</p>
 
-      <h2>12. Tus derechos</h2>
-      <p>Puedes ejercer los derechos de acceso, rectificación, supresión, oposición, limitación del tratamiento y portabilidad, y retirar en cualquier momento las autorizaciones dadas (por ejemplo, desconectando Google), escribiendo a [pendiente: correo de privacidad] e indicando el derecho que ejerces. Muchos datos puedes verlos, corregirlos, exportarlos o borrarlos directamente desde la aplicación. Responderemos en el plazo de un mes. Si no estás de acuerdo con la respuesta, puedes reclamar ante la Agencia Española de Protección de Datos (<a href="https://www.aepd.es" rel="noopener">aepd.es</a>).</p>
+      <h2 id="derechos">12. Tus derechos</h2>
+      <p>Puedes ejercer los derechos de acceso, rectificación, supresión, oposición, limitación del tratamiento y portabilidad, y retirar en cualquier momento las autorizaciones dadas (por ejemplo, desconectando Google), escribiendo a __LEGAL_EMAIL_LINK__ (o por correo postal a la dirección del apartado 1) e indicando el derecho que ejerces; si no podemos confirmar tu identidad por el correo de la cuenta, podremos pedirte que la acredites. Desde la aplicación puedes ver y corregir tus datos de marca y de equipo, exportar planes, y desconectar Google borrando lo importado; la eliminación de la cuenta o de una organización se solicita por correo. Responderemos en el plazo de un mes. Si no estás de acuerdo con la respuesta, puedes reclamar ante la Agencia Española de Protección de Datos (<a href="https://www.aepd.es" rel="noopener">aepd.es</a>).</p>
 
       <h2>13. Cambios en esta política</h2>
       <p>Si cambiamos esta política de forma relevante (por ejemplo, al añadir un proveedor o un nuevo tipo de dato), actualizaremos la fecha de arriba y te avisaremos en la aplicación o por correo antes de que el cambio se aplique.</p>
     </main>
+    <nav class="legal-foot" aria-label="Páginas legales">
+      <a href="/">Inicio</a>
+      <a href="/legal/aviso-legal">Aviso legal</a>
+      <a href="/legal/privacidad" aria-current="page">Privacidad</a>
+      <a href="/legal/condiciones">Condiciones de uso</a>
+    </nav>
   </body>
 </html>

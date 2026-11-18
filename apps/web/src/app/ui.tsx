@@ -234,3 +234,14 @@ export function Progress({ value }: { value: number }) {
     </div>
   );
 }
+
+/** Links to the static legal pages (full page loads: they are not SPA routes). */
+export function LegalLinks({ className }: { className?: string }) {
+  return (
+    <nav aria-label="Páginas legales" className={cx("flex flex-wrap gap-x-4 gap-y-1 text-xs text-mute", className)}>
+      <a className="py-1 underline-offset-2 hover:text-ink hover:underline" href="/legal/aviso-legal">Aviso legal</a>
+      <a className="py-1 underline-offset-2 hover:text-ink hover:underline" href="/legal/privacidad">Privacidad</a>
+      <a className="py-1 underline-offset-2 hover:text-ink hover:underline" href="/legal/condiciones">Condiciones</a>
+    </nav>
+  );
+}
