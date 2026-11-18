@@ -126,7 +126,7 @@ export function DashboardPage() {
                   {data.recentJobs.map((j: any) => (
                     <li key={j.id}>
                       <Link to={`/o/${orgId}/jobs/${j.id}`} className="flex items-center justify-between gap-2 rounded-lg p-1 text-sm hover:bg-surface-2">
-                        <span>{j.kind === "gsc_sync" ? "Search Console" : "Auditoría web"} · {timeAgo(j.created_at)}</span>
+                        <span>{j.kind === "gsc_sync" ? "Search Console" : j.kind === "ga4_sync" ? "Google Analytics" : "Auditoría web"} · {timeAgo(j.created_at)}</span>
                         <Badge tone={JOB_STATE[j.state]?.tone}>{JOB_STATE[j.state]?.label ?? j.state}</Badge>
                       </Link>
                     </li>

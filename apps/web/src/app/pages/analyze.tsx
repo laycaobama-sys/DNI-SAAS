@@ -75,6 +75,11 @@ export function AnalyzePage() {
 }
 
 const ACTIVE = ["queued", "validating", "running"];
+/** Free read-only data syncs: label and panel path. */
+const SYNC_JOBS: Record<string, { label: string; path: string } | undefined> = {
+  gsc_sync: { label: "Search Console", path: "search-console" },
+  ga4_sync: { label: "Google Analytics", path: "analytics" },
+};
 
 export function JobPage() {
   const { orgId, jobId } = useParams();
@@ -95,12 +100,13 @@ export function JobPage() {
   if (!job) return null;
   const st = JOB_STATE[job.state] ?? { label: job.state, tone: "neutral" as const };
   const out = job.output;
+  const sync = SYNC_JOBS[job.kind];
 
   return (
     <>
       <PageHeader
-        eyebrow={job.kind === "gsc_sync" ? "Trabajo de agente · Search Console" : "Trabajo de agente · auditoría web"}
-        title={job.kind === "gsc_sync" ? "Sincronización de Search Console" : job.url ? new URL(job.url).hostname : "Auditoría"}
+        eyebrow={sync ? `Trabajo de agente · ${sync.label}` : "Trabajo de agente · auditoría web"}
+        title={sync ? `Sincronización de ${sync.label}` : job.url ? new URL(job.url).hostname : "Auditoría"}
         subtitle={`Creado ${fmtDate(job.created_at)} · intento ${job.attempts}/${job.max_attempts}`}
         actions={
           ACTIVE.includes(job.state) && (
@@ -128,28 +134,33 @@ export function JobPage() {
             </div>
             <Progress value={job.progress} />
             {job.state === "queued" && job.retry_after && <p className="mt-3 text-sm text-mute">Reintento programado {timeAgo(job.retry_after)} tras un error transitorio.</p>}
-            {job.kind === "gsc_sync" && job.state === "failed" && (
+            {sync && job.state === "failed" && (
               <div className="mt-4 space-y-3">
-                <Notice tone="warn" title="La sincronización con Search Console no se ha completado">
-                  {job.failure_code === "gsc_invalid_grant" || job.failure_code === "gsc_scope_not_granted"
-                    ? "Google retiró el permiso de lectura. Vuelve a conectar Search Console."
-                    : "Google no devolvió los datos tras varios intentos. No se ha consumido nada."}
+                <Notice tone="warn" title={`La sincronización con ${sync.label} no se ha completado`}>
+                  {/_(invalid_grant|scope_not_granted)$/.test(job.failure_code ?? "")
+                    ? `Google retiró el permiso de lectura. Vuelve a conectar ${sync.label}.`
+                    : /_property_not_allowed$/.test(job.failure_code ?? "")
+                      ? "La cuenta de Google conectada ya no puede leer esta propiedad."
+                      : "Google no devolvió los datos tras varios intentos. No se ha consumido nada."}
                   <span className="mt-1 block font-mono text-xs">{job.failure_code}</span>
                 </Notice>
-                <Link className="text-sm font-semibold text-accent-text" to={`/o/${orgId}/search-console`}>
-                  Ir a Search Console →
+                <Link className="text-sm font-semibold text-accent-text" to={`/o/${orgId}/${sync.path}`}>
+                  Ir a {sync.label} →
                 </Link>
               </div>
             )}
-            {job.kind === "gsc_sync" && job.state === "completed" && out && (
+            {sync && job.state === "completed" && out && (
               <p className="mt-4 text-sm text-mute">
-                {out.siteUrl}: {out.days} días, {out.queries} consultas y {out.pages} páginas importadas ({out.startDate} – {out.endDate}).{" "}
-                <Link className="font-semibold text-accent-text" to={`/o/${orgId}/search-console`}>
+                {job.kind === "gsc_sync"
+                  ? `${out.siteUrl}: ${out.days} días, ${out.queries} consultas y ${out.pages} páginas importadas`
+                  : `${out.property}: ${out.days} días, ${out.channels} canales y ${out.landingPages} páginas de entrada importadas`}{" "}
+                ({out.startDate} – {out.endDate}).{" "}
+                <Link className="font-semibold text-accent-text" to={`/o/${orgId}/${sync.path}`}>
                   Ver panel →
                 </Link>
               </p>
             )}
-            {job.kind !== "gsc_sync" && job.state === "failed" && (
+            {!sync && job.state === "failed" && (
               <div className="mt-4 space-y-3">
                 <Notice tone="warn" title="La auditoría no se ha podido completar">
                   {job.failure_code?.startsWith("url_blocked")
@@ -172,7 +183,7 @@ export function JobPage() {
                 </Button>
               </div>
             )}
-            {job.kind !== "gsc_sync" && job.state === "completed" && out && (
+            {!sync && job.state === "completed" && out && (
               <div className="mt-6 grid gap-4 sm:grid-cols-3">
                 <Stat label="Páginas analizadas" value={out.pages} />
                 <Stat label="Hallazgos" value={out.issues} />
@@ -246,7 +257,7 @@ export function JobsPage() {
                 <tr key={j.id} className="border-b border-line last:border-0 hover:bg-surface-2">
                   <td className="px-4 py-3">
                     <Link className="font-medium hover:underline" to={`/o/${orgId}/jobs/${j.id}`}>
-                      {j.kind === "gsc_sync" ? "Search Console · sincronización" : `Auditoría · ${j.url ? new URL(j.url).hostname : "—"}`}
+                      {SYNC_JOBS[j.kind] ? `${SYNC_JOBS[j.kind]!.label} · sincronización` : `Auditoría · ${j.url ? new URL(j.url).hostname : "—"}`}
                     </Link>
                   </td>
                   <td className="px-4 py-3">

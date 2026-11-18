@@ -1,13 +1,11 @@
 import { Hono, type Context } from "hono";
-import { setCookie } from "hono/cookie";
 import { z } from "zod";
-import { can, isRole, maskEmail, randomToken, sha256Hex } from "@dni/core";
+import { can } from "@dni/core";
 import type { AppEnv } from "../env";
 import { auditStmt } from "../lib/audit";
+import { GSC_SOURCE } from "../lib/google";
 import {
   GSC_PROVIDER,
-  GSC_SCOPE,
-  GSC_STATE_PROVIDER,
   GscError,
   gscReady,
   gscSyncJobStatements,
@@ -16,30 +14,14 @@ import {
   accessTokenFromRefresh,
   markReauth,
   READABLE_PERMISSIONS,
-  revokeToken,
-  sealRefreshToken,
   storeProperties,
 } from "../lib/gsc";
 import { ApiError, notFound, parseBody } from "../lib/http";
 import { rateLimit } from "../lib/ratelimit";
 import { dispatchOutbox } from "../jobs/queue";
 import { requireScope } from "../middleware";
-import { addSeconds, log, nowIso, uuid } from "../lib/util";
-import { validateIdToken } from "./oauth";
-
-const AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth";
-const TOKEN_URL = "https://oauth2.googleapis.com/token";
-const STATE_COOKIE = "dni_oauth_state";
-const STATE_TTL = 600;
-
-const b64url = (buf: ArrayBuffer | Uint8Array) =>
-  btoa(String.fromCharCode(...new Uint8Array(buf instanceof Uint8Array ? buf : new Uint8Array(buf))))
-    .replace(/\+/g, "-")
-    .replace(/\//g, "_")
-    .replace(/=+$/, "");
-
-const panelPath = (orgId: string) => `/app/o/${orgId}/search-console`;
-const secure = (c: Context<AppEnv>) => c.env.ENVIRONMENT !== "development" && c.env.ENVIRONMENT !== "test";
+import { uuid } from "../lib/util";
+import { completeGoogleConnect, disconnectGoogle, startGoogleConnect } from "./googleConnect";
 
 /** Caveats shown next to every Search Console figure. */
 export const GSC_CAVEATS = [
@@ -145,128 +127,22 @@ searchConsole.get("/search-console", requireScope("audit_results:read"), async (
 });
 
 /** Starts Google consent for the read-only Search Console scope. Returns the URL; the SPA navigates. */
-searchConsole.post("/search-console/connect", requireScope("integrations:manage"), async (c) => {
-  const t = c.get("tenant");
-  if (!gscReady(c.env)) throw new ApiError(503, "gsc_not_configured", "La conexión con Google no está configurada en este entorno.");
-  await rateLimit(c.env.DB, `gsc-connect:${t.orgId}`, 10, 3600);
-  const state = randomToken(32);
-  const nonce = randomToken(16);
-  const verifier = b64url(crypto.getRandomValues(new Uint8Array(48)));
-  const challenge = b64url(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(verifier)));
-  await c.env.DB.batch([
-    c.env.DB.prepare("DELETE FROM oauth_states WHERE expires_at < ?").bind(nowIso()),
-    c.env.DB.prepare("INSERT INTO oauth_states (id, provider, code_verifier, nonce, next_path, expires_at, organization_id, user_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)").bind(
-      await sha256Hex(state),
-      GSC_STATE_PROVIDER,
-      verifier,
-      nonce,
-      panelPath(t.orgId),
-      addSeconds(STATE_TTL),
-      t.orgId,
-      t.userId,
-    ),
-  ]);
-  setCookie(c, STATE_COOKIE, state, { httpOnly: true, secure: secure(c), sameSite: "Lax", path: "/api/v1/auth/google", maxAge: STATE_TTL });
-  const url = new URL(AUTH_URL);
-  url.search = new URLSearchParams({
-    client_id: c.env.GOOGLE_CLIENT_ID!,
-    redirect_uri: `${c.env.APP_ORIGIN}/api/v1/auth/google/callback`,
-    response_type: "code",
-    scope: `openid email ${GSC_SCOPE}`,
-    state,
-    nonce,
-    code_challenge: challenge,
-    code_challenge_method: "S256",
-    access_type: "offline",
-    prompt: "consent select_account",
-  }).toString();
-  return c.json({ url: url.toString() });
-});
+searchConsole.post("/search-console/connect", requireScope("integrations:manage"), (c) => startGoogleConnect(c, GSC_SOURCE));
 
-/**
- * Second half of the connect flow, called from the shared Google callback once the one-time state
- * row has been consumed. The session user must be the one who started it and must still be allowed
- * to manage integrations in that organization.
- */
-export async function completeGscConnect(
+/** Shared Google callback → Search Console: stores the encrypted grant and lists the account's properties. */
+export function completeGscConnect(
   c: Context<AppEnv>,
   row: { code_verifier: string; nonce: string; organization_id: string | null; user_id: string | null },
   code: string | null,
 ) {
-  const orgId = row.organization_id ?? "";
-  const back = (q: string) => c.redirect(`${panelPath(orgId)}?${q}`, 302);
-  const fail = (code: string) => {
-    log("warn", "gsc.connect_failed", { code, requestId: c.get("requestId") });
-    return /^[0-9a-f-]{36}$/.test(orgId) ? back(`gsc_error=${encodeURIComponent(code)}`) : c.redirect("/app/", 302);
-  };
-  const user = c.get("user");
-  if (!user || !row.user_id || user.id !== row.user_id) return fail("session_mismatch");
-  const m = await c.env.DB.prepare("SELECT role FROM memberships WHERE organization_id = ? AND user_id = ? AND status = 'active'").bind(orgId, user.id).first<{ role: string }>();
-  if (!m || !isRole(m.role) || !can(m.role, "integrations:manage")) return fail("forbidden");
-  if (!gscReady(c.env)) return fail("not_configured");
-  if (!code) return fail("google_denied");
-  if (code.length > 2048) return fail("missing_code");
-
-  let tok: { access_token?: string; refresh_token?: string; scope?: string; id_token?: string };
-  try {
-    const res = await c.get("deps").fetchImpl(TOKEN_URL, {
-      method: "POST",
-      headers: { "content-type": "application/x-www-form-urlencoded", accept: "application/json" },
-      body: new URLSearchParams({
-        grant_type: "authorization_code",
-        code,
-        client_id: c.env.GOOGLE_CLIENT_ID!,
-        client_secret: c.env.GOOGLE_CLIENT_SECRET!,
-        redirect_uri: `${c.env.APP_ORIGIN}/api/v1/auth/google/callback`,
-        code_verifier: row.code_verifier,
-      }).toString(),
-    });
-    if (!res.ok) return fail("token_exchange_failed");
-    tok = (await res.json()) as typeof tok;
-  } catch {
-    return fail("token_exchange_failed");
-  }
-  if (!tok.id_token || !tok.access_token) return fail("token_exchange_failed");
-  const claims = validateIdToken(c.env, tok.id_token, row.nonce);
-  if ("error" in claims) return fail(claims.error);
-  // Granular consent: the user may untick the Search Console permission.
-  if (!(tok.scope ?? "").split(" ").includes(GSC_SCOPE)) return fail("scope_not_granted");
-  if (!tok.refresh_token) return fail("no_refresh_token");
-
-  const db = c.env.DB;
-  const existing = await db.prepare("SELECT id FROM integrations WHERE organization_id = ? AND provider = ?").bind(orgId, GSC_PROVIDER).first<{ id: string }>();
-  const integrationId = existing?.id ?? uuid();
-  const secretId = uuid();
-  const sealed = await sealRefreshToken(c.env, orgId, integrationId, tok.refresh_token);
-  const scopes = JSON.stringify([GSC_SCOPE]);
-  await db.batch([
-    existing
-      ? db
-          .prepare("UPDATE integrations SET status = 'connected', scopes_json = ?, account_ref = ?, secret_ref = ?, last_error = NULL WHERE organization_id = ? AND id = ?")
-          .bind(scopes, claims.email, `integration_secrets:${secretId}`, orgId, integrationId)
-      : db
-          .prepare("INSERT INTO integrations (id, organization_id, provider, status, scopes_json, account_ref, secret_ref) VALUES (?, ?, ?, 'connected', ?, ?, ?)")
-          .bind(integrationId, orgId, GSC_PROVIDER, scopes, claims.email, `integration_secrets:${secretId}`),
-    db.prepare("DELETE FROM integration_secrets WHERE organization_id = ? AND integration_id = ?").bind(orgId, integrationId),
-    db.prepare("INSERT INTO integration_secrets (id, organization_id, integration_id, ciphertext) VALUES (?, ?, ?, ?)").bind(secretId, orgId, integrationId, sealed),
-    auditStmt(db, {
-      organizationId: orgId,
-      actorUserId: user.id,
-      action: "integration.connect",
-      entityType: "integration",
-      entityId: integrationId,
-      after: { provider: GSC_PROVIDER, account: maskEmail(claims.email), scopes: [GSC_SCOPE] },
-      requestId: c.get("requestId"),
-    }),
-  ]);
-  try {
-    await storeProperties(db, orgId, integrationId, await listSites(c.get("deps"), tok.access_token));
-  } catch (e) {
-    const codeStr = e instanceof GscError ? e.code : "sites_list_failed";
-    await db.prepare("UPDATE integrations SET last_error = ? WHERE organization_id = ? AND id = ?").bind(`sites:${codeStr}`, orgId, integrationId).run();
-    return back(`gsc=connected&gsc_error=${encodeURIComponent(`sites_${codeStr}`)}`);
-  }
-  return back("gsc=connected");
+  return completeGoogleConnect(
+    c,
+    GSC_SOURCE,
+    row,
+    code,
+    async (accessToken, orgId, integrationId) => storeProperties(c.env.DB, orgId, integrationId, await listSites(c.get("deps"), accessToken)),
+    "sites",
+  );
 }
 
 /** Re-reads the properties the connected account can access (e.g. after adding one in Search Console). */
@@ -275,7 +151,7 @@ searchConsole.post("/search-console/properties/refresh", requireScope("integrati
   const db = c.env.DB;
   await rateLimit(db, `gsc-props:${t.orgId}`, 20, 3600);
   const conn = await loadConnection(c.env, t.orgId).catch((e) => {
-    throw new ApiError(409, "gsc_not_connected", "Conecta Search Console primero.", { code: e instanceof GscError ? e.code : "error" });
+    throw new ApiError(409, "gsc_not_connected", "Conecta Search Console primero.", { reason: e instanceof GscError ? e.code : "error" });
   });
   try {
     const token = await accessTokenFromRefresh(c.env, c.get("deps"), conn.refreshToken);
@@ -288,7 +164,7 @@ searchConsole.post("/search-console/properties/refresh", requireScope("integrati
       throw new ApiError(409, "gsc_reauth_required", "Google retiró el permiso. Vuelve a conectar Search Console.");
     }
     await db.prepare("UPDATE integrations SET last_error = ? WHERE organization_id = ? AND id = ?").bind(`sites:${code}`, t.orgId, conn.integrationId).run();
-    throw new ApiError(502, "gsc_upstream_error", "Google no devolvió la lista de propiedades. Inténtalo más tarde.", { code });
+    throw new ApiError(502, "gsc_upstream_error", "Google no devolvió la lista de propiedades. Inténtalo más tarde.", { reason: code });
   }
   return c.json({ ok: true });
 });
@@ -338,26 +214,7 @@ searchConsole.post("/search-console/sync", requireScope("integrations:manage"), 
  * Disconnect: Google is asked to revoke the grant (best effort), the encrypted token is deleted and
  * the connection marked disconnected. Imported observed data stays unless `purge=true`.
  */
-searchConsole.delete("/search-console", requireScope("integrations:manage"), async (c) => {
-  const t = c.get("tenant");
-  const db = c.env.DB;
-  const purge = c.req.query("purge") === "true";
-  const row = await db.prepare("SELECT id FROM integrations WHERE organization_id = ? AND provider = ?").bind(t.orgId, GSC_PROVIDER).first<{ id: string }>();
-  if (!row) throw notFound("Conexión");
-  let revoked: boolean;
-  try {
-    const conn = await loadConnection(c.env, t.orgId);
-    revoked = await revokeToken(c.get("deps"), conn.refreshToken);
-  } catch {
-    revoked = false; // nothing usable to revoke (already disconnected or reauth needed)
-  }
-  await db.batch([
-    db.prepare("DELETE FROM integration_secrets WHERE organization_id = ? AND integration_id = ?").bind(t.orgId, row.id),
-    db.prepare("UPDATE integrations SET status = 'disconnected', secret_ref = NULL, last_error = NULL WHERE organization_id = ? AND id = ?").bind(t.orgId, row.id),
-    db.prepare("UPDATE jobs SET cancel_requested_at = ? WHERE organization_id = ? AND kind = 'gsc_sync' AND state IN ('queued','validating','running') AND cancel_requested_at IS NULL").bind(nowIso(), t.orgId),
-    ...(purge ? [db.prepare("DELETE FROM gsc_properties WHERE organization_id = ?").bind(t.orgId)] : []),
-    auditStmt(db, { organizationId: t.orgId, actorUserId: t.userId, action: "integration.disconnect", entityType: "integration", entityId: row.id, after: { provider: GSC_PROVIDER, revokedAtGoogle: revoked, dataPurged: purge }, requestId: c.get("requestId") }),
-  ]);
-  return c.json({ ok: true, revokedAtGoogle: revoked, dataPurged: purge });
-});
+searchConsole.delete("/search-console", requireScope("integrations:manage"), (c) =>
+  disconnectGoogle(c, GSC_SOURCE, (orgId) => [c.env.DB.prepare("DELETE FROM gsc_properties WHERE organization_id = ?").bind(orgId)]),
+);
 

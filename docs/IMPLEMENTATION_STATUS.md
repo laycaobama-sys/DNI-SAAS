@@ -88,20 +88,32 @@ Pruebas E2E en producción del 2026-11-18 con la cuenta verificada de la titular
 | Funcionalidad | Estado | Prueba |
 |---|---|---|
 | Panel sin cuenta conectada: ausencia visible, ninguna cifra | VERIFICADO EN PRODUCCIÓN | `/app/o/…/search-console` (versión d5b448f0): «Sin cuenta de Search Console conectada… No estimamos ni inventamos clics» |
-| OAuth de solo lectura y conexión | VERIFICADO EN PRODUCCIÓN | 2026-11-18: la titular concedió `webmasters.readonly` (antes, Google devolvió `403 access_denied` hasta añadirla como usuaria de prueba: la app de Google sigue en modo «Pruebas»). Integración `connected`; auditoría `integration.connect` con la cuenta enmascarada |
+| OAuth de solo lectura y conexión | VERIFICADO EN PRODUCCIÓN | 2026-11-18: la titular concedió `webmasters.readonly` (antes, Google devolvió `403 access_denied` hasta añadirla como usuaria de prueba; la app de Google se publicó en producción el mismo día). Integración `connected`; auditoría `integration.connect` con la cuenta enmascarada |
 | Token de actualización solo cifrado | VERIFICADO EN PRODUCCIÓN | `integration_secrets`: sobre `v1.` de 332 caracteres, sin forma de token de Google; la respuesta de `/search-console` no contiene ni el sobre ni ningún token |
 | Propiedades permitidas | VERIFICADO EN PRODUCCIÓN | `sites.list` real: 4 propiedades `siteOwner`; ninguna se elige sola si hay varias; se eligió `https://dnigrowth.com/` (auditoría `integration.gsc_property_select`) |
 | Sincronización (trabajo `gsc_sync`) | VERIFICADO EN PRODUCCIÓN | completado al primer intento en 5 s, 0 créditos, sin filas en el libro de créditos; Google devolvió **0 filas** del 2026-08-20 al 2026-11-17 (`dataState=final`) para dnigrowth.com, sitio recién añadido. El panel lo dice así, sin estimaciones |
 | Panel con cifras (gráfico, tabla, consultas/páginas, comparación) | VERIFICADO SOLO EN LOCAL | `wrangler dev` con datos de prueba locales (`demo.example`, borrados después): gráfico de una sola serie con detalle al pasar el ratón, vista de tabla (58 días), sin desplazamiento horizontal en 375 px. En producción se verá cuando Google publique datos de la propiedad |
 | Desconectar con revocación, `invalid_grant`, roles, aislamiento, cron diario | VERIFICADO SOLO EN LOCAL | `searchconsole.test.ts` (14): token nunca en claro en D1/auditoría/eventos, roles (editor/analista/lector 403), aislamiento entre organizaciones, sesión distinta y consentimiento parcial rechazados, `state` no reutilizable, `invalid_grant` → volver a conectar, cron diario idempotente, 0 créditos |
 
+## F3 — Google Analytics 4 (nuevo, [ADR 0011](adr/0011-google-analytics-solo-lectura.md))
+
+| Funcionalidad | Estado | Prueba |
+|---|---|---|
+| Migración 0009 (tablas `ga4_*`, índice de una conexión por organización) | VERIFICADO EN PRODUCCIÓN | aplicada el 2026-11-18 tras la copia `backups/dni-growth-db-pre-0009-20261118-1301.sql`; solo añade |
+| Panel sin cuenta conectada: ausencia visible, ninguna cifra | VERIFICADO EN PRODUCCIÓN | `/app/o/…/analytics` (versión ab2bbe5a): «Sin cuenta de Google Analytics conectada… No estimamos ni inventamos visitas» |
+| Inicio del OAuth de solo lectura | VERIFICADO EN PRODUCCIÓN (apertura) | «Conectar con Google» → `accounts.google.com` acepta la petición: `scope=openid email analytics.readonly`, `access_type=offline`, PKCE S256, callback `https://dnigrowth.com/api/v1/auth/google/callback`. Consentimiento pendiente de la titular |
+| Conexión, token cifrado, propiedades permitidas, sincronización (diarios, totales por periodo, canales, páginas de entrada), umbrales/muestreo, desconectar con revocación, roles, aislamiento, cron | VERIFICADO SOLO EN LOCAL | `analytics.test.ts` (13): token nunca en claro, sobres intercambiados ilegibles, usuarios del periodo leídos de GA4 (no suma diaria), propiedad sin acceso no se elige ni se sincroniza, `invalid_grant` → volver a conectar, purga, 0 créditos |
+| Política de privacidad: datos de usuario de Google y uso limitado | VERIFICADO EN PRODUCCIÓN (pendiente de revisión legal) | `https://dnigrowth.com/legal/privacidad` (versión bfe01bbc) muestra la sección «Datos de usuario de Google»: qué se lee con cada permiso, uso, cifrado, revocación y Limited Use; `llms.txt` lista Search Console y GA4 como disponibles |
+| Search Console tras compartir el código con GA4 | VERIFICADO EN PRODUCCIÓN | versión bfe01bbc: `/search-console` 200, conexión `connected`, propiedad `https://dnigrowth.com/` conservada, sin token ni sobre en la respuesta |
+
 ## NO IMPLEMENTADO (fases siguientes)
-Keywords con proveedor licenciado (F2), GA4 dentro de la app y monitor de visibilidad IA (F3), Video Studio (F4), Landings y CRM (F5), Meta Ads con Spend Guardian (F6), experimentos (F7), agencia/white label, 2FA y SSO (F8), cobros con Stripe ([plan](STRIPE_PLAN.md)).
+Keywords con proveedor licenciado (F2), monitor de visibilidad IA (F3), Video Studio (F4), Landings y CRM (F5), Meta Ads con Spend Guardian (F6), experimentos (F7), agencia/white label, 2FA y SSO (F8), cobros con Stripe ([plan](STRIPE_PLAN.md)).
 
 ## Bloqueos que requieren al titular
 | Bloqueo | Acción mínima |
 |---|---|
 | Confirmar el perfil de marca | Revisar los datos en la pantalla de Marca y confirmar |
-| Search Console para clientes | La app de Google está en modo «Pruebas»: solo entran usuarios de prueba. Para clientes: «Publicar app» en Google Auth Platform → Público y solicitar la verificación del permiso sensible `webmasters.readonly` (sin coste) |
+| Search Console y Analytics para clientes | App de Google publicada en producción (2026-11-18) pero sin verificar: aviso de «app no verificada» y tope de 100 usuarios. Para quitarlo: solicitar en Google Auth Platform la verificación de `webmasters.readonly` y `analytics.readonly` (sin coste; Google pide un vídeo de demostración y la política de privacidad, ya actualizada) |
+| Conectar Google Analytics | Pulsar «Conectar con Google» en Analytics, conceder el permiso de lectura y elegir la propiedad de DNI Growth (no la de otras marcas) |
 | Stripe (cobros reales) | Modo prueba listo y verificado. Para cobrar: activar la cuenta «DNI Growth» (KYC), textos legales con datos fiscales, decidir IVA, guardar la clave `sk_live_…` con `wrangler secret put`, «Sincronizar» y `BILLING_ENABLED="true"` ([pasos](STRIPE_PLAN.md#3-antes-de-cobrar-dinero-real-decisión-de-la-titular)). La suscripción de prueba Starter queda con cancelación programada (sin dinero real) |
 | Textos legales definitivos | Datos fiscales del titular |

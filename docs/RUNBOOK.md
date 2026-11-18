@@ -96,7 +96,9 @@ Copias exportadas antes de cada migración en `backups/` (fuera de git).
 
 ## Despliegue 2026-11-18 (dominio + Model Hub + Content Studio)
 - Versión actual: `286b5a81-6ead-4114-928f-a566e48c4718` · anterior: `11831c6d-b194-4d2e-9810-d7631a9e0d1d`.
-- Versión actual (ajustes del panel de Search Console): `dd5caec3-b99f-4d80-ab49-ba871406cde5` · anterior `d5b448f0-41dd-4306-8680-592b0972e630`.
+- Versión actual (GA4 + política de privacidad con datos de Google): `bfe01bbc-dae4-4b30-bbb9-c24ef4cae12c` · anterior `ab2bbe5a-6081-4e35-886e-83cbba110f67`.
+- Versión con Google Analytics 4 (F3): `ab2bbe5a-6081-4e35-886e-83cbba110f67` · anterior `dd5caec3-b99f-4d80-ab49-ba871406cde5` (compatible con la migración 0009: solo añade tablas e índice). Copia previa: `backups/dni-growth-db-pre-0009-20261118-1301.sql`.
+- Versión anterior (ajustes del panel de Search Console): `dd5caec3-b99f-4d80-ab49-ba871406cde5` · anterior `d5b448f0-41dd-4306-8680-592b0972e630`.
 - Versión con Search Console (F3): `d5b448f0-41dd-4306-8680-592b0972e630` · anterior `73543193-44d6-4e24-a483-9e0337c910d2` (compatible con la migración 0008: solo añade tablas y columnas). Copia previa: `backups/dni-growth-db-pre-0008-20261118-1158.sql`.
 - Versión con Stripe completo y cancelación programada: `73543193-44d6-4e24-a483-9e0337c910d2` · anterior `88123eb7-3969-4089-9d66-92914ebe3c83` (compatible con la migración 0007: la columna nueva tiene valor por defecto).
 - Copia de D1 previa a 0007: `backups/dni-growth-db-pre-0007-20261118-0321.sql` (fuera de git).

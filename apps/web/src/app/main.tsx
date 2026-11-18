@@ -1,3 +1,4 @@
+import { AnalyticsPage } from "./pages/analytics";
 import { SearchConsolePage } from "./pages/searchconsole";
 import { StrictMode, type ReactNode } from "react";
 import { createRoot } from "react-dom/client";
@@ -78,6 +79,7 @@ function App() {
           <Route path="billing" element={<BillingPage />} />
           <Route path="integrations" element={<IntegrationsPage />} />
           <Route path="search-console" element={<SearchConsolePage />} />
+          <Route path="analytics" element={<AnalyticsPage />} />
           <Route path="audit-log" element={<AuditLogPage />} />
           <Route path="m/:moduleKey" element={<ModulePage />} />
           <Route path="*" element={<NotFoundPage />} />

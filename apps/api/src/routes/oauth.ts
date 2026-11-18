@@ -5,7 +5,9 @@ import type { AppEnv, Env } from "../env";
 import { auditStmt } from "../lib/audit";
 import { mailMode } from "../lib/mail";
 import { rateLimit } from "../lib/ratelimit";
+import { GA4_STATE_PROVIDER } from "../lib/ga4";
 import { GSC_STATE_PROVIDER } from "../lib/gsc";
+import { completeGa4Connect } from "./analytics";
 import { completeGscConnect } from "./searchConsole";
 import { createSession } from "../lib/session";
 import { addSeconds, hashIp, log, nowIso, uuid } from "../lib/util";
@@ -128,14 +130,15 @@ oauth.get("/google/callback", async (c) => {
   if (!/^[0-9a-f]{64}$/.test(state) || !cookieState || !timingSafeEqual(state, cookieState)) return fail(c, denied ? "google_denied" : "state_mismatch");
 
   // One-time consumption of the state row (replay-safe). The same registered callback serves
-  // sign-in ("google") and integration connects ("google_gsc"), told apart by the state row.
+  // sign-in ("google") and integration connects ("google_gsc", "google_ga4"), told apart by the state row.
   const row = await c.env.DB.prepare(
-    "DELETE FROM oauth_states WHERE id = ? AND provider IN ('google', ?) AND expires_at > ? RETURNING provider, code_verifier, nonce, next_path, organization_id, user_id",
+    "DELETE FROM oauth_states WHERE id = ? AND provider IN ('google', ?, ?) AND expires_at > ? RETURNING provider, code_verifier, nonce, next_path, organization_id, user_id",
   )
-    .bind(await sha256Hex(state), GSC_STATE_PROVIDER, nowIso())
+    .bind(await sha256Hex(state), GSC_STATE_PROVIDER, GA4_STATE_PROVIDER, nowIso())
     .first<{ provider: string; code_verifier: string; nonce: string; next_path: string; organization_id: string | null; user_id: string | null }>();
   if (!row) return fail(c, denied ? "google_denied" : "state_expired");
   if (row.provider === GSC_STATE_PROVIDER) return completeGscConnect(c, row, denied ? null : code);
+  if (row.provider === GA4_STATE_PROVIDER) return completeGa4Connect(c, row, denied ? null : code);
   if (denied) return fail(c, "google_denied");
   if (!code || code.length > 2048) return fail(c, "missing_code");
 
