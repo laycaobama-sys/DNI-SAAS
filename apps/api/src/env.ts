@@ -41,6 +41,15 @@ export interface Env {
   GOOGLE_CLIENT_SECRET?: string;
   OPENROUTER_API_KEY?: string;
   GEMINI_API_KEY?: string;
+  /** Optional free Groq key (secret). If present, Groq is the first free fallback after Workers AI. */
+  GROQ_API_KEY?: string;
+  /** Own daily cap for Groq requests (default 1000, below the free plan limits). */
+  GROQ_DAILY_REQUESTS?: string;
+  /** Gemini model for text fallback (free tier) and its own daily cap (default 100, leaves room for the GEO monitor). */
+  GEMINI_TEXT_MODEL?: string;
+  GEMINI_TEXT_DAILY?: string;
+  /** Optional: put this catalogued Workers AI text model first. */
+  WORKERS_AI_TEXT_MODEL?: string;
   /** GEO monitor caps (Gemini free tier). Defaults: 150/day platform, 40/day per organization, 20 per run, 4.5 s between calls. */
   GEO_SAMPLES_DAILY_GLOBAL?: string;
   GEO_SAMPLES_DAILY_ORG?: string;

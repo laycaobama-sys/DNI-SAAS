@@ -4,7 +4,7 @@
  * conservative policy for image prompts.
  */
 
-export type AiProviderKey = "workers_ai" | "openrouter" | "gemini";
+export type AiProviderKey = "workers_ai" | "openrouter" | "gemini" | "groq";
 
 export interface TextModel {
   provider: AiProviderKey;
@@ -14,14 +14,29 @@ export interface TextModel {
   outputPerM: number;
   /** Reasoning models spend output tokens thinking before answering: give them more room. */
   reasoning?: boolean;
+  /** Model accepts `chat_template_kwargs.enable_thinking=false`: we switch thinking off to save free quota. */
+  thinkingSwitch?: boolean;
 }
 
-/** Workers AI text models in fallback order. Models with a planned deprecation are excluded. */
+/**
+ * Workers AI text models in fallback order (catalogue checked 2026-11-18 with `wrangler ai models list`).
+ * Cheapest current models first, thinking disabled, no planned deprecation. The old
+ * `@cf/meta/llama-3.1-8b-instruct-fp8-fast` is no longer in the catalogue and its `-fp8` sibling is
+ * deprecated on 2026-11-20, so it is not used.
+ */
 export const WORKERS_AI_TEXT_MODELS: TextModel[] = [
-  { provider: "workers_ai", model: "@cf/google/gemma-4-26b-a4b-it", inputPerM: 0.1, outputPerM: 0.3, reasoning: true },
-  { provider: "workers_ai", model: "@cf/mistralai/mistral-small-3.1-24b-instruct", inputPerM: 0.351, outputPerM: 0.555 },
-  { provider: "workers_ai", model: "@cf/meta/llama-4-scout-17b-16e-instruct", inputPerM: 0.27, outputPerM: 0.85 },
+  { provider: "workers_ai", model: "@cf/google/gemma-4-26b-a4b-it", inputPerM: 0.1, outputPerM: 0.3, thinkingSwitch: true },
+  { provider: "workers_ai", model: "@cf/zai-org/glm-4.7-flash", inputPerM: 0.0605, outputPerM: 0.4, thinkingSwitch: true },
 ];
+
+/** Workers AI bills $0.011 per 1,000 Neurons; 10,000 Neurons/day are free (resets 00:00 UTC). */
+export const WORKERS_AI_USD_PER_NEURON = 0.011 / 1000;
+export const WORKERS_AI_FREE_NEURONS_PER_DAY = 10_000;
+export const usdToNeurons = (usd: number) => Math.round(usd / WORKERS_AI_USD_PER_NEURON);
+
+/** Free fallback providers (used only when their key exists; never with sensitive data). */
+export const GROQ_TEXT_MODEL = "llama-3.1-8b-instant";
+export const GEMINI_TEXT_MODEL_DEFAULT = "gemini-3.5-flash-lite";
 
 /** Image model: Workers AI FLUX.1 schnell, priced per 512×512 tile per step. */
 export const WORKERS_AI_IMAGE_MODEL = { model: "@cf/black-forest-labs/flux-1-schnell", usdPerTileStep: 0.0000528, steps: 4, tiles: 4 } as const;

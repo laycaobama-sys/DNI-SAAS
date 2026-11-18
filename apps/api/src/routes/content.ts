@@ -10,7 +10,7 @@ import {
   type ContentKind,
 } from "@dni/core";
 import type { AppEnv } from "../env";
-import { AiUnavailableError, generateText, SelectedModelFailedError } from "../lib/ai";
+import { aiApiError, generateText } from "../lib/ai";
 import { auditStmt } from "../lib/audit";
 import { ensureMonthlyGrant, orgPlan, reserveCredits, usageLedgerStmt } from "../lib/billing";
 import { ApiError, assertUuid, parseBody } from "../lib/http";
@@ -68,19 +68,7 @@ const view = (r: ContentRow) => ({
   measurement: "Borrador generado por IA a partir de tus datos; requiere revisión humana antes de publicar.",
 });
 
-const aiError = (e: unknown): ApiError => {
-  if (e instanceof SelectedModelFailedError)
-    return new ApiError(503, "selected_model_failed", "El modelo gratuito que elegiste no ha respondido. No se ha cobrado ningún crédito. ¿Quieres usar el respaldo automático?", { attempts: e.attempts });
-  if (e instanceof AiUnavailableError)
-    return new ApiError(
-      503,
-      "ai_unavailable",
-      e.openRouterQuotaExhausted
-        ? "La cuota gratuita de OpenRouter se ha agotado y los respaldos no están disponibles ahora. No se ha cobrado ningún crédito. Inténtalo más tarde."
-        : "Los modelos de IA no están disponibles en este momento. No se ha cobrado ningún crédito. Inténtalo más tarde.",
-    );
-  return e as ApiError;
-};
+const aiError = (e: unknown): ApiError => aiApiError(e) as ApiError;
 
 export const content = new Hono<AppEnv>();
 
@@ -128,7 +116,7 @@ content.post("/content", requireScope("content:write"), async (c) => {
     throw aiError(e);
   }
   const now = nowIso();
-  const brief = { angle: input.angle, sources: input.sources, generatedWith: { provider: result.provider, model: result.model, servedModel: result.servedModel ?? null, fallback: result.fallback } };
+  const brief = { angle: input.angle, sources: input.sources, generatedWith: { provider: result.provider, model: result.model, servedModel: result.servedModel ?? null, fallback: result.fallback, cached: result.cached } };
   await db.batch([
     db
       .prepare(

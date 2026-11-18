@@ -31,10 +31,13 @@ function catalog(overrides: Record<string, unknown> = {}) {
 
 type ChatHandler = (body: { model: string; provider?: { max_price?: Record<string, number>; data_collection?: string } }) => Response;
 
+// Workers AI is the PRIMARY engine of the AI service. These tests exercise the OpenRouter route,
+// so by default there is no Workers AI binding (OpenRouter is then the free provider that answers).
+// Pass `wai` to add a Workers AI binding that answers ("ok") or fails ("fail").
 async function setup(opts: { chat?: ChatHandler; models?: unknown[]; key?: boolean; wai?: "ok" | "fail" } = {}) {
   const h = createHarness();
   const waiCalls: string[] = [];
-  Object.assign(h.env, {
+  if (opts.wai) Object.assign(h.env, {
     AI: {
       async run(model: string) {
         waiCalls.push(model);
@@ -66,8 +69,10 @@ async function setup(opts: { chat?: ChatHandler; models?: unknown[]; key?: boole
 }
 
 const sync = (h: ReturnType<typeof createHarness>) => syncOpenRouterCatalog(h.env, h.deps, { force: true });
+// Each question is unique so the 24 h response cache never hides a provider call in these tests.
+let askN = 0;
 const ask = (c: { post: (p: string, b?: unknown) => Promise<{ status: number; json: any }> }, orgId: string, extra: Record<string, unknown> = {}) =>
-  c.post(`/api/v1/orgs/${orgId}/advisor`, { question: "¿Qué hago primero?", ...extra });
+  c.post(`/api/v1/orgs/${orgId}/advisor`, { question: `¿Qué hago primero? (${++askN})`, ...extra });
 
 describe("OpenRouter catalogue sync and classification", () => {
   it("stores only :free ids + the free router, classifies hidden fees, and sanitises descriptions", async () => {
@@ -95,17 +100,15 @@ describe("OpenRouter catalogue sync and classification", () => {
   });
 
   it("a price change on the next sync blocks the model immediately and logs the change", async () => {
-    const { h, owner, orgId, chatCalls, setModels, waiCalls } = await setup();
+    const { h, owner, orgId, chatCalls, setModels } = await setup();
     await sync(h);
     const changed = catalog().map((m) => (m.id === FREE_A || m.id === FREE_B ? { ...m, pricing: { prompt: "0.000001", completion: "0" } } : m));
     setModels(changed.filter((m) => m.id !== "openrouter/free"));
     const s = await sync(h);
     expect(s.priceChanged).toBeGreaterThanOrEqual(2);
     const r = await ask(owner, orgId);
-    expect(r.status).toBe(200);
-    expect(r.json.message.provider).toBe("workers_ai");
+    expect(r.status).toBe(503); // no Workers AI binding in this suite: nothing else may answer
     expect(chatCalls).toHaveLength(0);
-    expect(waiCalls.length).toBeGreaterThan(0);
     const changes = await h.db.prepare("SELECT change FROM ai_model_changes WHERE model_id = ?").bind(FREE_A).all<{ change: string }>();
     expect(changes.results.map((x) => x.change)).toEqual(expect.arrayContaining(["added", "price_changed", "blocked"]));
   });
@@ -177,16 +180,14 @@ describe("FREE-only routing: paid models can never be executed", () => {
   });
 
   it("even if a paid id is forced into the database, the pre-call gate blocks it before any network call", async () => {
-    const { h, owner, orgId, chatCalls, waiCalls } = await setup();
+    const { h, owner, orgId, chatCalls } = await setup();
     await sync(h);
     // Simulate tampering: preference points to a paid model and a paid row marked eligible.
     await h.db.prepare("INSERT INTO organization_ai_preferences (organization_id, strategy, manual_model_id) VALUES (?, 'manual_free', ?)").bind(orgId, PAID).run();
     await h.db.prepare("INSERT INTO ai_models (model_id, display_name, free_class, eligible, capabilities, expires_at, context_length) VALUES (?, 'x', 'verified', 1, '[\"chat\"]', '2999-01-01', 999999)").bind(PAID).run();
     const r = await ask(owner, orgId);
-    expect(r.status).toBe(200);
-    expect(r.json.message.provider).toBe("workers_ai");
+    expect(r.status).toBe(503); // no Workers AI binding in this suite: nothing else may answer
     expect(chatCalls).toHaveLength(0);
-    expect(waiCalls.length).toBeGreaterThan(0);
     const blocked = await h.db.prepare("SELECT status, error_code FROM ai_invocations WHERE model = ?").bind(PAID).first<{ status: string; error_code: string }>();
     expect(blocked).toMatchObject({ status: "blocked" });
     expect(blocked!.error_code).toContain("no_es_variante_free");
@@ -197,7 +198,7 @@ describe("FREE-only routing: paid models can never be executed", () => {
     await sync(h);
     await h.db.prepare("UPDATE ai_models SET last_checked_at = '2020-01-01T00:00:00.000Z'").run();
     const r = await ask(owner, orgId);
-    expect(r.json.message.provider).toBe("workers_ai");
+    expect(r.status).toBe(503);
     expect(chatCalls).toHaveLength(0);
   });
 
@@ -207,7 +208,7 @@ describe("FREE-only routing: paid models can never be executed", () => {
       await sync(h);
       Object.assign(h.env, vars);
       const r = await ask(owner, orgId);
-      expect(r.json.message.provider).toBe("workers_ai");
+      expect(r.status).toBe(503);
       expect(chatCalls).toHaveLength(0);
     }
   });
@@ -216,8 +217,7 @@ describe("FREE-only routing: paid models can never be executed", () => {
     const { h, owner, orgId, chatCalls } = await setup({ chat: (b) => Response.json({ model: b.model, choices: [{ message: { content: "x" } }], usage: { cost: 0.0004 } }) });
     await sync(h);
     const r = await ask(owner, orgId);
-    expect(r.status).toBe(200);
-    expect(r.json.message.provider).toBe("workers_ai");
+    expect(r.status).toBe(503); // no Workers AI binding in this suite: nothing else may answer
     expect(chatCalls).toHaveLength(1);
     const st = await owner.get(`/api/v1/orgs/${orgId}/ai/provider-status`);
     expect(st.json.openrouter.halted).toMatchObject({ reason: "cobro_inesperado" });
@@ -232,7 +232,7 @@ describe("FREE-only routing: paid models can never be executed", () => {
     await sync(h);
     await owner.patch(`/api/v1/orgs/${orgId}/ai/preferences`, { strategy: "openrouter_free_router" });
     const r = await ask(owner, orgId);
-    expect(r.json.message.provider).toBe("workers_ai");
+    expect(r.status).toBe(503);
     expect(chatCalls.map((c) => c.model)).toEqual(["openrouter/free"]);
     expect((await owner.get(`/api/v1/orgs/${orgId}/ai/provider-status`)).json.openrouter.halted.reason).toBe("modelo_servido_no_verificable");
   });
@@ -242,7 +242,7 @@ describe("FREE-only routing: paid models can never be executed", () => {
       const { h, owner, orgId, chatCalls } = await setup({ chat: () => new Response("{}", { status }) });
       await sync(h);
       const r = await ask(owner, orgId);
-      expect(r.json.message.provider).toBe("workers_ai");
+      expect(r.status).toBe(503);
       expect(chatCalls).toHaveLength(1); // no second OpenRouter attempt after a global error
       expect((await owner.get(`/api/v1/orgs/${orgId}/ai/provider-status`)).json.openrouter.halted.reason).toBe(reason);
     }
@@ -258,13 +258,23 @@ describe("FREE-only routing: paid models can never be executed", () => {
     expect(st.json.openrouter).toMatchObject({ connected: false, reason: "limite_de_frecuencia_temporal" });
   });
 
-  it("5xx / timeout / empty answer: at most 2 OpenRouter attempts, then Workers AI", async () => {
+  it("5xx / timeout / empty answer: at most 2 OpenRouter attempts, then an honest 503", async () => {
     const { h, owner, orgId, chatCalls } = await setup({ chat: () => new Response("{}", { status: 503 }) });
     await sync(h);
     const r = await ask(owner, orgId);
+    expect(r.status).toBe(503);
+    expect(r.json.code).toBe("ai_unavailable");
+    expect(chatCalls).toHaveLength(2);
+  });
+
+  it("with the free OpenRouter router chosen: OpenRouter first, Workers AI as fallback", async () => {
+    const { h, owner, orgId, chatCalls } = await setup({ chat: () => new Response("{}", { status: 503 }), wai: "ok" });
+    await sync(h);
+    await owner.patch(`/api/v1/orgs/${orgId}/ai/preferences`, { strategy: "openrouter_free_router" });
+    const r = await ask(owner, orgId);
     expect(r.json.message.provider).toBe("workers_ai");
     expect(r.json.message.fallback).toBe(true);
-    expect(chatCalls).toHaveLength(2);
+    expect(chatCalls).toHaveLength(1);
   });
 
   it("malformed JSON and empty content count as model failures", async () => {
@@ -272,13 +282,13 @@ describe("FREE-only routing: paid models can never be executed", () => {
     const { h, owner, orgId } = await setup({ chat: () => (n++ === 0 ? new Response("not json", { status: 200 }) : Response.json({ choices: [{ message: { content: "" } }] })) });
     await sync(h);
     const r = await ask(owner, orgId);
-    expect(r.json.message.provider).toBe("workers_ai");
+    expect(r.status).toBe(503);
     const codes = (await h.db.prepare("SELECT error_code FROM ai_invocations WHERE provider = 'openrouter' ORDER BY created_at").all<{ error_code: string }>()).results.map((x) => x.error_code);
     expect(codes).toEqual(["invalid_json", "empty"]);
   });
 
   it("without OPENROUTER_API_KEY nothing is called and Workers AI answers", async () => {
-    const { h, owner, orgId, chatCalls } = await setup({ key: false });
+    const { h, owner, orgId, chatCalls } = await setup({ key: false, wai: "ok" });
     await sync(h);
     const r = await ask(owner, orgId);
     expect(r.json.message.provider).toBe("workers_ai");
@@ -306,7 +316,8 @@ describe("Shared free quota (global key + per organisation + per user)", () => {
     await ask(owner, orgId);
     await ask(other, otherOrg);
     const r = await ask(other, otherOrg);
-    expect(r.json.message.provider).toBe("workers_ai");
+    expect(r.status).toBe(503);
+    expect(r.json.code).toBe("ai_unavailable");
     expect(chatCalls).toHaveLength(3);
   });
 
@@ -316,7 +327,7 @@ describe("Shared free quota (global key + per organisation + per user)", () => {
     await sync(h);
     await ask(owner, orgId);
     const r = await ask(owner, orgId);
-    expect(r.json.message.provider).toBe("workers_ai");
+    expect(r.status).toBe(503);
     expect(chatCalls).toHaveLength(1);
     const usage = await owner.get(`/api/v1/orgs/${orgId}/ai/usage`);
     expect(usage.json.quotaToday.user).toEqual({ used: 1, limit: 1 });
@@ -355,7 +366,15 @@ describe("Shared free quota (global key + per organisation + per user)", () => {
 
 describe("Preferences, kill switches and permissions", () => {
   it("cloudflare_only never calls OpenRouter; the tenant switch disables it without redeploy", async () => {
-    const { h, owner, orgId, chatCalls } = await setup();
+    const { h, owner, orgId, chatCalls } = await setup({ wai: "fail" });
+    await sync(h);
+    await owner.patch(`/api/v1/orgs/${orgId}/ai/preferences`, { strategy: "cloudflare_only" });
+    expect((await ask(owner, orgId)).status).toBe(503);
+    expect(chatCalls).toHaveLength(0);
+  });
+
+  it("automatic: with Workers AI answering, OpenRouter is not called at all", async () => {
+    const { h, owner, orgId, chatCalls } = await setup({ wai: "ok" });
     await sync(h);
     await owner.patch(`/api/v1/orgs/${orgId}/ai/preferences`, { strategy: "cloudflare_only" });
     expect((await ask(owner, orgId)).json.message.provider).toBe("workers_ai");
@@ -373,7 +392,7 @@ describe("Preferences, kill switches and permissions", () => {
   });
 
   it("manual model + policy 'ask': failure returns selected_model_failed, and the user can consent to fallback", async () => {
-    const { h, owner, orgId } = await setup({ chat: () => new Response("{}", { status: 500 }) });
+    const { h, owner, orgId } = await setup({ chat: () => new Response("{}", { status: 500 }), wai: "ok" });
     await sync(h);
     await owner.patch(`/api/v1/orgs/${orgId}/ai/preferences`, { strategy: "manual_free", manualModelId: FREE_B, fallbackPolicy: "ask" });
     const r = await ask(owner, orgId);
@@ -421,7 +440,7 @@ describe("Preferences, kill switches and permissions", () => {
     h.env.PLATFORM_ADMIN_EMAILS = "owner@luna.es";
     await sync(h);
     await owner.post("/api/v1/admin/ai/openrouter/kill-switch", { enabled: false });
-    expect((await ask(owner, orgId)).json.message.provider).toBe("workers_ai");
+    expect((await ask(owner, orgId)).status).toBe(503);
     expect(chatCalls).toHaveLength(0);
     await owner.post("/api/v1/admin/ai/openrouter/kill-switch", { enabled: true });
     expect((await ask(owner, orgId)).json.message.provider).toBe("openrouter");
@@ -449,7 +468,9 @@ describe("Single chokepoint: the only code that can reach OpenRouter chat", () =
     const files = walk(join(__dirname, "../src")).filter((f) => f.endsWith(".ts"));
     const rel = (f: string) => f.replace(/\\/g, "/").split("/src/")[1];
     const src = (f: string) => readFileSync(f, "utf8");
-    expect(files.filter((f) => /chat\/completions/.test(src(f))).map(rel)).toEqual(["lib/openrouter.ts"]);
+    expect(files.filter((f) => /OPENROUTER_API\}\/chat\/completions/.test(src(f))).map(rel)).toEqual(["lib/openrouter.ts"]);
+    // The only other chat-completions endpoint is Groq's (optional free fallback in lib/ai.ts).
+    expect(files.filter((f) => /chat\/completions/.test(src(f))).map(rel).sort()).toEqual(["lib/ai.ts", "lib/openrouter.ts"]);
     expect(files.filter((f) => /callOpenRouterChat\(/.test(src(f))).map(rel).sort()).toEqual(["lib/ai.ts", "lib/openrouter.ts", "routes/admin.ts"]);
     // No other module performs fetches with the OpenRouter key
     expect(files.filter((f) => /OPENROUTER_API_KEY\}/.test(src(f))).map(rel)).toEqual(["lib/openrouter.ts"]);
@@ -470,7 +491,7 @@ describe("Single chokepoint: the only code that can reach OpenRouter chat", () =
 
 describe("Privacy guard: sensitive data never reaches free third-party providers", () => {
   it("a question with a DNI, IBAN or password is answered by Workers AI only (no OpenRouter, no Gemini)", async () => {
-    const { h, owner, orgId, chatCalls, waiCalls } = await setup();
+    const { h, owner, orgId, chatCalls, waiCalls } = await setup({ wai: "ok" });
     h.env.GEMINI_API_KEY = "test-gemini";
     const geminiCalls: string[] = [];
     const inner = h.deps.fetchImpl;
@@ -499,7 +520,7 @@ describe("Privacy guard: sensitive data never reaches free third-party providers
     expect(dump).not.toMatch(/12345678Z|ES91|Hunter2024/);
   });
 
-  it("an ordinary marketing question still uses the free OpenRouter route", async () => {
+  it("an ordinary marketing question can still use the free OpenRouter route when Workers AI is unavailable", async () => {
     const { h, owner, orgId, chatCalls } = await setup();
     await sync(h);
     const r = await owner.post(`/api/v1/orgs/${orgId}/advisor`, { question: "¿Cómo mejoro el SEO local de mi panadería con 3 tiendas y 120 reseñas?" });

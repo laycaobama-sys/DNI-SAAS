@@ -66,7 +66,7 @@
       <p>No enviamos comunicaciones comerciales sin tu consentimiento ni tomamos decisiones automatizadas con efectos jurídicos sobre ti.</p>
 
       <h2>5. Inteligencia artificial</h2>
-      <p>Cuando usas el asesor, la revisión de contenido o el estudio creativo, el texto que escribes y los datos de auditoría de tu web necesarios para responder se envían al proveedor de IA que procesa la petición: Cloudflare Workers AI y, como respaldo, modelos gratuitos a través de OpenRouter o Google Gemini. Algunos proveedores de modelos gratuitos pueden conservar las peticiones según sus propias condiciones, por lo que <strong>no debes escribir datos personales sensibles en estas funciones</strong>. Nunca enviamos a la IA tu contraseña, tus tokens ni datos de Search Console o Google Analytics. El resultado de la IA se presenta como borrador para revisión humana.</p>
+      <p>Cuando usas el asesor, la revisión de contenido o el estudio creativo, el texto que escribes y los datos de auditoría de tu web necesarios para responder se envían al proveedor de IA que procesa la petición: principalmente Cloudflare Workers AI y, solo como respaldo gratuito cuando su cupo diario se agota o falla, Groq (si está activado), Google Gemini o modelos gratuitos a través de OpenRouter. Si el texto contiene datos sensibles detectables (DNI/NIE, IBAN, contraseñas…), solo lo procesa Cloudflare. Para ahorrar cupo, guardamos durante 24 horas la respuesta a una petición idéntica de tu organización (sin guardar la petición, solo una huella cifrada); las peticiones con datos sensibles no se guardan. Algunos proveedores de modelos gratuitos pueden conservar las peticiones según sus propias condiciones, por lo que <strong>no debes escribir datos personales sensibles en estas funciones</strong>. Nunca enviamos a la IA tu contraseña, tus tokens ni datos de Search Console o Google Analytics. El resultado de la IA se presenta como borrador para revisión humana.</p>
       <p><strong>AI Visibility (GEO).</strong> Cuando una persona de tu organización pulsa «Muestrear ahora», las preguntas que habéis configurado en AI Visibility se envían a la API de Google Gemini (nivel gratuito; con búsqueda de Google cuando el nivel gratuito la ofrece), junto con el idioma y la región indicados, y guardamos la respuesta, el modelo que respondió, las fuentes que cita (si las hay) y la fecha. En el nivel gratuito, Google puede usar ese contenido para mejorar sus productos, por lo que <strong>esas preguntas no deben contener datos personales</strong>. No se envía ningún otro dato de tu cuenta.</p>
 
       <h2>6. Con quién compartimos los datos</h2>
@@ -75,12 +75,13 @@
         <li><strong>Cloudflare</strong>: alojamiento de la aplicación, base de datos (jurisdicción UE), almacenamiento de imágenes, colas de trabajos, correo transaccional y Workers AI.</li>
         <li><strong>Google</strong>: inicio de sesión con Google y, si lo conectas, Search Console y Analytics (Google es además responsable de sus propios servicios). Google Gemini como respaldo de IA, si está activado, y para obtener las respuestas de AI Visibility.</li>
         <li><strong>OpenRouter</strong>: respaldo de IA con modelos gratuitos.</li>
+        <li><strong>Groq</strong>: respaldo de IA en su nivel gratuito, solo si está activado.</li>
         <li><strong>Stripe</strong>: pagos y suscripciones, cuando se activen los cobros.</li>
       </ul>
       <p>También podemos comunicar datos a autoridades cuando una ley lo exija.</p>
 
       <h2>7. Transferencias internacionales</h2>
-      <p>Algunos proveedores (Google, Stripe, OpenRouter y la red global de Cloudflare) pueden tratar datos fuera del Espacio Económico Europeo. En ese caso se aplican las garantías del RGPD: decisión de adecuación (Marco de Privacidad de Datos UE-EE. UU. para las empresas adheridas) o cláusulas contractuales tipo de la Comisión Europea, según el proveedor.</p>
+      <p>Algunos proveedores (Google, Stripe, OpenRouter, Groq y la red global de Cloudflare) pueden tratar datos fuera del Espacio Económico Europeo. En ese caso se aplican las garantías del RGPD: decisión de adecuación (Marco de Privacidad de Datos UE-EE. UU. para las empresas adheridas) o cláusulas contractuales tipo de la Comisión Europea, según el proveedor.</p>
 
       <h2>8. Cuánto tiempo guardamos los datos</h2>
       <ul>

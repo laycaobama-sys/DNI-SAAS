@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import { AdvisorInput, buildAdvisorMessages, checkImagePrompt, ImageInput, type AdvisorContext, type ChatMessage } from "@dni/core";
 import type { AppEnv } from "../env";
-import { AiUnavailableError, aiStatus, generateImage, generateText, SelectedModelFailedError } from "../lib/ai";
+import { aiApiError, AiUnavailableError, aiStatus, generateImage, generateText } from "../lib/ai";
 import { auditStmt } from "../lib/audit";
 import { ensureMonthlyGrant, orgPlan, reserveCredits, usageLedgerStmt } from "../lib/billing";
 import { ApiError, parseBody } from "../lib/http";
@@ -12,14 +12,6 @@ import { requireScope } from "../middleware";
 export const ADVISOR_CREDITS = 1;
 export const IMAGE_CREDITS = 5;
 
-const unavailable = (openRouterQuota = false) =>
-  new ApiError(
-    503,
-    "ai_unavailable",
-    openRouterQuota
-      ? "La cuota gratuita de OpenRouter se ha agotado y los respaldos no están disponibles ahora. No se ha cobrado ningún crédito. Inténtalo más tarde."
-      : "Los modelos de IA no están disponibles en este momento (o se ha alcanzado el límite diario gratuito). No se ha cobrado ningún crédito. Inténtalo más tarde.",
-  );
 const noCredits = () => new ApiError(402, "insufficient_credits", "No tienes créditos suficientes para esta acción.");
 
 export const ai = new Hono<AppEnv>();
@@ -120,10 +112,7 @@ ai.post("/advisor", requireScope("ai:use"), async (c) => {
     });
   } catch (e) {
     await usageLedgerStmt(db, { orgId: t.orgId, refId: msgId, kind: "release", amount: ADVISOR_CREDITS, category: "ai_advisor" }).run();
-    if (e instanceof SelectedModelFailedError)
-      throw new ApiError(503, "selected_model_failed", "El modelo gratuito que elegiste no ha respondido. No se ha cobrado ningún crédito. ¿Quieres usar el respaldo automático?", { attempts: e.attempts });
-    if (e instanceof AiUnavailableError) throw unavailable(e.openRouterQuotaExhausted);
-    throw e;
+    throw aiApiError(e);
   }
 
   const stmts: D1PreparedStatement[] = [];
@@ -148,7 +137,7 @@ ai.post("/advisor", requireScope("ai:use"), async (c) => {
   await db.batch(stmts);
   return c.json({
     conversationId: convId,
-    message: { id: msgId, role: "assistant", content: result.text, provider: result.provider, model: result.model, servedModel: result.servedModel ?? null, fallback: result.fallback, credits: ADVISOR_CREDITS },
+    message: { id: msgId, role: "assistant", content: result.text, provider: result.provider, model: result.model, servedModel: result.servedModel ?? null, fallback: result.fallback, cached: result.cached, credits: ADVISOR_CREDITS },
     measurement: "Respuesta generada por IA a partir de los datos observados de tu auditoría; revísala antes de aplicarla.",
   });
 });
@@ -181,7 +170,7 @@ ai.post("/creative/images", requireScope("creative:generate"), async (c) => {
     img = await generateImage(c.env, c.get("deps"), input.prompt, { orgId: t.orgId, userId: t.userId, requestRef: id });
   } catch (e) {
     await usageLedgerStmt(db, { orgId: t.orgId, refId: id, kind: "release", amount: IMAGE_CREDITS, category: "ai_image" }).run();
-    if (e instanceof AiUnavailableError) throw unavailable();
+    if (e instanceof AiUnavailableError) throw aiApiError(e);
     throw e;
   }
   const ext = img.contentType.split("/")[1];

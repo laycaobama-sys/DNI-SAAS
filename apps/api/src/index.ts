@@ -44,5 +44,7 @@ export default {
     await env.DB.prepare("DELETE FROM rate_limits WHERE window_start < ?").bind(Math.floor(Date.now() / 1000) - 86400).run();
     await maybeSyncCatalog(env, deps).catch((e) => log("error", "openrouter.cron_failed", { error: String(e).slice(0, 120) }));
     await env.DB.prepare("DELETE FROM ai_quota_counters WHERE updated_at < ?").bind(new Date(Date.now() - 3 * 86400_000).toISOString()).run();
+    // Expiry sweep of the AI response cache (all tenants by design: rows are only deleted, never read).
+    await env.DB.prepare("DELETE FROM ai_response_cache WHERE expires_at < ?").bind(new Date().toISOString()).run();
   },
 } satisfies ExportedHandler<Env, JobMessage>;

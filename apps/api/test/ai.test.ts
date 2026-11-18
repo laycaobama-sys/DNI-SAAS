@@ -67,12 +67,12 @@ describe("AI advisor", () => {
   it("falls back to the next Workers AI model when one fails", async () => {
     const { owner, orgId, aiBinding } = await setup({ failModels: ["@cf/google/gemma-4-26b-a4b-it"] });
     const r = await owner.post(`/api/v1/orgs/${orgId}/advisor`, { question: "Hola asesor" });
-    expect(r.json.message.model).toBe("@cf/mistralai/mistral-small-3.1-24b-instruct");
-    expect(aiBinding.calls).toEqual(["@cf/google/gemma-4-26b-a4b-it", "@cf/mistralai/mistral-small-3.1-24b-instruct"]);
+    expect(r.json.message.model).toBe("@cf/zai-org/glm-4.7-flash");
+    expect(aiBinding.calls).toEqual(["@cf/google/gemma-4-26b-a4b-it", "@cf/zai-org/glm-4.7-flash"]);
   });
 
   it("when every provider fails: 503 and the reserved credit is released", async () => {
-    const all = ["@cf/google/gemma-4-26b-a4b-it", "@cf/mistralai/mistral-small-3.1-24b-instruct", "@cf/meta/llama-4-scout-17b-16e-instruct"];
+    const all = ["@cf/google/gemma-4-26b-a4b-it", "@cf/zai-org/glm-4.7-flash"];
     const { owner, orgId } = await setup({ failModels: all });
     const before = await balance(owner, orgId);
     const r = await owner.post(`/api/v1/orgs/${orgId}/advisor`, { question: "Hola" });
@@ -87,6 +87,8 @@ describe("AI advisor", () => {
     await h.db.prepare("INSERT INTO ai_usage_daily (day, provider, requests, cost_usd) VALUES (?, 'workers_ai', 1, 0.0001)").bind(new Date().toISOString().slice(0, 10)).run();
     const r = await owner.post(`/api/v1/orgs/${orgId}/advisor`, { question: "Hola" });
     expect(r.status).toBe(503);
+    expect(r.json.code).toBe("ai_daily_quota");
+    expect(r.json.title).toMatch(/cupo gratuito diario de IA.*00:00 UTC.*No se ha cobrado/);
     expect(aiBinding.calls).toHaveLength(0);
     const st = await owner.get(`/api/v1/orgs/${orgId}/ai/status`);
     expect(st.json).toMatchObject({ workersAi: true, openRouter: false, gemini: false, budgetExhausted: true });

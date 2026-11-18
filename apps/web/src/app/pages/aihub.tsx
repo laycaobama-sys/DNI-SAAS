@@ -43,6 +43,20 @@ type Status = {
   workersAi: { configured: boolean; dailyBudgetUsd: number; spentTodayUsd: number };
   gemini: { configured: boolean; note: string };
   imageGeneration: { note: string };
+  legacy?: {
+    workersAiModel?: string;
+    groq?: boolean;
+    groqModel?: string;
+    gemini?: boolean;
+    geminiModel?: string;
+    order?: string[];
+    neuronsToday?: number;
+    neuronsDailyCap?: number;
+    neuronsFreePerDay?: number;
+    cacheTtlHours?: number;
+    resetsAt?: string;
+    budgetExhausted?: boolean;
+  };
 };
 type Prefs = { strategy: string; manualModelId: string | null; fallbackPolicy: "auto" | "ask"; privacyFirst: boolean; openrouterEnabled: boolean };
 type Usage = {
@@ -55,10 +69,14 @@ type Usage = {
 };
 
 const STRATEGIES: Array<{ key: string; label: string; help: string }> = [
-  { key: "automatic_free", label: "Automático gratuito", help: "DNI Growth elige el mejor modelo gratuito para cada tarea según resultados reales; si falla, usa Workers AI." },
-  { key: "manual_free", label: "Elegir modelo gratuito", help: "Usa siempre el modelo gratuito que elijas. Solo aparecen modelos gratuitos verificados." },
-  { key: "openrouter_free_router", label: "Enrutador gratuito de OpenRouter", help: "OpenRouter elige entre sus modelos gratuitos. Comprobamos que el modelo servido sea gratuito." },
-  { key: "cloudflare_only", label: "Solo Cloudflare", help: "No se usa OpenRouter. Toda la IA se ejecuta en Workers AI de Cloudflare." },
+  {
+    key: "automatic_free",
+    label: "Automático gratuito (recomendado)",
+    help: "Primero Workers AI de Cloudflare (cupo gratuito diario). Si se agota o falla: Groq y Gemini en su nivel gratuito (si están activados) y, por último, modelos gratuitos de OpenRouter.",
+  },
+  { key: "manual_free", label: "Elegir modelo gratuito", help: "Usa primero el modelo gratuito de OpenRouter que elijas. Solo aparecen modelos gratuitos verificados." },
+  { key: "openrouter_free_router", label: "Enrutador gratuito de OpenRouter", help: "OpenRouter elige primero entre sus modelos gratuitos. Comprobamos que el modelo servido sea gratuito." },
+  { key: "cloudflare_only", label: "Solo Cloudflare", help: "Toda la IA se ejecuta en Workers AI de Cloudflare; ningún texto sale a otros proveedores." },
 ];
 
 const REASON_TEXT: Record<string, string> = {
@@ -70,7 +88,45 @@ const REASON_TEXT: Record<string, string> = {
 const reasonText = (r: string) => REASON_TEXT[r] ?? (r.startsWith("detenido:") ? "Bloqueado por seguridad (" + r.slice(9).replace(/_/g, " ") + "). Responde Workers AI." : "Política no segura detectada (" + r.replace(/_/g, " ") + "): OpenRouter bloqueado.");
 
 const classTone = (c: string) => (c === "verified" ? "ok" : c === "restricted" ? "warn" : c === "paid" ? "danger" : "neutral");
-const providerLabel = (p: string) => ({ openrouter: "OpenRouter", workers_ai: "Workers AI", gemini: "Gemini" })[p] ?? p;
+const providerLabel = (p: string) => ({ openrouter: "OpenRouter", workers_ai: "Workers AI", gemini: "Gemini", groq: "Groq", cache: "Caché (sin coste)" })[p] ?? p;
+const nf = new Intl.NumberFormat("es-ES", { useGrouping: "always" });
+
+function EnginePanel({ s }: { s: Status }) {
+  const l = s.legacy ?? {};
+  const cap = l.neuronsDailyCap ?? 0;
+  const used = l.neuronsToday ?? 0;
+  const pct = cap ? Math.min(100, Math.round((used / cap) * 100)) : 0;
+  const order = (l.order ?? ["workers_ai"]).map(providerLabel);
+  return (
+    <div className="grid gap-4 md:grid-cols-2">
+      <Card title="Motor principal: Cloudflare Workers AI" subtitle={l.workersAiModel ? `Modelo ${l.workersAiModel} · sin «pensamiento» para ahorrar cupo` : undefined}>
+        <p className="flex items-center gap-2 text-sm">
+          <Badge tone={s.workersAi.configured ? "ok" : "neutral"}>{s.workersAi.configured ? "Activo" : "No disponible"}</Badge>
+          {l.budgetExhausted && <Badge tone="warn">Cupo de hoy agotado</Badge>}
+        </p>
+        <p className="mt-3 text-2xl font-semibold tabular-nums">
+          {nf.format(used)} <span className="text-base font-normal text-mute">/ {nf.format(cap)} neuronas hoy</span>
+        </p>
+        <div className="mt-2 h-2 overflow-hidden rounded-full bg-surface-2" role="progressbar" aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100} aria-label="Cupo gratuito diario de Workers AI usado">
+          <div className={cx("h-full rounded-full", pct > 85 ? "bg-danger" : "bg-accent")} style={{ width: `${pct}%` }} />
+        </div>
+        <p className="mt-2 text-xs text-mute">
+          Estimación de DNI Growth con los precios oficiales. Tope propio por debajo de las {nf.format(l.neuronsFreePerDay ?? 10000)} neuronas gratuitas diarias de Cloudflare: al llegar, se para (no hay cobros). Se renueva a las {l.resetsAt ?? "00:00 UTC"}.
+        </p>
+      </Card>
+      <Card title="Orden de respaldo (todo gratuito)" subtitle={`Respuestas repetidas: caché de ${l.cacheTtlHours ?? 24} h por organización`}>
+        <ol className="list-decimal space-y-1 pl-5 text-sm">
+          {order.map((o) => (
+            <li key={o}>{o}</li>
+          ))}
+        </ol>
+        <p className="mt-2 text-xs text-mute">
+          Groq ({l.groqModel ?? "llama-3.1-8b-instant"}): {l.groq ? "activado" : "sin clave (opcional)"} · Gemini ({l.geminiModel ?? "gemini-3.5-flash-lite"}): {l.gemini ? "activado" : "sin clave"}. Los datos personales o secretos solo se procesan en Cloudflare.
+        </p>
+      </Card>
+    </div>
+  );
+}
 
 function StatusPanel({ s }: { s: Status }) {
   const or = s.openrouter;
@@ -101,13 +157,8 @@ function StatusPanel({ s }: { s: Status }) {
           Compartida por toda la plataforma · máx. {or.quota.perMinute}/min · {or.quota.perOrgDaily}/día por organización · {or.quota.perUserDaily}/día por usuario. {or.quota.reset}
         </p>
       </Card>
-      <Card title="Respaldo Cloudflare" subtitle="Workers AI · se usa si OpenRouter no responde">
-        <p className="text-sm">
-          <Badge tone={s.workersAi.configured ? "ok" : "neutral"}>{s.workersAi.configured ? "Activo" : "No disponible"}</Badge>
-        </p>
-        <p className="mt-2 text-xs text-mute">
-          Coste estimado hoy: {s.workersAi.spentTodayUsd.toFixed(4)} USD de un tope diario de {s.workersAi.dailyBudgetUsd.toFixed(2)} USD (incluido en el plan de Workers mientras no se supere el uso gratuito diario). {s.imageGeneration.note}
-        </p>
+      <Card title="Imágenes" subtitle="Workers AI · mismo cupo diario gratuito">
+        <p className="text-xs text-mute">{s.imageGeneration.note}</p>
       </Card>
     </div>
   );
@@ -187,7 +238,7 @@ function Preferences({ orgId, models, canEdit }: { orgId: string; models: Model[
             <input type="checkbox" className="mt-1" checked={p.openrouterEnabled} onChange={(e) => set({ openrouterEnabled: e.target.checked })} />
             <span>
               Usar OpenRouter
-              <span className="block text-xs text-mute">Interruptor de la organización. Desactivado = solo Cloudflare.</span>
+              <span className="block text-xs text-mute">Interruptor de la organización. Desactivado = no se usa OpenRouter (siguen Workers AI y los demás respaldos gratuitos).</span>
             </span>
           </label>
         </div>
@@ -449,7 +500,12 @@ export function AiHubPage() {
           </Button>
         }
       />
-      {status.error ? <ErrorState error={status.error} onRetry={reload} /> : status.data ? <StatusPanel s={status.data} /> : <Skeleton className="h-36" />}
+      {status.error ? <ErrorState error={status.error} onRetry={reload} /> : status.data ? (
+        <div className="space-y-4">
+          <EnginePanel s={status.data} />
+          <StatusPanel s={status.data} />
+        </div>
+      ) : <Skeleton className="h-36" />}
       {admin && status.data && <AdminPanel status={status.data} onChanged={reload} />}
       <Preferences orgId={orgId} models={catalog.data?.items ?? []} canEdit={canEdit} />
       {catalog.error ? <ErrorState error={catalog.error} onRetry={reload} /> : catalog.data ? <CatalogTable data={catalog.data} admin={admin} onChanged={reload} /> : <Skeleton className="h-60" />}

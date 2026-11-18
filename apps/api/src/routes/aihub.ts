@@ -89,7 +89,7 @@ export async function providerStatus(env: Env, orgEnabled = true) {
       key: keyInfo ? { checkedAt: keyInfo.at, freeDailyLimit: keyInfo.freeDailyLimit, freeDailyUsed: keyInfo.freeDailyUsed, freeDailyRemaining: keyInfo.freeDailyRemaining, billedUsageUsd: keyInfo.usageTotal } : null,
     },
     workersAi: { configured: !!env.AI, dailyBudgetUsd: Number(env.AI_DAILY_BUDGET_USD ?? "0.10"), spentTodayUsd: Math.round(spent * 10000) / 10000, models: WORKERS_AI_TEXT_MODELS.map((m) => m.model), imageModel: WORKERS_AI_IMAGE_MODEL.model },
-    gemini: { configured: !!env.GEMINI_API_KEY, note: "Respaldo final. El nivel gratuito de Gemini puede usar los datos para mejorar sus productos: se omite en modo privacidad." },
+    gemini: { configured: !!env.GEMINI_API_KEY, note: "Respaldo gratuito tras Workers AI (y Groq, si está activado). El nivel gratuito de Gemini puede usar los datos para mejorar sus productos: se omite en modo privacidad y nunca recibe datos sensibles." },
     imageGeneration: { provider: "workers_ai", note: "OpenRouter no ofrece hoy ningún modelo gratuito que genere imágenes; las imágenes se crean con Workers AI (FLUX.1 schnell)." },
   };
 }

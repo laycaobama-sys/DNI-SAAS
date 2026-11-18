@@ -45,7 +45,8 @@
     ]
   },
 
-  // Workers AI (advisor + images). Spend is capped in code by AI_DAILY_BUDGET_USD.
+  // Workers AI: primary engine of the single AI service (advisor, content, review, images).
+  // Spend is capped in code by AI_DAILY_BUDGET_USD (never above 0.10 USD ≈ 9,090 of the 10,000 free Neurons/day).
   "ai": { "binding": "AI" },
 
   // Generated media (EU jurisdiction, private; served only through tenant-checked API routes).
@@ -74,6 +75,11 @@
     // Free model used only when the main one is overloaded (5xx); each sample stores who answered.
     "GEMINI_FALLBACK_MODEL": "gemini-3.5-flash-lite",
     "AI_DAILY_BUDGET_USD": "0.10",
+    // Free fallbacks of the AI service (each only if its secret exists): Groq, then Gemini (free tier).
+    "GROQ_DAILY_REQUESTS": "1000",
+    "GEMINI_TEXT_MODEL": "gemini-3.5-flash-lite",
+    // Leaves the rest of the free Gemini daily quota for the GEO monitor.
+    "GEMINI_TEXT_DAILY": "100",
     // OpenRouter FREE-ONLY policy (fail-closed). Authorised OpenRouter spend: 0.00 USD, always.
     "OPENROUTER_FREE_ONLY": "true",
     "ALLOW_PAID_MODELS": "false",
