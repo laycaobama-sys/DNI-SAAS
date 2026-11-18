@@ -96,7 +96,8 @@ Copias exportadas antes de cada migración en `backups/` (fuera de git).
 
 ## Despliegue 2026-11-18 (dominio + Model Hub + Content Studio)
 - Versión actual: `286b5a81-6ead-4114-928f-a566e48c4718` · anterior: `11831c6d-b194-4d2e-9810-d7631a9e0d1d`.
-- Versión actual (GA4 + política de privacidad con datos de Google): `bfe01bbc-dae4-4b30-bbb9-c24ef4cae12c` · anterior `ab2bbe5a-6081-4e35-886e-83cbba110f67`.
+- Versión actual (política de privacidad completa): `88f00104-f0e8-4b76-b92e-2693fb18af44` · anterior `b4fd58a3-6282-4c8a-af4b-3db82534a95b` (sin selección automática de propiedades de Google; sin migración).
+- Versión GA4 + política con datos de Google: `bfe01bbc-dae4-4b30-bbb9-c24ef4cae12c` · anterior `ab2bbe5a-6081-4e35-886e-83cbba110f67`.
 - Versión con Google Analytics 4 (F3): `ab2bbe5a-6081-4e35-886e-83cbba110f67` · anterior `dd5caec3-b99f-4d80-ab49-ba871406cde5` (compatible con la migración 0009: solo añade tablas e índice). Copia previa: `backups/dni-growth-db-pre-0009-20261118-1301.sql`.
 - Versión anterior (ajustes del panel de Search Console): `dd5caec3-b99f-4d80-ab49-ba871406cde5` · anterior `d5b448f0-41dd-4306-8680-592b0972e630`.
 - Versión con Search Console (F3): `d5b448f0-41dd-4306-8680-592b0972e630` · anterior `73543193-44d6-4e24-a483-9e0337c910d2` (compatible con la migración 0008: solo añade tablas y columnas). Copia previa: `backups/dni-growth-db-pre-0008-20261118-1158.sql`.
