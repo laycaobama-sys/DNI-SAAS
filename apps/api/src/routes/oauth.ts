@@ -5,6 +5,8 @@ import type { AppEnv, Env } from "../env";
 import { auditStmt } from "../lib/audit";
 import { mailMode } from "../lib/mail";
 import { rateLimit } from "../lib/ratelimit";
+import { GSC_STATE_PROVIDER } from "../lib/gsc";
+import { completeGscConnect } from "./searchConsole";
 import { createSession } from "../lib/session";
 import { addSeconds, hashIp, log, nowIso, uuid } from "../lib/util";
 
@@ -122,14 +124,19 @@ oauth.get("/google/callback", async (c) => {
   const code = c.req.query("code") ?? "";
   const cookieState = getCookie(c, STATE_COOKIE) ?? "";
   deleteCookie(c, STATE_COOKIE, { path: "/api/v1/auth/google", secure: secure(c.env) });
-  if (c.req.query("error")) return fail(c, "google_denied");
-  if (!/^[0-9a-f]{64}$/.test(state) || !cookieState || !timingSafeEqual(state, cookieState)) return fail(c, "state_mismatch");
+  const denied = !!c.req.query("error");
+  if (!/^[0-9a-f]{64}$/.test(state) || !cookieState || !timingSafeEqual(state, cookieState)) return fail(c, denied ? "google_denied" : "state_mismatch");
 
-  // One-time consumption of the state row (replay-safe).
-  const row = await c.env.DB.prepare("DELETE FROM oauth_states WHERE id = ? AND provider = 'google' AND expires_at > ? RETURNING code_verifier, nonce, next_path")
-    .bind(await sha256Hex(state), nowIso())
-    .first<{ code_verifier: string; nonce: string; next_path: string }>();
-  if (!row) return fail(c, "state_expired");
+  // One-time consumption of the state row (replay-safe). The same registered callback serves
+  // sign-in ("google") and integration connects ("google_gsc"), told apart by the state row.
+  const row = await c.env.DB.prepare(
+    "DELETE FROM oauth_states WHERE id = ? AND provider IN ('google', ?) AND expires_at > ? RETURNING provider, code_verifier, nonce, next_path, organization_id, user_id",
+  )
+    .bind(await sha256Hex(state), GSC_STATE_PROVIDER, nowIso())
+    .first<{ provider: string; code_verifier: string; nonce: string; next_path: string; organization_id: string | null; user_id: string | null }>();
+  if (!row) return fail(c, denied ? "google_denied" : "state_expired");
+  if (row.provider === GSC_STATE_PROVIDER) return completeGscConnect(c, row, denied ? null : code);
+  if (denied) return fail(c, "google_denied");
   if (!code || code.length > 2048) return fail(c, "missing_code");
 
   let idToken: string | undefined;

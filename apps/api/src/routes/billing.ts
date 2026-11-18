@@ -1,3 +1,4 @@
+import { gscReady } from "../lib/gsc";
 import { Hono, type Context } from "hono";
 import { CheckoutInput, verifyStripeSignature, type ProviderManifestEntry } from "@dni/core";
 import type { AppEnv, Env } from "../env";
@@ -272,7 +273,14 @@ export function providerManifest(env: Env): ProviderManifestEntry[] {
       status: env.AI ? "connected" : "not_configured",
       note: env.AI ? "Asesor y generación de imágenes con presupuesto diario y respaldo automático entre modelos." : "Falta el binding AI en wrangler.jsonc.",
     },
-    { key: "google_search_console", name: "Google Search Console", category: "Datos", phase: "F3", status: "planned", note: "OAuth con scope mínimo de solo lectura." },
+    {
+      key: "google_search_console",
+      name: "Google Search Console",
+      category: "Datos",
+      phase: "F3",
+      status: gscReady(env) ? "available" : "not_configured",
+      note: gscReady(env) ? "Disponible: conecta tu cuenta de Google (solo lectura) desde «Search Console»." : "Falta la configuración de Google (cliente OAuth y clave de cifrado).",
+    },
     { key: "ga4", name: "Google Analytics 4", category: "Datos", phase: "F3", status: "planned", note: "Ingesta por propiedad y periodo." },
     { key: "keywords", name: "Proveedor de keywords/SERP", category: "SEO", phase: "F2", status: "planned", note: "Sin proveedor no se muestran volúmenes ni dificultad." },
     { key: "wordpress", name: "WordPress", category: "CMS", phase: "F2", status: "planned", note: "Publicación solo tras aprobación; export HTML/Markdown sin credenciales." },

@@ -125,7 +125,7 @@ export interface PlanDef {
   limits: { brands: number; seats: number; analysesPerMonth: number; pagesPerCrawl: number; monthlyCredits: number };
 }
 
-export type ProviderStatus = "not_configured" | "connected" | "error" | "demo" | "blocked_external_approval" | "planned";
+export type ProviderStatus = "not_configured" | "available" | "connected" | "reauth_required" | "disconnected" | "error" | "demo" | "blocked_external_approval" | "planned";
 export interface ProviderManifestEntry {
   key: string;
   name: string;

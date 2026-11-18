@@ -3,6 +3,7 @@ import type { Deps, Env, JobMessage } from "../env";
 import { ledgerStmt } from "../lib/billing";
 import { addSeconds, log, nowIso, parseJson, uuid } from "../lib/util";
 import { runSiteAnalysis } from "./analyze";
+import { runGscSync } from "./gsc";
 
 export interface JobRow {
   id: string;
@@ -89,6 +90,9 @@ export async function processJobMessage(env: Env, msg: JobMessage, deps: Deps): 
       case "site_analysis":
         output = await runSiteAnalysis(ctx, parseJson(job.input_json, {} as { url: string; brandId: string; siteId: string }));
         break;
+      case "gsc_sync":
+        output = await runGscSync(ctx, parseJson(job.input_json, {} as { propertyId: string }));
+        break;
       default:
         throw new PermanentJobError("unknown_job_kind", `Tipo de trabajo desconocido: ${job.kind}`);
     }
@@ -96,8 +100,13 @@ export async function processJobMessage(env: Env, msg: JobMessage, deps: Deps): 
       db
         .prepare("UPDATE jobs SET state = 'completed', progress = 100, output_json = ?, cost_actual = ?, finished_at = ? WHERE organization_id = ? AND id = ?")
         .bind(JSON.stringify(output), output.creditsUsed, nowIso(), job.organization_id, job.id),
-      ledgerStmt(db, { orgId: job.organization_id, jobId: job.id, kind: "release", amount: job.cost_estimate, category: job.kind }),
-      ledgerStmt(db, { orgId: job.organization_id, jobId: job.id, kind: "settle", amount: -output.creditsUsed, category: job.kind }),
+      // Free jobs (nothing reserved, nothing used) leave no zero-value ledger rows.
+      ...(job.cost_estimate === 0 && output.creditsUsed === 0
+        ? []
+        : [
+            ledgerStmt(db, { orgId: job.organization_id, jobId: job.id, kind: "release", amount: job.cost_estimate, category: job.kind }),
+            ledgerStmt(db, { orgId: job.organization_id, jobId: job.id, kind: "settle", amount: -output.creditsUsed, category: job.kind }),
+          ]),
     ]);
     await ctx.event("info", "completed", "Trabajo completado");
     return { action: "ack" };
@@ -123,7 +132,7 @@ export async function processJobMessage(env: Env, msg: JobMessage, deps: Deps): 
         )
         .bind(cancelled ? "cancelled" : "failed", code, message.slice(0, 500), nowIso(), permanent ? null : nowIso(), job.organization_id, job.id),
       // Failed/cancelled before consuming: release the reservation (no charge).
-      ledgerStmt(db, { orgId: job.organization_id, jobId: job.id, kind: "release", amount: job.cost_estimate, category: job.kind }),
+      ...(job.cost_estimate === 0 ? [] : [ledgerStmt(db, { orgId: job.organization_id, jobId: job.id, kind: "release", amount: job.cost_estimate, category: job.kind })]),
       db
         .prepare("UPDATE web_crawls SET status = ?, completed_at = ? WHERE organization_id = ? AND job_id = ? AND status = 'running'")
         .bind(cancelled ? "cancelled" : "failed", nowIso(), job.organization_id, job.id),

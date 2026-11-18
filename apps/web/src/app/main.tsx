@@ -1,3 +1,4 @@
+import { SearchConsolePage } from "./pages/searchconsole";
 import { StrictMode, type ReactNode } from "react";
 import { createRoot } from "react-dom/client";
 import { BrowserRouter, Navigate, Outlet, Route, Routes, useLocation, useParams } from "react-router";
@@ -76,6 +77,7 @@ function App() {
           <Route path="team" element={<TeamPage />} />
           <Route path="billing" element={<BillingPage />} />
           <Route path="integrations" element={<IntegrationsPage />} />
+          <Route path="search-console" element={<SearchConsolePage />} />
           <Route path="audit-log" element={<AuditLogPage />} />
           <Route path="m/:moduleKey" element={<ModulePage />} />
           <Route path="*" element={<NotFoundPage />} />

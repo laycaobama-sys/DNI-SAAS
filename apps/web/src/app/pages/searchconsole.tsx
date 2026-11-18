@@ -1,0 +1,444 @@
+import { useMemo, useState } from "react";
+import { Link, useParams, useSearchParams } from "react-router";
+import { del, fmtDate, post, put, timeAgo, ApiError } from "../lib/api";
+import { useApi } from "../lib/hooks";
+import { Badge, Button, Card, EmptyState, ErrorState, MetricCard, Notice, PageHeader, Select, Spinner } from "../ui";
+
+const ERRORS: Record<string, string> = {
+  google_denied: "Cancelaste el permiso en Google. No se ha conectado nada.",
+  scope_not_granted: "Google no concedió el permiso de lectura de Search Console (la casilla quedó sin marcar). Vuelve a conectar y marca ese permiso.",
+  no_refresh_token: "Google no devolvió un permiso duradero. Vuelve a conectar.",
+  session_mismatch: "La conexión se inició con otra sesión. Vuelve a intentarlo desde esta pantalla.",
+  forbidden: "Tu rol no permite gestionar integraciones.",
+  not_configured: "La conexión con Google no está configurada en este entorno.",
+  token_exchange_failed: "Google no aceptó el código de autorización. Vuelve a intentarlo.",
+  email_not_verified_by_google: "La cuenta de Google no tiene el correo verificado.",
+  sites_PERMISSION_DENIED:
+    "Conectado, pero Google rechazó la lista de propiedades. Suele significar que la «Google Search Console API» no está habilitada en el proyecto de Google Cloud. Habilítala y pulsa «Actualizar propiedades».",
+};
+const errorText = (code: string) => ERRORS[code] ?? (code.startsWith("sites_") ? `Conectado, pero Google no devolvió las propiedades (${code.slice(6)}). Pulsa «Actualizar propiedades».` : `No se pudo conectar (${code}).`);
+
+const PERMISSION: Record<string, string> = {
+  siteOwner: "Propietario",
+  siteFullUser: "Usuario completo",
+  siteRestrictedUser: "Usuario restringido",
+  siteUnverifiedUser: "Sin verificar (sin acceso a datos)",
+  none: "Sin acceso actualmente",
+};
+const STATUS: Record<string, { label: string; tone: "ok" | "warn" | "danger" | "neutral" }> = {
+  connected: { label: "Conectado · solo lectura", tone: "ok" },
+  reauth_required: { label: "Hay que volver a conectar", tone: "danger" },
+  disconnected: { label: "Desconectado", tone: "neutral" },
+};
+
+const nf = new Intl.NumberFormat("es-ES");
+const nil = (v: unknown): v is null | undefined => v === null || v === undefined;
+const pct = (v: number | null | undefined) => (nil(v) ? null : `${(v * 100).toLocaleString("es-ES", { maximumFractionDigits: 1 })}`);
+const pos = (v: number | null | undefined) => (nil(v) ? null : v.toLocaleString("es-ES", { maximumFractionDigits: 1 }));
+
+type Metric = "clicks" | "impressions" | "ctr" | "position";
+const METRICS: Record<Metric, { label: string; fmt: (v: number) => string }> = {
+  clicks: { label: "Clics", fmt: (v) => nf.format(v) },
+  impressions: { label: "Impresiones", fmt: (v) => nf.format(v) },
+  ctr: { label: "CTR", fmt: (v) => `${pct(v)} %` },
+  position: { label: "Posición media", fmt: (v) => pos(v)! },
+};
+
+function delta(cur: number | null, prev: number | null | undefined, invert = false) {
+  if (nil(cur) || nil(prev) || prev === 0) return null;
+  const d = (cur - prev) / prev;
+  const good = invert ? d < 0 : d > 0;
+  return { text: `${d > 0 ? "+" : ""}${(d * 100).toLocaleString("es-ES", { maximumFractionDigits: 1 })} %`, good };
+}
+
+/** Single-series daily bar chart with one axis, hover tooltip and a table alternative. */
+function DailyChart({ rows, metric }: { rows: any[]; metric: Metric }) {
+  const [hover, setHover] = useState<number | null>(null);
+  const W = 720;
+  const H = 200;
+  const pad = { l: 44, r: 8, t: 10, b: 24 };
+  const vals = rows.map((r) => Number(r[metric]) || 0);
+  const max = Math.max(...vals, metric === "ctr" ? 0.01 : 1);
+  const bw = (W - pad.l - pad.r) / Math.max(rows.length, 1);
+  const y = (v: number) => pad.t + (H - pad.t - pad.b) * (1 - v / max);
+  const ticks = [0, 0.5, 1].map((f) => f * max);
+  const step = Math.max(1, Math.ceil(rows.length / 6));
+  const h = hover !== null ? rows[hover] : null;
+  return (
+    <div className="relative">
+      <svg viewBox={`0 0 ${W} ${H}`} className="h-auto w-full" role="img" aria-label={`${METRICS[metric].label} por día`} onMouseLeave={() => setHover(null)}>
+        {ticks.map((t) => (
+          <g key={t}>
+            <line x1={pad.l} x2={W - pad.r} y1={y(t)} y2={y(t)} className="stroke-line" strokeWidth={1} />
+            <text x={pad.l - 6} y={y(t) + 4} textAnchor="end" className="fill-mute text-[10px]">
+              {METRICS[metric].fmt(t)}
+            </text>
+          </g>
+        ))}
+        {rows.map((r, i) => {
+          const v = vals[i]!;
+          const x = pad.l + i * bw;
+          const top = y(v);
+          const hgt = Math.max(0, H - pad.b - top);
+          const w = Math.max(1, bw - 2);
+          const rad = Math.min(4, w / 2, hgt);
+          return (
+            <g key={r.date} onMouseEnter={() => setHover(i)}>
+              <rect x={x} y={pad.t} width={bw} height={H - pad.t - pad.b} fill="transparent" />
+              {hgt > 0 && (
+                <path
+                  d={`M${x + 1},${H - pad.b} V${top + rad} Q${x + 1},${top} ${x + 1 + rad},${top} H${x + 1 + w - rad} Q${x + 1 + w},${top} ${x + 1 + w},${top + rad} V${H - pad.b} Z`}
+                  className={hover === i ? "fill-accent" : "fill-accent/70"}
+                />
+              )}
+              {i % step === 0 && (
+                <text x={x + bw / 2} y={H - 8} textAnchor="middle" className="fill-mute text-[10px]">
+                  {new Date(`${r.date}T00:00:00Z`).toLocaleDateString("es-ES", { day: "numeric", month: "short", timeZone: "UTC" })}
+                </text>
+              )}
+            </g>
+          );
+        })}
+      </svg>
+      {h && (
+        <div className="pointer-events-none absolute right-2 top-2 rounded-xl border border-line bg-surface px-3 py-2 text-xs shadow-sm" role="status">
+          <p className="font-medium">{new Date(`${h.date}T00:00:00Z`).toLocaleDateString("es-ES", { weekday: "short", day: "numeric", month: "long", timeZone: "UTC" })}</p>
+          <p className="text-mute">
+            {nf.format(h.clicks)} clics · {nf.format(h.impressions)} impresiones · CTR {pct(h.ctr)} % · posición {pos(h.position)}
+          </p>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function TopTable({ title, rows, kind }: { title: string; rows: any[]; kind: "query" | "page" }) {
+  return (
+    <Card title={title} subtitle={rows[0] ? `${fmtDate(rows[0].period_start)} – ${fmtDate(rows[0].period_end)} · observado` : undefined}>
+      {rows.length === 0 ? (
+        <p className="text-sm text-mute">Sin filas en este periodo. Google omite consultas anónimas o con muy pocas búsquedas.</p>
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[420px] text-sm">
+            <thead className="text-left text-xs text-mute">
+              <tr>
+                <th className="py-2 pr-3 font-medium">{kind === "query" ? "Consulta" : "Página"}</th>
+                <th className="py-2 pr-3 text-right font-medium">Clics</th>
+                <th className="py-2 pr-3 text-right font-medium">Impr.</th>
+                <th className="py-2 pr-3 text-right font-medium">CTR</th>
+                <th className="py-2 text-right font-medium">Pos.</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((r) => (
+                <tr key={r.key} className="border-t border-line">
+                  <td className="max-w-[260px] truncate py-2 pr-3" title={r.key}>
+                    {r.key}
+                  </td>
+                  <td className="py-2 pr-3 text-right tabular-nums">{nf.format(r.clicks)}</td>
+                  <td className="py-2 pr-3 text-right tabular-nums">{nf.format(r.impressions)}</td>
+                  <td className="py-2 pr-3 text-right tabular-nums">{pct(r.ctr)} %</td>
+                  <td className="py-2 text-right tabular-nums">{pos(r.position)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </Card>
+  );
+}
+
+export function SearchConsolePage() {
+  const { orgId } = useParams();
+  const [params, setParams] = useSearchParams();
+  const [tick, setTick] = useState(0);
+  const { data, error, loading, reload } = useApi<any>(`/orgs/${orgId}/search-console${tick ? `?r=${tick}` : ""}`, {
+    pollMs: 3000,
+    pollWhile: (d: any) => !!d?.activeJob,
+  });
+  const [busy, setBusy] = useState<string | null>(null);
+  const [err, setErr] = useState<ApiError | null>(null);
+  const [metric, setMetric] = useState<Metric>("clicks");
+  const [showTable, setShowTable] = useState(false);
+  const [confirmOff, setConfirmOff] = useState(false);
+  const [purge, setPurge] = useState(false);
+
+  const run = async (key: string, fn: () => Promise<unknown>, poll = false) => {
+    setErr(null);
+    setBusy(key);
+    try {
+      await fn();
+      if (poll) setTick((t) => t + 1);
+      else await reload();
+    } catch (e) {
+      setErr(e as ApiError);
+    } finally {
+      setBusy(null);
+    }
+  };
+  const connect = () =>
+    run("connect", async () => {
+      const r = await post<{ url: string }>(`/orgs/${orgId}/search-console/connect`);
+      if (r.url.startsWith("https://accounts.google.com/")) window.location.assign(r.url);
+    });
+
+  const report = data?.report;
+  const daily = useMemo(() => report?.daily ?? [], [report]);
+  if (loading && !data) return <Spinner />;
+  if (error) return <ErrorState error={error} onRetry={reload} />;
+
+  const conn = data.connection;
+  const readable = data.properties.filter((p: any) => p.readable);
+  const selected = data.properties.find((p: any) => p.selected);
+  const gscError = params.get("gsc_error");
+  const t = report?.totals;
+  const prev = report?.previousTotals;
+  const limitations = report?.caveats ?? [];
+  const observedAt = report?.observedAt ?? new Date().toISOString();
+
+  return (
+    <>
+      <PageHeader
+        eyebrow="Orgánico · datos observados"
+        title="Search Console"
+        subtitle="Clics, impresiones, CTR y posición de Google Search, leídos de tu propia cuenta con permiso de solo lectura."
+      />
+      <div className="mb-4 space-y-3">
+        {params.get("gsc") === "connected" && !gscError && <Notice tone="ok">Search Console conectado. Elige la propiedad y sincroniza.</Notice>}
+        {gscError && <Notice tone="warn" title="Conexión con Google">{errorText(gscError)}</Notice>}
+        {(params.get("gsc") || gscError) && (
+          <button type="button" className="text-xs text-mute underline" onClick={() => setParams({}, { replace: true })}>
+            Ocultar aviso
+          </button>
+        )}
+        {!data.configured && <Notice tone="warn" title="No disponible en este entorno">Falta configurar el cliente de Google o la clave de cifrado. No se muestra ningún dato.</Notice>}
+        <ErrorState error={err} />
+      </div>
+
+      {!conn || (conn.status === "disconnected" && !report) ? (
+        <EmptyState
+          title="Sin cuenta de Search Console conectada"
+          action={
+            data.canManage ? (
+              <Button variant="primary" onClick={connect} loading={busy === "connect"} disabled={!data.configured}>
+                Conectar con Google (solo lectura)
+              </Button>
+            ) : (
+              <p className="text-sm text-mute">Pide a un propietario o administrador que conecte Search Console.</p>
+            )
+          }
+        >
+          <p>Aquí no se muestra ninguna cifra hasta que conectes una cuenta con acceso real a tu propiedad. No estimamos ni inventamos clics.</p>
+          <p className="mt-2">Pediremos solo el permiso «Ver datos de Search Console» (webmasters.readonly). Puedes desconectar cuando quieras y Google revoca el acceso.</p>
+        </EmptyState>
+      ) : (
+        <div className="space-y-6">
+          <Card
+            title="Conexión"
+            actions={<Badge tone={STATUS[conn.status]?.tone ?? "neutral"}>{STATUS[conn.status]?.label ?? conn.status}</Badge>}
+          >
+            <div className="grid gap-4 md:grid-cols-2">
+              <div className="space-y-1 text-sm">
+                {conn.account && <p>Cuenta de Google: <span className="font-medium">{conn.account}</span></p>}
+                <p className="text-mute">Permiso: solo lectura de Search Console</p>
+                <p className="text-mute">Última sincronización: {conn.lastSyncAt ? `${fmtDate(conn.lastSyncAt)} (${timeAgo(conn.lastSyncAt)})` : "todavía no"}</p>
+                {data.activeJob && (
+                  <p className="text-mute">
+                    Sincronizando… <Link className="underline" to={`/o/${orgId}/jobs/${data.activeJob.id}`}>ver trabajo</Link>
+                  </p>
+                )}
+                {data.lastJob?.state === "failed" && !data.activeJob && (
+                  <p className="text-sm text-danger">La última sincronización falló ({data.lastJob.failure_code}).</p>
+                )}
+                {conn.lastError && <p className="text-xs text-mute">Último aviso de Google: {conn.lastError}</p>}
+              </div>
+              {data.canManage && (
+                <div className="space-y-3">
+                  {conn.status === "connected" ? (
+                    <>
+                      <div>
+                        <label htmlFor="gsc-prop" className="mb-1 block text-sm font-medium">
+                          Propiedad
+                        </label>
+                        <Select
+                          id="gsc-prop"
+                          value={selected?.id ?? ""}
+                          disabled={busy === "select"}
+                          onChange={(e) => {
+                            const id = e.target.value;
+                            if (id)
+                              void run("select", async () => {
+                                await put(`/orgs/${orgId}/search-console/property`, { propertyId: id });
+                                await post(`/orgs/${orgId}/search-console/sync`);
+                              }, true);
+                          }}
+                        >
+                          <option value="">{readable.length ? "Elige una propiedad…" : "Ninguna propiedad con acceso"}</option>
+                          {data.properties.map((p: any) => (
+                            <option key={p.id} value={p.id} disabled={!p.readable}>
+                              {p.siteUrl} · {PERMISSION[p.permissionLevel] ?? p.permissionLevel}
+                            </option>
+                          ))}
+                        </Select>
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        <Button variant="primary" onClick={() => run("sync", () => post(`/orgs/${orgId}/search-console/sync`), true)} loading={busy === "sync"} disabled={!selected || !!data.activeJob}>
+                          Sincronizar ahora
+                        </Button>
+                        <Button onClick={() => run("props", () => post(`/orgs/${orgId}/search-console/properties/refresh`))} loading={busy === "props"}>
+                          Actualizar propiedades
+                        </Button>
+                        <Button variant="ghost" onClick={() => setConfirmOff(true)}>
+                          Desconectar
+                        </Button>
+                      </div>
+                    </>
+                  ) : (
+                    <Button variant="primary" onClick={connect} loading={busy === "connect"} disabled={!data.configured}>
+                      Volver a conectar con Google
+                    </Button>
+                  )}
+                  {confirmOff && (
+                    <div className="rounded-xl border border-line p-3 text-sm">
+                      <p>Se pedirá a Google que revoque el acceso y se borrará el permiso guardado (cifrado).</p>
+                      <label className="mt-2 flex items-center gap-2">
+                        <input type="checkbox" checked={purge} onChange={(e) => setPurge(e.target.checked)} />
+                        Borrar también los datos ya importados (no se puede deshacer)
+                      </label>
+                      <div className="mt-3 flex gap-2">
+                        <Button
+                          variant="danger"
+                          loading={busy === "off"}
+                          onClick={() =>
+                            run("off", async () => {
+                              await del(`/orgs/${orgId}/search-console${purge ? "?purge=true" : ""}`);
+                              setConfirmOff(false);
+                              setPurge(false);
+                            })
+                          }
+                        >
+                          Desconectar
+                        </Button>
+                        <Button variant="ghost" onClick={() => setConfirmOff(false)}>
+                          Cancelar
+                        </Button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          </Card>
+
+          {!report ? (
+            <EmptyState title="Elige una propiedad">Cuando elijas una propiedad con permiso de lectura se importarán sus datos de los últimos 90 días.</EmptyState>
+          ) : !t ? (
+            <EmptyState title={data.activeJob ? "Importando datos…" : "Sin datos importados todavía"}>
+              {data.activeJob ? "Primera sincronización en curso (normalmente unos segundos)." : `Propiedad ${report.siteUrl}: pulsa «Sincronizar ahora». Si Google no tiene datos para ella, aquí seguirá vacío.`}
+            </EmptyState>
+          ) : (
+            <>
+              <p className="text-sm text-mute">
+                {report.siteUrl} · {fmtDate(report.period.start)} – {fmtDate(report.period.end)} ({t.days} días con datos)
+                {report.previousPeriod ? ` · comparado con ${fmtDate(report.previousPeriod.start)} – ${fmtDate(report.previousPeriod.end)}` : ""}
+              </p>
+              <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+                {(
+                  [
+                    ["clicks", "Clics", t.clicks, "", delta(t.clicks, prev?.clicks)],
+                    ["impressions", "Impresiones", t.impressions, "", delta(t.impressions, prev?.impressions)],
+                    ["ctr", "CTR medio", nil(t.ctr) ? null : Math.round(t.ctr * 1000) / 10, "%", delta(t.ctr, prev?.ctr)],
+                    ["position", "Posición media", nil(t.position) ? null : Math.round(t.position * 10) / 10, "", delta(t.position, prev?.position, true)],
+                  ] as const
+                ).map(([k, label, value, unit, d]) => (
+                  <div key={k}>
+                    <MetricCard
+                      m={{
+                        metric: k,
+                        label,
+                        value,
+                        unit,
+                        measurement: "derived",
+                        source: `${report.source}. ${k === "clicks" || k === "impressions" ? "Suma de los totales diarios observados." : k === "ctr" ? "Clics ÷ impresiones del periodo." : "Media de las posiciones diarias ponderada por impresiones."}`,
+                        observedAt,
+                        limitations,
+                      }}
+                    />
+                    {d && (
+                      <p className={`mt-1 text-xs ${d.good ? "text-ok" : "text-mute"}`}>
+                        {d.text} vs. periodo anterior
+                      </p>
+                    )}
+                  </div>
+                ))}
+              </div>
+
+              <Card
+                title={`${METRICS[metric].label} por día`}
+                subtitle="Datos observados por día (estado «final»)."
+                actions={
+                  <div className="flex flex-wrap items-center gap-2">
+                    <div role="group" aria-label="Métrica del gráfico" className="flex overflow-hidden rounded-xl border border-line text-xs">
+                      {(Object.keys(METRICS) as Metric[]).map((k) => (
+                        <button key={k} type="button" aria-pressed={metric === k} onClick={() => setMetric(k)} className={`px-2.5 py-1.5 ${metric === k ? "bg-surface-2 font-semibold" : "text-mute"}`}>
+                          {METRICS[k].label}
+                        </button>
+                      ))}
+                    </div>
+                    <button type="button" className="text-xs text-mute underline" onClick={() => setShowTable((s) => !s)} aria-expanded={showTable}>
+                      {showTable ? "Ver gráfico" : "Ver tabla"}
+                    </button>
+                  </div>
+                }
+              >
+                {showTable ? (
+                  <div className="max-h-80 overflow-auto">
+                    <table className="w-full text-sm">
+                      <thead className="text-left text-xs text-mute">
+                        <tr>
+                          <th className="py-1 pr-3 font-medium">Fecha</th>
+                          <th className="py-1 pr-3 text-right font-medium">Clics</th>
+                          <th className="py-1 pr-3 text-right font-medium">Impresiones</th>
+                          <th className="py-1 pr-3 text-right font-medium">CTR</th>
+                          <th className="py-1 text-right font-medium">Posición</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {daily.map((r: any) => (
+                          <tr key={r.date} className="border-t border-line">
+                            <td className="py-1 pr-3">{r.date}</td>
+                            <td className="py-1 pr-3 text-right tabular-nums">{nf.format(r.clicks)}</td>
+                            <td className="py-1 pr-3 text-right tabular-nums">{nf.format(r.impressions)}</td>
+                            <td className="py-1 pr-3 text-right tabular-nums">{pct(r.ctr)} %</td>
+                            <td className="py-1 text-right tabular-nums">{pos(r.position)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                ) : (
+                  <DailyChart rows={daily} metric={metric} />
+                )}
+              </Card>
+
+              <div className="grid gap-6 xl:grid-cols-2">
+                <TopTable title="Consultas principales" rows={report.topQueries} kind="query" />
+                <TopTable title="Páginas principales" rows={report.topPages} kind="page" />
+              </div>
+
+              <Card title="Cómo leer estos datos">
+                <ul className="list-disc space-y-1 pl-5 text-sm text-mute">
+                  {limitations.map((l: string) => (
+                    <li key={l}>{l}</li>
+                  ))}
+                  <li>Fuente: {report.source}. Importado {timeAgo(report.observedAt)}.</li>
+                </ul>
+              </Card>
+            </>
+          )}
+        </div>
+      )}
+    </>
+  );
+}

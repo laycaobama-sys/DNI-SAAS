@@ -1,6 +1,6 @@
 # Estado de implementación — DNI Growth
 
-Última actualización: 2026-11-18 · Producción: **https://dnigrowth.com** (Worker `dni-growth`, versión `73543193-44d6-4e24-a483-9e0337c910d2`; workers.dev redirige con 301 a dnigrowth.com) · Workers Paid, sin servicios de pago adicionales ([verificación de la cuenta](CLOUDFLARE_ACCOUNT_VERIFICATION.md)).
+Última actualización: 2026-11-18 · Producción: **https://dnigrowth.com** (Worker `dni-growth`, versión `d5b448f0-41dd-4306-8680-592b0972e630`; workers.dev redirige con 301 a dnigrowth.com) · Workers Paid, sin servicios de pago adicionales ([verificación de la cuenta](CLOUDFLARE_ACCOUNT_VERIFICATION.md)).
 
 Leyenda:
 - **VERIFICADO EN PRODUCCIÓN**: probado contra la URL pública con una respuesta comprobable.
@@ -83,8 +83,16 @@ Pruebas E2E en producción del 2026-11-18 con la cuenta verificada de la titular
 | Revisión con IA (1 crédito) | VERIFICADO SOLO EN LOCAL | `content.test.ts` |
 | Publicación en CMS | NO IMPLEMENTADO | requiere conectores de CMS del titular |
 
+## F3 — Google Search Console (nuevo, [ADR 0010](adr/0010-search-console-solo-lectura.md))
+
+| Funcionalidad | Estado | Prueba |
+|---|---|---|
+| Panel sin cuenta conectada: ausencia visible, ninguna cifra | VERIFICADO EN PRODUCCIÓN | `/app/o/…/search-console` (versión d5b448f0): «Sin cuenta de Search Console conectada… No estimamos ni inventamos clics» |
+| Inicio del OAuth de solo lectura | VERIFICADO EN PRODUCCIÓN (apertura) | «Conectar con Google» → `accounts.google.com` acepta la petición: `scope=openid email webmasters.readonly`, `access_type=offline`, PKCE S256, callback `https://dnigrowth.com/api/v1/auth/google/callback`. Consentimiento pendiente de la titular |
+| Conexión, token cifrado, propiedades permitidas, sincronización, panel con fuente/periodo/advertencias, desconectar con revocación | VERIFICADO SOLO EN LOCAL | `searchconsole.test.ts` (14): token nunca en claro en D1/auditoría/eventos, roles (editor/analista/lector 403), aislamiento entre organizaciones, sesión distinta y consentimiento parcial rechazados, `state` no reutilizable, `invalid_grant` → volver a conectar, cron diario idempotente, 0 créditos |
+
 ## NO IMPLEMENTADO (fases siguientes)
-Keywords con proveedor licenciado (F2), Search Console/GA4 dentro de la app y monitor de visibilidad IA (F3), Video Studio (F4), Landings y CRM (F5), Meta Ads con Spend Guardian (F6), experimentos (F7), agencia/white label, 2FA y SSO (F8), cobros con Stripe ([plan](STRIPE_PLAN.md)).
+Keywords con proveedor licenciado (F2), GA4 dentro de la app y monitor de visibilidad IA (F3), Video Studio (F4), Landings y CRM (F5), Meta Ads con Spend Guardian (F6), experimentos (F7), agencia/white label, 2FA y SSO (F8), cobros con Stripe ([plan](STRIPE_PLAN.md)).
 
 ## Bloqueos que requieren al titular
 | Bloqueo | Acción mínima |

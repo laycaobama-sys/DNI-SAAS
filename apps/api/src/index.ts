@@ -3,6 +3,7 @@ import { createApp } from "./app";
 import type { Deps, Env, JobMessage } from "./env";
 import { processJobMessage } from "./jobs/consumer";
 import { dispatchOutbox, recoverStuckJobs } from "./jobs/queue";
+import { scheduleGscSyncs } from "./lib/gsc";
 import { drainEmailOutbox } from "./lib/mail";
 import { maybeSyncCatalog } from "./lib/openrouter";
 import { log } from "./lib/util";
@@ -35,6 +36,7 @@ export default {
   /** Cron: drain the transactional outbox, recover stuck jobs, prune expired rate-limit windows. */
   async scheduled(_ctrl: ScheduledController, env: Env, ctx: ExecutionContext) {
     await recoverStuckJobs(env);
+    await scheduleGscSyncs(env).catch((e) => log("error", "gsc.schedule_failed", { error: String(e).slice(0, 120) }));
     await dispatchOutbox(env, deps, (p) => ctx.waitUntil(p));
     await drainEmailOutbox(env).catch((e) => log("error", "mail.drain_failed", { error: String(e) }));
     await env.DB.prepare("DELETE FROM rate_limits WHERE window_start < ?").bind(Math.floor(Date.now() / 1000) - 86400).run();

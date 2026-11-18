@@ -99,8 +99,8 @@ export function JobPage() {
   return (
     <>
       <PageHeader
-        eyebrow="Trabajo de agente · auditoría web"
-        title={job.url ? new URL(job.url).hostname : "Auditoría"}
+        eyebrow={job.kind === "gsc_sync" ? "Trabajo de agente · Search Console" : "Trabajo de agente · auditoría web"}
+        title={job.kind === "gsc_sync" ? "Sincronización de Search Console" : job.url ? new URL(job.url).hostname : "Auditoría"}
         subtitle={`Creado ${fmtDate(job.created_at)} · intento ${job.attempts}/${job.max_attempts}`}
         actions={
           ACTIVE.includes(job.state) && (
@@ -128,7 +128,28 @@ export function JobPage() {
             </div>
             <Progress value={job.progress} />
             {job.state === "queued" && job.retry_after && <p className="mt-3 text-sm text-mute">Reintento programado {timeAgo(job.retry_after)} tras un error transitorio.</p>}
-            {job.state === "failed" && (
+            {job.kind === "gsc_sync" && job.state === "failed" && (
+              <div className="mt-4 space-y-3">
+                <Notice tone="warn" title="La sincronización con Search Console no se ha completado">
+                  {job.failure_code === "gsc_invalid_grant" || job.failure_code === "gsc_scope_not_granted"
+                    ? "Google retiró el permiso de lectura. Vuelve a conectar Search Console."
+                    : "Google no devolvió los datos tras varios intentos. No se ha consumido nada."}
+                  <span className="mt-1 block font-mono text-xs">{job.failure_code}</span>
+                </Notice>
+                <Link className="text-sm font-semibold text-accent-text" to={`/o/${orgId}/search-console`}>
+                  Ir a Search Console →
+                </Link>
+              </div>
+            )}
+            {job.kind === "gsc_sync" && job.state === "completed" && out && (
+              <p className="mt-4 text-sm text-mute">
+                {out.siteUrl}: {out.days} días, {out.queries} consultas y {out.pages} páginas importadas ({out.startDate} – {out.endDate}).{" "}
+                <Link className="font-semibold text-accent-text" to={`/o/${orgId}/search-console`}>
+                  Ver panel →
+                </Link>
+              </p>
+            )}
+            {job.kind !== "gsc_sync" && job.state === "failed" && (
               <div className="mt-4 space-y-3">
                 <Notice tone="warn" title="La auditoría no se ha podido completar">
                   {job.failure_code?.startsWith("url_blocked")
@@ -151,7 +172,7 @@ export function JobPage() {
                 </Button>
               </div>
             )}
-            {job.state === "completed" && out && (
+            {job.kind !== "gsc_sync" && job.state === "completed" && out && (
               <div className="mt-6 grid gap-4 sm:grid-cols-3">
                 <Stat label="Páginas analizadas" value={out.pages} />
                 <Stat label="Hallazgos" value={out.issues} />
@@ -225,7 +246,7 @@ export function JobsPage() {
                 <tr key={j.id} className="border-b border-line last:border-0 hover:bg-surface-2">
                   <td className="px-4 py-3">
                     <Link className="font-medium hover:underline" to={`/o/${orgId}/jobs/${j.id}`}>
-                      Auditoría · {j.url ? new URL(j.url).hostname : "—"}
+                      {j.kind === "gsc_sync" ? "Search Console · sincronización" : `Auditoría · ${j.url ? new URL(j.url).hostname : "—"}`}
                     </Link>
                   </td>
                   <td className="px-4 py-3">

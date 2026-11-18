@@ -72,7 +72,7 @@ work.post("/sites/analyze", requireScope("site:analyze"), async (c) => {
     throw new ApiError(402, "plan_limit", `Has usado los ${plan.limits.analysesPerMonth} análisis de tu plan ${plan.name} este mes.`);
   }
   // Fairness: at most MAX_ACTIVE_JOBS concurrent analyses per organization.
-  const active = await db.prepare("SELECT COUNT(*) AS n FROM jobs WHERE organization_id = ? AND state IN ('queued','validating','running')").bind(t.orgId).first<{ n: number }>();
+  const active = await db.prepare("SELECT COUNT(*) AS n FROM jobs WHERE organization_id = ? AND kind = 'site_analysis' AND state IN ('queued','validating','running')").bind(t.orgId).first<{ n: number }>();
   if ((active?.n ?? 0) >= MAX_ACTIVE_JOBS) throw new ApiError(429, "too_many_active_jobs", `Ya tienes ${MAX_ACTIVE_JOBS} análisis en curso. Espera a que termine alguno.`);
   const reserve = plan.limits.pagesPerCrawl;
   if ((await creditBalance(db, t.orgId)) < reserve) throw new ApiError(402, "insufficient_credits", "No tienes créditos suficientes para este análisis.");
@@ -163,7 +163,7 @@ work.post("/jobs/:jobId/cancel", requireScope("jobs:control"), async (c) => {
     auditStmt(c.env.DB, { organizationId: t.orgId, actorUserId: t.userId, action: "job.cancel", entityType: "job", entityId: jobId, requestId: c.get("requestId") }),
   ]);
   const job = await c.env.DB.prepare("SELECT state, cost_estimate FROM jobs WHERE organization_id = ? AND id = ?").bind(t.orgId, jobId).first<{ state: string; cost_estimate: number }>();
-  if (job?.state === "cancelled") await ledgerStmt(c.env.DB, { orgId: t.orgId, jobId, kind: "release", amount: job.cost_estimate, category: "site_analysis" }).run();
+  if (job?.state === "cancelled" && job.cost_estimate !== 0) await ledgerStmt(c.env.DB, { orgId: t.orgId, jobId, kind: "release", amount: job.cost_estimate, category: "site_analysis" }).run();
   return c.json({ ok: true });
 });
 

@@ -12,6 +12,7 @@ import { auth } from "./routes/auth";
 import { billing, providerManifest, webhooks } from "./routes/billing";
 import { insights } from "./routes/insights";
 import { oauth } from "./routes/oauth";
+import { searchConsole } from "./routes/searchConsole";
 import { org, orgsPublic } from "./routes/orgs";
 import { work } from "./routes/work";
 
@@ -53,7 +54,25 @@ export function createApp(deps: Deps) {
   tenant.route("/", ai);
   tenant.route("/", aihub);
   tenant.route("/", content);
-  tenant.get("/integrations", requireScope("integrations:read"), (c) => c.json({ items: providerManifest(c.env) }));
+  tenant.route("/", searchConsole);
+  tenant.get("/integrations", requireScope("integrations:read"), async (c) => {
+    // Per-organization connection state overrides the platform-level availability.
+    const { results } = await c.env.DB.prepare("SELECT provider, status, last_sync_at FROM integrations WHERE organization_id = ?")
+      .bind(c.get("tenant").orgId)
+      .all<{ provider: string; status: string; last_sync_at: string | null }>();
+    const byProvider = new Map(results.map((r) => [r.provider, r]));
+    const STATUS_NOTE: Record<string, string> = {
+      connected: "Conectado (solo lectura).",
+      reauth_required: "Google retiró el permiso: vuelve a conectar.",
+      disconnected: "Desconectado: se conservan los datos ya importados.",
+    };
+    const items = providerManifest(c.env).map((p) => {
+      const r = byProvider.get(p.key);
+      if (!r) return p;
+      return { ...p, status: r.status, note: `${STATUS_NOTE[r.status] ?? p.note}${r.last_sync_at ? ` Última sincronización: ${r.last_sync_at.slice(0, 16).replace("T", " ")} UTC.` : ""}` };
+    });
+    return c.json({ items });
+  });
   app.route("/api/v1/orgs/:orgId", tenant);
   app.route("/api/v1/admin", admin);
 

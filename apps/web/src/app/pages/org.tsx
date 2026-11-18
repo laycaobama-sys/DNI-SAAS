@@ -420,6 +420,9 @@ const PROVIDER_STATUS: Record<string, { label: string; tone: "ok" | "warn" | "ne
   demo: { label: "Modo desarrollo", tone: "info" },
   not_configured: { label: "No configurado", tone: "warn" },
   planned: { label: "Planificado", tone: "neutral" },
+  available: { label: "Disponible", tone: "info" },
+  reauth_required: { label: "Volver a conectar", tone: "danger" },
+  disconnected: { label: "Desconectado", tone: "neutral" },
   blocked_external_approval: { label: "Requiere aprobación externa", tone: "danger" },
 };
 
