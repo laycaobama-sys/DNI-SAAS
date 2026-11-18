@@ -1,6 +1,6 @@
 # Estado de implementación — DNI Growth
 
-Última actualización: 2026-11-18 · Producción: **https://dnigrowth.com** (Worker `dni-growth`, versión `b9cf00ee-01f9-4f00-a6a0-c1d17d0e12a1`; workers.dev redirige con 301 a dnigrowth.com) · Workers Paid, sin servicios de pago adicionales ([verificación de la cuenta](CLOUDFLARE_ACCOUNT_VERIFICATION.md)).
+Última actualización: 2026-11-18 · Producción: **https://dnigrowth.com** (Worker `dni-growth`, versión `c43757da-16be-468f-ab26-8f41001a2f41`; workers.dev redirige con 301 a dnigrowth.com) · Workers Paid, sin servicios de pago adicionales ([verificación de la cuenta](CLOUDFLARE_ACCOUNT_VERIFICATION.md)).
 
 Leyenda:
 - **VERIFICADO EN PRODUCCIÓN**: probado contra la URL pública con una respuesta comprobable.
@@ -8,7 +8,7 @@ Leyenda:
 - **BLOQUEADO POR PERMISOS**: necesita una acción, clave o aceptación del titular.
 - **NO IMPLEMENTADO**.
 
-Pruebas automáticas: lint, typecheck, **328 tests** (21 ficheros, core + API), build y escaneo de secretos en verde el 2026-11-18 (`pnpm -s verify`, código de salida 0).
+Pruebas automáticas: lint, typecheck, **347 tests** (23 ficheros, core + API), build y escaneo de secretos en verde el 2026-11-18 (`pnpm -s verify`, código de salida 0).
 
 Pruebas E2E en producción del 2026-11-18 con la cuenta verificada de la titular (organización propia, plan Free), ejecutadas desde el navegador contra https://dnigrowth.com; cada fila indica la respuesta observada.
 
@@ -79,7 +79,8 @@ Pruebas E2E en producción del 2026-11-18 con la cuenta verificada de la titular
 | Tope duro de Workers AI ≤ 0,10 USD/día (≈ 9.091 neuronas < 10.000 gratuitas) | VERIFICADO EN PRODUCCIÓN | la cuenta está en Workers Paid: por encima de 10.000 neuronas/día Cloudflare cobraría. `AI_DAILY_BUDGET_USD` se recorta a 0,10 aunque se configure más; el Centro de IA muestra «N / 9091 neuronas hoy» |
 | Mensaje claro al agotar el cupo diario (`ai_daily_quota`, 503, «Se renueva cada día a las 00:00 UTC… No se ha cobrado ningún crédito») | VERIFICADO SOLO EN LOCAL | `aiservice.test.ts`; en producción no se agota a propósito |
 | Caché de respuestas 24 h por organización (D1 `ai_response_cache`, clave SHA-256; datos sensibles nunca se guardan) | VERIFICADO EN PRODUCCIÓN | migración 0012 con copia previa `backups/dni-growth-db-pre-0012-20261118-2014.sql`; la misma pregunta repetida → «respuesta reutilizada» en 1,5 s y registro `provider=cache`; el cron borra lo caducado; aislamiento entre organizaciones en tests |
-| Groq opcional (`llama-3.1-8b-instant`, tope `GROQ_DAILY_REQUESTS=1000`) | VERIFICADO SOLO EN LOCAL | sin clave en producción («sin clave (opcional)»); la añade la titular con `npx.cmd wrangler secret put GROQ_API_KEY` |
+| Groq (`openai/gpt-oss-20b`, razonamiento «low», tope `GROQ_DAILY_REQUESTS=900` < 1.000/día gratuitas) | VERIFICADO EN PRODUCCIÓN | clave puesta por la titular. «Probar conexión» (admin): `llama-3.1-8b-instant` → 404 (solo plan Enterprise de Groq); tras el cambio, `openai/gpt-oss-20b` responde en 448 ms. Modelo configurable con `GROQ_TEXT_MODEL` |
+| «Probar conexión» por proveedor (solo administración; 1 petición mínima, sin caché ni respaldo, máx. 20/día, auditado sin la clave) | VERIFICADO EN PRODUCCIÓN | Workers AI 841 ms (gemma-4), Gemini 1.206 ms (gemini-3.5-flash-lite), Groq 448 ms; `aiservice.test.ts` |
 | Gemini texto (`gemini-3.5-flash-lite`, tope `GEMINI_TEXT_DAILY=100`, se omite con «privacidad primero») | VERIFICADO SOLO EN LOCAL | `aiservice.test.ts` (respaldos, topes, solo Cloudflare, datos sensibles) |
 | `max_tokens` limitado (`MAX_OUTPUT_TOKENS=2500`) | VERIFICADO SOLO EN LOCAL | tests |
 
@@ -152,6 +153,18 @@ Pruebas E2E en producción del 2026-11-18 con la cuenta verificada de la titular
 | CSV contra inyección de fórmulas, exportación auditada (`report.export`) y limitada (30/h), aislamiento entre organizaciones | VERIFICADO SOLO EN LOCAL | `reports.test.ts` (6 tests) |
 | Pantalla GEO a 390 px | VERIFICADO EN PRODUCCIÓN | antes 757 px de ancho por un `sr-only` absoluto de la tabla; ahora 390 = 390; enlaces con color de texto accesible (#3f6212) |
 
+## F5 — Captación de leads y CRM (nuevo, [ADR 0015](adr/0015-captacion-leads-crm.md))
+| Elemento | Estado | Prueba |
+|---|---|---|
+| Migración 0013 (`lead_forms`, `leads`, `lead_events`, `crm_tasks`, límite `leadForms` por plan) | VERIFICADO EN PRODUCCIÓN | copia previa `backups/dni-growth-db-pre-0013-20261118-2155.sql`; aditiva; tablas en la guarda estática de SQL multitenant |
+| Formulario de contacto real en dnigrowth.com (con y sin JavaScript) → CRM de la organización «DNI Growth» | VERIFICADO EN PRODUCCIÓN | envío desde la portada con UTM de prueba → mensaje «Gracias…»; contacto guardado con UTM `verificacion/prueba/crm-e2e`, página sin parámetros, consentimiento (texto y fecha); aviso a la titular por email `accepted` **sin datos de la persona**. El contacto de prueba se marcó como prueba y después se borró (200; quedan 0) |
+| Antispam sin cookies ni terceros (campo trampa, tiempo mínimo, enlaces, límites por IP/formulario/día) y webs autorizadas | VERIFICADO EN PRODUCCIÓN | campo trampa → «gracias» pero no se guarda (contador `spam_blocked`=1); sin consentimiento → 422 `consent_required`; origen no autorizado → 403 y preflight sin cabeceras CORS; el resto de la API sigue exigiendo CSRF (403) |
+| Deduplicación por email, historial completo, etapas, valor, responsable, notas y tareas | VERIFICADO EN PRODUCCIÓN (etapa, tareas, prueba) · LOCAL (resto) | historial `submitted → updated → stage_changed → task_created ×2`; `crm.test.ts` (13) y `core/crm.test.ts` (5) |
+| Roles (solo propietario, administración y marketing ven contactos; solo propietario/administración borran), aislamiento entre organizaciones | VERIFICADO SOLO EN LOCAL | `crm.test.ts`: editor/analista/lector 403; responsable sin acceso al CRM → 422; otra organización 404 en leer, cambiar, exportar y borrar |
+| Exportación CSV (auditada, contra fórmulas) y derecho de supresión | VERIFICADO EN PRODUCCIÓN | CSV 200 `contactos-2026-11-18.csv`; borrado 200 con auditoría `lead.erase` solo con ids |
+| Política de privacidad actualizada (formulario de contacto, plazos y formularios de clientes como encargado) | VERIFICADO EN PRODUCCIÓN | `/legal/privacidad#contacto` |
+| Pendiente F5 | NO IMPLEMENTADO | constructor de landings por bloques y dominio propio, avisos por WhatsApp y automatizaciones de seguimiento |
+
 ## Marca DNI Growth (producción)
 | Elemento | Estado | Prueba |
 |---|---|---|
@@ -160,7 +173,7 @@ Pruebas E2E en producción del 2026-11-18 con la cuenta verificada de la titular
 | Avisos del perfil que ya se resolvieron | VERIFICADO SOLO EN LOCAL | el aviso «varias variantes del nombre» y «Información no encontrada» se ocultan cuando ya están resueltos (antes seguían visibles tras rechazar/rellenar) |
 
 ## NO IMPLEMENTADO (fases siguientes)
-Keywords con proveedor licenciado (F2), Video Studio (F4), Landings y CRM (F5), Meta Ads con Spend Guardian (F6), experimentos (F7), agencia/white label, 2FA y SSO (F8), cobros con Stripe ([plan](STRIPE_PLAN.md)).
+Keywords con proveedor licenciado (F2), Video Studio (F4), constructor de landings y automatizaciones (F5), Meta Ads con Spend Guardian (F6), experimentos (F7), agencia/white label, 2FA y SSO (F8), cobros con Stripe ([plan](STRIPE_PLAN.md)).
 
 ## Bloqueos que requieren al titular
 | Bloqueo | Acción mínima |

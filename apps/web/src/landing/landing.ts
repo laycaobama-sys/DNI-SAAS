@@ -102,6 +102,65 @@
     });
   });
 
+  // Contact form: works without JS (plain POST → thank-you page); with JS it sends JSON and answers inline.
+  safe("contactForm", () => {
+    const form = document.querySelector<HTMLFormElement>("[data-contact-form]");
+    const status = document.querySelector<HTMLElement>("[data-contact-status]");
+    if (!form || !status) return;
+    const set = (name: string, v: string) => {
+      const el = form.elements.namedItem(name) as HTMLInputElement | null;
+      if (el) el.value = v;
+    };
+    set("_t", String(Date.now()));
+    set("page_url", location.href);
+    set("referrer", document.referrer);
+    const q = new URLSearchParams(location.search);
+    for (const k of ["utm_source", "utm_medium", "utm_campaign", "utm_term", "utm_content"]) {
+      const v = q.get(k);
+      if (!v) continue;
+      const i = document.createElement("input");
+      i.type = "hidden";
+      i.name = k;
+      i.value = v.slice(0, 200);
+      form.appendChild(i);
+    }
+    const say = (msg: string, tone: "ok" | "error" | "") => {
+      status.textContent = msg;
+      status.dataset.tone = tone;
+    };
+    form.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      if (!form.checkValidity()) {
+        form.reportValidity();
+        return;
+      }
+      const btn = form.querySelector<HTMLButtonElement>("button[type=submit]");
+      if (btn) btn.disabled = true;
+      say("Enviando…", "");
+      const data: Record<string, string | boolean> = {};
+      new FormData(form).forEach((v, k) => {
+        if (typeof v === "string") data[k] = v;
+      });
+      data.consent = (form.elements.namedItem("consent") as HTMLInputElement).checked;
+      data.marketing = (form.elements.namedItem("marketing") as HTMLInputElement).checked;
+      try {
+        const res = await fetch(form.action, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(data) });
+        const body = (await res.json().catch(() => ({}))) as { message?: string; title?: string };
+        if (res.ok) {
+          form.reset();
+          set("_t", String(Date.now()));
+          say(body.message ?? "Mensaje enviado. Gracias.", "ok");
+        } else {
+          say(body.title ?? "No se pudo enviar. Inténtalo de nuevo o escribe a hola@dnigrowth.com.", "error");
+        }
+      } catch {
+        say("No hay conexión. Inténtalo de nuevo o escribe a hola@dnigrowth.com.", "error");
+      } finally {
+        if (btn) btn.disabled = false;
+      }
+    });
+  });
+
   safe("year", () => {
     const y = document.querySelector("[data-year]");
     if (y) y.textContent = String(new Date().getFullYear());

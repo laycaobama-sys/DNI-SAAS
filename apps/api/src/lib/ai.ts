@@ -196,6 +196,8 @@ export interface GenerateOptions {
   allowFallback?: boolean;
   /** Reuse an identical answer from the last 24 h (default true). Never used for sensitive data. */
   cache?: boolean;
+  /** Diagnostics only (platform admin «probar conexión»): call just this provider, no cache, no fallback. */
+  onlyProvider?: "workers_ai" | "groq" | "gemini";
 }
 
 /** Picks the OpenRouter candidates for this request according to the organisation's strategy. */
@@ -253,6 +255,22 @@ async function requestsToday(env: Env, provider: AiProviderKey): Promise<number>
   return r?.requests ?? 0;
 }
 /** Workers AI models in order; WORKERS_AI_TEXT_MODEL (if it is a catalogued model) goes first. */
+export function groqTextModel(env: Env): string {
+  const m = env.GROQ_TEXT_MODEL?.trim();
+  return m && /^[\w./:-]{3,80}$/.test(m) ? m : GROQ_TEXT_MODEL;
+}
+
+/** Short machine code from a provider error body (e.g. «:model_not_found»); never the message or any key. */
+async function providerErrorCode(res: Response): Promise<string> {
+  try {
+    const j = (await res.json()) as { error?: { code?: unknown } };
+    const code = typeof j.error?.code === "string" ? j.error.code : "";
+    return /^[a-z0-9_]{1,40}$/.test(code) ? `:${code}` : "";
+  } catch {
+    return "";
+  }
+}
+
 export function workersAiTextModels(env: Env) {
   const pick = WORKERS_AI_TEXT_MODELS.find((m) => m.model === env.WORKERS_AI_TEXT_MODEL);
   return pick ? [pick, ...WORKERS_AI_TEXT_MODELS.filter((m) => m !== pick)] : WORKERS_AI_TEXT_MODELS;
@@ -288,7 +306,7 @@ export async function generateText(env: Env, deps: Deps, messages: ChatMessage[]
   }
 
   // 0. Cache (same organisation, same request, last 24 h). Sensitive requests are never cached.
-  const useCache = o.cache !== false && !!base.orgId && thirdPartyAllowed;
+  const useCache = o.cache !== false && !o.onlyProvider && !!base.orgId && thirdPartyAllowed;
   const key = useCache ? await cacheKey(task, maxTokens, prefs, messages) : null;
   if (key && base.orgId) {
     const hit = await cacheGet(env, base.orgId, key);
@@ -394,8 +412,8 @@ export async function generateText(env: Env, deps: Deps, messages: ChatMessage[]
   // Groq (optional free key; OpenAI-compatible API; own daily cap)
   const groq = async (): Promise<TextResult | null> => {
     if (!env.GROQ_API_KEY) return null;
-    const model = GROQ_TEXT_MODEL;
-    if ((await requestsToday(env, "groq")) >= intVar(env.GROQ_DAILY_REQUESTS, 1000)) {
+    const model = groqTextModel(env);
+    if ((await requestsToday(env, "groq")) >= intVar(env.GROQ_DAILY_REQUESTS, 900)) {
       attempts.push(`groq:cupo_diario`);
       await logInvocation(env, { ...base, provider: "groq", model, status: "skipped", errorCode: "daily_cap", costState: "zero_expected", isFallback: true });
       return null;
@@ -405,10 +423,15 @@ export async function generateText(env: Env, deps: Deps, messages: ChatMessage[]
       const res = await deps.fetchImpl("https://api.groq.com/openai/v1/chat/completions", {
         method: "POST",
         headers: { "content-type": "application/json", authorization: `Bearer ${env.GROQ_API_KEY}` },
-        body: JSON.stringify({ model, messages, max_tokens: maxTokens, temperature: profile.temperature }),
+        // gpt-oss reasons before answering: lowest effort, reasoning not returned, and room for it in the budget.
+        body: JSON.stringify(
+          model.startsWith("openai/gpt-oss")
+            ? { model, messages, max_tokens: Math.min(maxTokens * 2 + 512, 8192), temperature: profile.temperature, reasoning_effort: "low", include_reasoning: false }
+            : { model, messages, max_tokens: maxTokens, temperature: profile.temperature },
+        ),
         signal: AbortSignal.timeout(45_000),
       });
-      if (!res.ok) throw new Error(res.status === 429 ? "groq_cuota" : `groq_${res.status}`);
+      if (!res.ok) throw new Error(res.status === 429 ? "groq_cuota" : `groq_${res.status}${await providerErrorCode(res)}`);
       const { text, usage } = parseTextResult(await res.json());
       if (!text) throw new Error("empty");
       const u = usage ?? { input: inputApprox, output: approxTokens(text) };
@@ -461,6 +484,14 @@ export async function generateText(env: Env, deps: Deps, messages: ChatMessage[]
     }
   };
 
+  if (o.onlyProvider) {
+    const step = { workers_ai: workersAi, groq, gemini }[o.onlyProvider];
+    const r = o.onlyProvider === "workers_ai" || thirdPartyAllowed ? await step() : null;
+    if (r) return r;
+    if (o.onlyProvider === "groq" && !env.GROQ_API_KEY) attempts.push("groq:sin_clave");
+    if (o.onlyProvider === "gemini" && !env.GEMINI_API_KEY) attempts.push("gemini:sin_clave");
+    throw new AiUnavailableError(attempts, false, dailyQuota);
+  }
   const openRouterFirst = thirdPartyAllowed && (prefs.strategy === "manual_free" || prefs.strategy === "openrouter_free_router");
   if (openRouterFirst) {
     const r = await openRouter();
@@ -539,7 +570,7 @@ export async function aiStatus(env: Env) {
     openRouterUsable: or.usable,
     openRouterReason: or.reason,
     groq: !!env.GROQ_API_KEY,
-    groqModel: GROQ_TEXT_MODEL,
+    groqModel: groqTextModel(env),
     gemini: !!env.GEMINI_API_KEY,
     geminiModel: geminiTextModel(env),
     order: ["workers_ai", ...(env.GROQ_API_KEY ? ["groq"] : []), ...(env.GEMINI_API_KEY ? ["gemini"] : []), ...(env.OPENROUTER_API_KEY ? ["openrouter"] : [])],

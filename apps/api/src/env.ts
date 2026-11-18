@@ -45,6 +45,10 @@ export interface Env {
   GROQ_API_KEY?: string;
   /** Own daily cap for Groq requests (default 1000, below the free plan limits). */
   GROQ_DAILY_REQUESTS?: string;
+  /** Override of the Groq chat model (default openai/gpt-oss-20b, free plan). */
+  GROQ_TEXT_MODEL?: string;
+  /** Id of the lead form (DNI Growth organisation) behind the contact form on dnigrowth.com. */
+  SITE_CONTACT_FORM_ID?: string;
   /** Gemini model for text fallback (free tier) and its own daily cap (default 100, leaves room for the GEO monitor). */
   GEMINI_TEXT_MODEL?: string;
   GEMINI_TEXT_DAILY?: string;

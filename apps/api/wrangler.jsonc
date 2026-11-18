@@ -76,10 +76,12 @@
     "GEMINI_FALLBACK_MODEL": "gemini-3.5-flash-lite",
     "AI_DAILY_BUDGET_USD": "0.10",
     // Free fallbacks of the AI service (each only if its secret exists): Groq, then Gemini (free tier).
-    "GROQ_DAILY_REQUESTS": "1000",
+    "GROQ_DAILY_REQUESTS": "900",
     "GEMINI_TEXT_MODEL": "gemini-3.5-flash-lite",
     // Leaves the rest of the free Gemini daily quota for the GEO monitor.
     "GEMINI_TEXT_DAILY": "100",
+    // Lead form (organisation «DNI Growth») behind the contact form of dnigrowth.com. Public id, not a secret.
+    "SITE_CONTACT_FORM_ID": "1329454a-ecaf-45fb-890d-71c2882e89db",
     // OpenRouter FREE-ONLY policy (fail-closed). Authorised OpenRouter spend: 0.00 USD, always.
     "OPENROUTER_FREE_ONLY": "true",
     "ALLOW_PAID_MODELS": "false",

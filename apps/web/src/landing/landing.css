@@ -195,6 +195,26 @@ section { padding: clamp(72px, 10vw, 140px) var(--gutter); }
 
 /* CONTACT */
 .contact { text-align: center; }
+.contact-box { max-width: 720px; margin: clamp(48px, 8vw, 96px) auto 0; text-align: left; border: 1px solid var(--line); border-radius: 24px; padding: clamp(20px, 4vw, 40px); background: var(--bg-2); }
+.contact-sub { font-family: var(--serif); font-weight: 400; font-size: clamp(28px, 4vw, 44px); line-height: 1.1; margin: 0 0 8px; }
+.contact-lead { color: var(--mute); margin: 0 0 24px; }
+.contact-form { display: grid; gap: 16px; }
+.contact-form label { display: grid; gap: 6px; font-size: 15px; }
+.cf-grid { display: grid; gap: 16px; grid-template-columns: 1fr 1fr; }
+.cf-opt { color: var(--mute); font-size: 13px; }
+.contact-form input:not([type="checkbox"]),
+.contact-form textarea { width: 100%; min-height: 46px; padding: 10px 14px; border-radius: 12px; border: 1px solid var(--line); background: var(--bg); color: var(--ink); font: inherit; font-size: 16px; }
+.contact-form textarea { resize: vertical; }
+.contact-form input:focus, .contact-form textarea:focus { border-color: var(--accent); outline: none; }
+.contact-form .cf-check { display: flex; gap: 10px; align-items: flex-start; color: var(--mute); }
+.cf-check input { margin-top: 5px; width: 18px; height: 18px; accent-color: var(--accent); flex: none; }
+.cf-check a { color: var(--ink); }
+.cf-hp { position: absolute; left: -9999px; width: 1px; height: 1px; overflow: hidden; }
+.contact-form .btn { justify-self: start; }
+.cf-status { margin: 0; min-height: 1.6em; }
+.cf-status[data-tone="ok"] { color: var(--accent); }
+.cf-status[data-tone="error"] { color: #ff8a8a; }
+@media (max-width: 640px) { .cf-grid { grid-template-columns: 1fr; } .contact-form .btn { justify-self: stretch; } }
 .contact-title { font-family: var(--serif); font-weight: 400; font-size: clamp(48px, 9vw, 140px); line-height: 1; letter-spacing: -.03em; margin: 0; }
 .underline-link { text-decoration: none; background: linear-gradient(var(--accent), var(--accent)) 0 100% / 0 3px no-repeat; transition: background-size .5s cubic-bezier(.2,.8,.2,1), color .3s; padding-bottom: 6px; }
 .underline-link:hover { background-size: 100% 3px; color: var(--accent); }

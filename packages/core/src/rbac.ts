@@ -48,6 +48,10 @@ export const SCOPES = [
   "ai:use",
   "creative:generate",
   "ai:configure",
+  "crm:read",
+  "crm:write",
+  "crm:delete",
+  "forms:manage",
 ] as const;
 export type Scope = (typeof SCOPES)[number];
 
@@ -78,6 +82,9 @@ const MATRIX: Record<Role, readonly Scope[]> = {
     "ai:use",
     "creative:generate",
     "ai:configure",
+    "crm:read",
+    "crm:write",
+    "forms:manage",
   ],
   editor: [...READ_BASE, "members:read", "brand:write", "site:analyze", "jobs:control", "plan:write", "content:write", "ads:draft", "ai:use", "creative:generate"],
   analyst: [...READ_BASE, "members:read", "integrations:read", "ai:use"],

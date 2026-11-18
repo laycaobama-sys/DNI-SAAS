@@ -2,7 +2,7 @@ import { Hono } from "hono";
 import { z } from "zod";
 import { freeGate } from "@dni/core";
 import type { AppEnv } from "../env";
-import { logInvocation } from "../lib/ai";
+import { AiUnavailableError, generateText, logInvocation } from "../lib/ai";
 import { auditStmt } from "../lib/audit";
 import { ApiError, parseBody } from "../lib/http";
 import {
@@ -114,6 +114,28 @@ admin.post("/ai/models/health-check", async (c) => {
     await logInvocation(c.env, { orgId: null, userId: c.get("user")!.id, requestRef: ref, task: "health_check", strategy: "manual_free", provider: "openrouter", model: modelId, status: "failed", errorCode: code, costState: "zero_expected", isFallback: false });
     return c.json({ ok: false, error: code }, 200);
   }
+});
+
+/**
+ * «Probar conexión» of one free provider (Workers AI, Groq or Gemini): one tiny request with the real
+ * secret, no cache and no fallback. At most 20 checks a day for the whole platform; audited. The key is
+ * never returned or logged: only provider, model, latency and the error code.
+ */
+admin.post("/ai/providers/test", async (c) => {
+  const { provider } = await parseBody(c, z.strictObject({ provider: z.enum(["workers_ai", "groq", "gemini"]) }));
+  await rateLimit(c.env.DB, "ai-provider-test", 20, 86400);
+  const user = c.get("user")!;
+  let out: { ok: boolean; provider: string; model?: string; latencyMs: number; error?: string };
+  const started = Date.now();
+  try {
+    const r = await generateText(c.env, c.get("deps"), [{ role: "user", content: "Responde únicamente con la palabra: OK" }], { task: "classification", maxTokens: 16, userId: user.id, onlyProvider: provider, cache: false });
+    out = { ok: true, provider: r.provider, model: r.model, latencyMs: Date.now() - started };
+  } catch (e) {
+    const attempts = e instanceof AiUnavailableError ? e.attempts : [];
+    out = { ok: false, provider, latencyMs: Date.now() - started, error: (attempts.at(-1) ?? "error").slice(0, 80) };
+  }
+  await auditStmt(c.env.DB, { organizationId: null, actorUserId: user.id, action: "ai.provider_test", entityType: "platform", entityId: provider, after: out, requestId: c.get("requestId") }).run();
+  return c.json(out);
 });
 
 // ── Stripe (platform admins only) ─────────────────────────────────────────────────────────────────

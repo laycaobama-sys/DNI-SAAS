@@ -91,7 +91,60 @@ const classTone = (c: string) => (c === "verified" ? "ok" : c === "restricted" ?
 const providerLabel = (p: string) => ({ openrouter: "OpenRouter", workers_ai: "Workers AI", gemini: "Gemini", groq: "Groq", cache: "Caché (sin coste)" })[p] ?? p;
 const nf = new Intl.NumberFormat("es-ES", { useGrouping: "always" });
 
-function EnginePanel({ s }: { s: Status }) {
+type ProviderTest = { ok: boolean; provider: string; model?: string; latencyMs: number; error?: string };
+const TESTABLE = [
+  { key: "workers_ai", label: "Workers AI" },
+  { key: "groq", label: "Groq" },
+  { key: "gemini", label: "Gemini" },
+] as const;
+
+/** Platform admins only: one tiny real request per provider (max. 20 a day for the platform). */
+function ProviderTests() {
+  const [busy, setBusy] = useState<string | null>(null);
+  const [res, setRes] = useState<Record<string, ProviderTest | string>>({});
+  const run = async (provider: string) => {
+    setBusy(provider);
+    try {
+      const r = await post<ProviderTest>("/admin/ai/providers/test", { provider });
+      setRes((x) => ({ ...x, [provider]: r }));
+    } catch (e) {
+      setRes((x) => ({ ...x, [provider]: e instanceof ApiError ? e.message : "Error" }));
+    } finally {
+      setBusy(null);
+    }
+  };
+  return (
+    <div className="mt-4 border-t border-line pt-3">
+      <p className="text-sm font-medium">Probar conexión (administración)</p>
+      <p className="text-xs text-mute">Una petición mínima y real a cada proveedor, sin caché ni respaldo. Máximo 20 pruebas al día; queda en la auditoría.</p>
+      <ul className="mt-2 space-y-2">
+        {TESTABLE.map((p) => {
+          const r = res[p.key];
+          return (
+            <li key={p.key} className="flex flex-wrap items-center gap-2 text-sm">
+              <Button variant="ghost" onClick={() => void run(p.key)} loading={busy === p.key} disabled={!!busy}>
+                <Stethoscope className="size-4" aria-hidden /> {p.label}
+              </Button>
+              {typeof r === "string" && <span className="text-danger">{r}</span>}
+              {r && typeof r !== "string" &&
+                (r.ok ? (
+                  <span>
+                    <Badge tone="ok">Responde</Badge> {r.model} · {nf.format(r.latencyMs)} ms
+                  </span>
+                ) : (
+                  <span>
+                    <Badge tone="danger">No responde</Badge> {r.error}
+                  </span>
+                ))}
+            </li>
+          );
+        })}
+      </ul>
+    </div>
+  );
+}
+
+function EnginePanel({ s, admin }: { s: Status; admin: boolean }) {
   const l = s.legacy ?? {};
   const cap = l.neuronsDailyCap ?? 0;
   const used = l.neuronsToday ?? 0;
@@ -121,8 +174,9 @@ function EnginePanel({ s }: { s: Status }) {
           ))}
         </ol>
         <p className="mt-2 text-xs text-mute">
-          Groq ({l.groqModel ?? "llama-3.1-8b-instant"}): {l.groq ? "activado" : "sin clave (opcional)"} · Gemini ({l.geminiModel ?? "gemini-3.5-flash-lite"}): {l.gemini ? "activado" : "sin clave"}. Los datos personales o secretos solo se procesan en Cloudflare.
+          Groq ({l.groqModel ?? "openai/gpt-oss-20b"}): {l.groq ? "activado" : "sin clave (opcional)"} · Gemini ({l.geminiModel ?? "gemini-3.5-flash-lite"}): {l.gemini ? "activado" : "sin clave"}. Los datos personales o secretos solo se procesan en Cloudflare.
         </p>
+        {admin && <ProviderTests />}
       </Card>
     </div>
   );
@@ -502,7 +556,7 @@ export function AiHubPage() {
       />
       {status.error ? <ErrorState error={status.error} onRetry={reload} /> : status.data ? (
         <div className="space-y-4">
-          <EnginePanel s={status.data} />
+          <EnginePanel s={status.data} admin={admin} />
           <StatusPanel s={status.data} />
         </div>
       ) : <Skeleton className="h-36" />}

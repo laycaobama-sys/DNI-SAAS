@@ -85,18 +85,18 @@ describe("AI service: Workers AI is the primary free engine", () => {
 });
 
 describe("AI service: free fallbacks (only if their key exists)", () => {
-  it("quota spent → Groq (llama-3.1-8b-instant) answers transparently", async () => {
+  it("quota spent → Groq (gpt-oss-20b, low reasoning) answers transparently", async () => {
     const { h, owner, orgId, external, spendBudget } = await setup();
     h.env.GROQ_API_KEY = "test-groq";
     h.env.GEMINI_API_KEY = "test-gemini";
     await spendBudget();
     const r = await ask(owner, orgId);
     expect(r.status).toBe(200);
-    expect(r.json.message).toMatchObject({ provider: "groq", model: "llama-3.1-8b-instant", content: "Respuesta Groq." });
+    expect(r.json.message).toMatchObject({ provider: "groq", model: "openai/gpt-oss-20b", content: "Respuesta Groq." });
     expect(external).toHaveLength(1);
     expect(external[0]!.url).toBe("https://api.groq.com/openai/v1/chat/completions");
     expect(external[0]!.headers.authorization).toBe("Bearer test-groq");
-    expect(external[0]!.body).toMatchObject({ model: "llama-3.1-8b-instant", max_tokens: 900 });
+    expect(external[0]!.body).toMatchObject({ model: "openai/gpt-oss-20b", max_tokens: 2312, reasoning_effort: "low", include_reasoning: false });
   });
 
   it("Workers AI failing + Groq 429 → Gemini 3.5 Flash-Lite (free tier) answers", async () => {
@@ -181,5 +181,29 @@ describe("AI service: 24 h response cache", () => {
     await h.db.prepare("UPDATE ai_response_cache SET expires_at = ?").bind(new Date(Date.now() - 1000).toISOString()).run();
     await ask(owner, orgId);
     expect(runs).toHaveLength(2);
+  });
+});
+
+describe("Admin «probar conexión» per provider", () => {
+  it("is invisible to normal users; calls only the chosen provider, never caches, audits without the key", async () => {
+    const { h, owner, runs, external, setGroq } = await setup();
+    expect((await owner.post("/api/v1/admin/ai/providers/test", { provider: "groq" })).status).toBe(404);
+    h.env.PLATFORM_ADMIN_EMAILS = "owner@luna.es";
+    const none = await owner.post("/api/v1/admin/ai/providers/test", { provider: "groq" });
+    expect(none.json).toMatchObject({ ok: false, provider: "groq", error: "groq:sin_clave" });
+    h.env.GROQ_API_KEY = "test-groq-secret";
+    const ok = await owner.post("/api/v1/admin/ai/providers/test", { provider: "groq" });
+    expect(ok.json).toMatchObject({ ok: true, provider: "groq", model: "openai/gpt-oss-20b" });
+    expect(runs).toHaveLength(0); // Workers AI was not called
+    expect(external.filter((x) => x.url.startsWith("https://api.groq.com/"))).toHaveLength(1);
+    expect(external[0]!.body.max_tokens).toBeLessThanOrEqual(544);
+    setGroq(401);
+    expect((await owner.post("/api/v1/admin/ai/providers/test", { provider: "groq" })).json).toMatchObject({ ok: false, error: "groq:groq_401" });
+    expect((await owner.post("/api/v1/admin/ai/providers/test", { provider: "workers_ai" })).json).toMatchObject({ ok: true, provider: "workers_ai" });
+    expect((await owner.post("/api/v1/admin/ai/providers/test", { provider: "openrouter" })).status).toBe(422);
+    const { results } = await h.db.prepare("SELECT after_redacted FROM audit_logs WHERE action = 'ai.provider_test'").all<{ after_redacted: string }>();
+    expect(results).toHaveLength(4);
+    expect(JSON.stringify(results)).not.toContain("test-groq-secret");
+    expect((await h.db.prepare("SELECT COUNT(*) AS n FROM ai_response_cache").first<{ n: number }>())!.n).toBe(0);
   });
 });

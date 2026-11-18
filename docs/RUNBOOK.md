@@ -33,7 +33,7 @@ Variables públicas en `apps/api/wrangler.jsonc` → `vars`: `APP_ORIGIN` (de el
 npx wrangler secret put GOOGLE_CLIENT_SECRET   # cliente OAuth web de Google
 npx wrangler secret put OPENROUTER_API_KEY     # opcional: respaldo con modelos gratuitos
 npx wrangler secret put GEMINI_API_KEY         # opcional: monitor GEO y respaldo de texto
-npx wrangler secret put GROQ_API_KEY           # opcional: respaldo gratuito de Workers AI (llama-3.1-8b-instant)
+npx wrangler secret put GROQ_API_KEY           # opcional: respaldo gratuito de Workers AI (openai/gpt-oss-20b)
 npx wrangler secret put STRIPE_SECRET_KEY      # solo cuando se active Stripe
 npx wrangler secret put STRIPE_WEBHOOK_SECRET
 npx wrangler secret list
@@ -63,7 +63,8 @@ npx wrangler d1 execute DB --remote --command "SELECT kind, status, attempts, la
 - Fallos por modelo en logs: evento `ai.model_failed`.
 - Orden «automático»: Workers AI (gemma-4-26b → glm-4.7-flash) → Groq (si hay clave) → Gemini (si hay clave) → OpenRouter `:free`. Datos sensibles: solo Workers AI.
 - Tope de Workers AI: `AI_DAILY_BUDGET_USD` (máx. 0,10 USD ≈ 9.091 neuronas/día, por debajo de las 10.000 gratuitas; la cuenta está en Workers Paid). Cambiar de modelo sin código: variable `WORKERS_AI_TEXT_MODEL`.
-- Topes de respaldo: `GROQ_DAILY_REQUESTS` (1000), `GEMINI_TEXT_DAILY` (100). Caché 24 h en `ai_response_cache` (el cron borra lo caducado).
+- Comprobar cada proveedor sin esperar a un fallo: Centro de IA → «Probar conexión» (solo administración, máx. 20/día).
+- Topes de respaldo: `GROQ_DAILY_REQUESTS` (900; Groq gratis = 1.000/día), `GROQ_TEXT_MODEL` (por defecto `openai/gpt-oss-20b`), `GEMINI_TEXT_DAILY` (100). Caché 24 h en `ai_response_cache` (el cron borra lo caducado).
 
 ## Stripe (solo cuando se active `BILLING_ENABLED`)
 1. Crear un producto y precio mensual por plan (starter, growth, pro, agency).
@@ -104,7 +105,8 @@ npx wrangler d1 time-travel restore dni-growth-db --bookmark=<marcador>
 Copias exportadas antes de cada migración en `backups/` (fuera de git).
 
 ## Despliegue 2026-11-18 (dominio + Model Hub + Content Studio)
-- Versión actual (IA gratuita centralizada + recomendaciones GEO + informes, migración 0012): `b9cf00ee-01f9-4f00-a6a0-c1d17d0e12a1`. Anteriores del mismo día: `7bd521b9…`, `c7b15032…`, `9843c6aa…`. Copia previa a 0012: `backups/dni-growth-db-pre-0012-20261118-2014.sql`. Variables nuevas (no secretas): `GROQ_DAILY_REQUESTS=1000`, `GEMINI_TEXT_MODEL=gemini-3.5-flash-lite`, `GEMINI_TEXT_DAILY=100`. Secreto opcional `GROQ_API_KEY` (lo pone la titular). Migración aditiva: revertir el código no requiere tocar la base de datos.
+- Versión actual (CRM y formulario de contacto, migración 0013): `c43757da-16be-468f-ab26-8f41001a2f41`. Copia previa a 0013: `backups/dni-growth-db-pre-0013-20261118-2155.sql`. Variable nueva (no secreta): `SITE_CONTACT_FORM_ID` = formulario «Contacto web dnigrowth.com» de la organización DNI Growth. Para cerrar el formulario sin desplegar: CRM → Formularios → «Pausar». Migración aditiva: revertir el código no requiere tocar la base de datos.
+- Versión anterior (IA gratuita centralizada + recomendaciones GEO + informes, migración 0012): `b9cf00ee-01f9-4f00-a6a0-c1d17d0e12a1`. Anteriores del mismo día: `7bd521b9…`, `c7b15032…`, `9843c6aa…`. Copia previa a 0012: `backups/dni-growth-db-pre-0012-20261118-2014.sql`. Variables nuevas (no secretas): `GROQ_DAILY_REQUESTS=1000`, `GEMINI_TEXT_MODEL=gemini-3.5-flash-lite`, `GEMINI_TEXT_DAILY=100`. Secreto opcional `GROQ_API_KEY` (lo pone la titular). Migración aditiva: revertir el código no requiere tocar la base de datos.
 - Versión actual: `286b5a81-6ead-4114-928f-a566e48c4718` · anterior: `11831c6d-b194-4d2e-9810-d7631a9e0d1d`.
 - Versión anterior (monitor GEO con Gemini gratuito, migración 0011): `d2b1cc65-5d2d-4f4a-94b7-825c57451e0c`. Copia previa `backups/dni-growth-db-pre-0011-20261118-1608.sql`. Variables nuevas (no secretas): `GEMINI_MODEL=gemini-3.8-flash`, `GEMINI_FALLBACK_MODEL=gemini-3.5-flash-lite`; secreto existente `GEMINI_API_KEY` (lo pone la titular con `wrangler secret put`). Para pausar el muestreo sin desplegar código: `GEO_SAMPLES_DAILY_GLOBAL=0`. Migración aditiva: revertir el código no requiere tocar la base de datos.
 - Versión anterior (biblioteca de prompts GEO, migración 0010): `34d73cb4-a04a-45a0-b495-d36df5d5bd18` · anterior `74c3b3ef-27cc-4ce9-aa7b-5fe1f8525528`. La migración es aditiva: revertir el código no requiere tocar la base de datos.

@@ -35,7 +35,8 @@ export const WORKERS_AI_FREE_NEURONS_PER_DAY = 10_000;
 export const usdToNeurons = (usd: number) => Math.round(usd / WORKERS_AI_USD_PER_NEURON);
 
 /** Free fallback providers (used only when their key exists; never with sensitive data). */
-export const GROQ_TEXT_MODEL = "llama-3.1-8b-instant";
+/** Groq free plan: llama-3.1-8b-instant is Enterprise-only (404 for free keys, 2026-11-18); gpt-oss-20b has 1K requests/day. */
+export const GROQ_TEXT_MODEL = "openai/gpt-oss-20b";
 export const GEMINI_TEXT_MODEL_DEFAULT = "gemini-3.5-flash-lite";
 
 /** Image model: Workers AI FLUX.1 schnell, priced per 512×512 tile per step. */

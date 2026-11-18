@@ -259,6 +259,25 @@
       <section class="contact" aria-labelledby="cta-title">
         <p class="kicker reveal">¿Empezamos?</p>
         <h2 id="cta-title" class="contact-title reveal"><a class="underline-link" href="/app/register">Audita tu web hoy →</a></h2>
+        <div id="contacto" class="contact-box reveal">
+          <h3 class="contact-sub">¿Prefieres hablar con nosotros?</h3>
+          <p class="contact-lead">Cuéntanos qué necesitas y te respondemos por email. Sin llamadas comerciales no pedidas.</p>
+          <form class="contact-form" action="/api/v1/public/site-contact" method="post" data-contact-form novalidate>
+            <div class="cf-grid">
+              <label>Nombre<input name="name" required maxlength="120" autocomplete="name" /></label>
+              <label>Email<input name="email" type="email" required maxlength="254" autocomplete="email" /></label>
+              <label>Empresa <span class="cf-opt">(opcional)</span><input name="company" maxlength="160" autocomplete="organization" /></label>
+              <label>Teléfono <span class="cf-opt">(opcional)</span><input name="phone" type="tel" maxlength="40" autocomplete="tel" /></label>
+            </div>
+            <label>Mensaje<textarea name="message" rows="4" maxlength="3000" placeholder="Tu web, tu objetivo y cualquier duda."></textarea></label>
+            <p class="cf-hp" aria-hidden="true"><label>No rellenar<input name="website" tabindex="-1" autocomplete="off" /></label></p>
+            <label class="cf-check"><input type="checkbox" name="consent" required aria-labelledby="cf-consent-text" /> <span id="cf-consent-text">Acepto que DNI Growth trate mis datos para responder a mi solicitud, según la <a href="/legal/privacidad#contacto">política de privacidad</a>.</span></label>
+            <label class="cf-check"><input type="checkbox" name="marketing" aria-labelledby="cf-marketing-text" /> <span id="cf-marketing-text">Quiero recibir novedades de DNI Growth (opcional, puedo darme de baja cuando quiera).</span></label>
+            <input type="hidden" name="_t" /><input type="hidden" name="page_url" /><input type="hidden" name="referrer" />
+            <button class="btn btn-accent" type="submit">Enviar mensaje</button>
+            <p class="cf-status" role="status" aria-live="polite" data-contact-status></p>
+          </form>
+        </div>
       </section>
     </main>
 

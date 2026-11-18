@@ -8,6 +8,7 @@ import { admin } from "./routes/admin";
 import { ai } from "./routes/ai";
 import { aihub } from "./routes/aihub";
 import { content } from "./routes/content";
+import { crm, crmPublic } from "./routes/crm";
 import { auth } from "./routes/auth";
 import { billing, providerManifest, webhooks } from "./routes/billing";
 import { insights } from "./routes/insights";
@@ -46,6 +47,7 @@ export function createApp(deps: Deps) {
   app.route("/api/v1/auth", oauth);
   app.route("/api/v1/webhooks", webhooks);
   app.route("/api/v1", orgsPublic);
+  app.route("/api/v1/public", crmPublic);
 
   // Every tenant route: authenticated user + active membership resolved from the path.
   const tenant = new Hono<AppEnv>();
@@ -61,6 +63,7 @@ export function createApp(deps: Deps) {
   tenant.route("/", analytics);
   tenant.route("/", geo);
   tenant.route("/", reports);
+  tenant.route("/", crm);
   tenant.get("/integrations", requireScope("integrations:read"), async (c) => {
     // Per-organization connection state overrides the platform-level availability.
     const { results } = await c.env.DB.prepare("SELECT provider, status, last_sync_at FROM integrations WHERE organization_id = ?")

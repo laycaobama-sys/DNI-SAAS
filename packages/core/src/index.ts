@@ -16,3 +16,4 @@ export * from "./content";
 export * from "./privacy";
 export * from "./geo";
 export * from "./geo-recs";
+export * from "./crm";

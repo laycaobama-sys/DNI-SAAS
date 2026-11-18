@@ -31,6 +31,9 @@ export const securityHeaders: MiddlewareHandler<AppEnv> = async (c, next) => {
 export const csrf: MiddlewareHandler<AppEnv> = async (c, next) => {
   const m = c.req.method;
   if (m === "GET" || m === "HEAD" || m === "OPTIONS" || c.req.path.startsWith("/api/v1/webhooks/")) return next();
+  // Public lead forms are posted from customers' own sites: no session is used there; each form checks
+  // its own allowed origins, rate limits and anti-spam (routes/crm.ts).
+  if (c.req.path.startsWith("/api/v1/public/")) return next();
   if (c.req.header("x-dni-csrf") !== "1") throw new ApiError(403, "csrf", "Petición rechazada (CSRF).");
   const origin = c.req.header("origin");
   if (origin) {
