@@ -1,41 +1,40 @@
-# Cobros con Stripe: qué se hará y cuánto cuesta
+# Cobros con Stripe: estado, cómo funciona y cuánto cuesta
 
-Estado: **desactivado** (`BILLING_ENABLED=false`). El código ya existe (checkout, webhooks firmados e idempotentes, ledger de créditos), pero nada cobra hasta que lo decidas. No hace falta presupuesto para empezar.
+Cuenta de Stripe: **«DNI Growth»** (separada de «RestoPanel», decisión de la titular del 2026-11-18). Hoy se trabaja en su **entorno de prueba**: nadie paga dinero real.
 
-## 1. Lo que cuesta Stripe (sin cuota mensual)
-Stripe no cobra alta ni mensualidad: solo una comisión por cada pago que entra. Tarifas públicas orientativas para una empresa en España (compruébalas en stripe.com/es/pricing el día que actives):
+## 1. Cómo funciona (implementado y desplegado)
+| Pieza | Qué hace |
+|---|---|
+| Clave | `STRIPE_SECRET_KEY` solo en los secretos de Cloudflare (la guarda la titular con `wrangler secret put`). Nunca se muestra ni se registra. |
+| Modo | `sk_test_…` → **solo administradores de la plataforma** pueden abrir el pago (prueba en producción sin que el público vea un pago ficticio). `BILLING_ENABLED="true"` → pagos abiertos a todos. `sk_live_…` sin `BILLING_ENABLED` → nada se puede cobrar. |
+| Catálogo | Botón «Sincronizar productos, precios y portal» (Facturación → panel de administración) o `POST /api/v1/admin/billing/stripe/sync`: crea productos con id fijo (`dni_growth_<plan>`), precios mensuales en EUR sin IVA con `lookup_key`, y el **portal de cliente**. Idempotente: repetirlo no duplica nada; si cambia un precio, crea uno nuevo y archiva el anterior (los clientes actuales conservan su precio). |
+| Webhook | La sincronización registra `https://dnigrowth.com/api/v1/webhooks/stripe` (eventos `checkout.session.completed`, `customer.subscription.created/updated/deleted`). Su secreto de firma, que Stripe entrega una sola vez, se guarda **cifrado** (AES-256-GCM con `DATA_ENC_KEY`) y nunca sale del servidor. Si la titular prefiere su propio endpoint, basta con `STRIPE_WEBHOOK_SECRET` y la plataforma no crea otro. |
+| Checkout | Stripe Checkout en español, dirección de facturación y NIF-IVA, códigos promocionales, email del usuario. **Una sola suscripción por organización** (409 si ya existe: los cambios van por el portal). |
+| Portal | «Gestionar suscripción»: cambiar de plan, tarjeta, facturas, cancelar al final del periodo. |
+| Webhooks | Firma verificada sobre el cuerpo crudo, cada evento se procesa una vez, se ignoran eventos de modo cruzado (real/prueba) y eventos antiguos que llegan tarde; el plan se deduce del precio contratado; `past_due`/impago → plan Free hasta que se pague; créditos del plan una sola vez por mes. |
+| Pruebas | `apps/api/test/stripe.test.ts` (11) + `flow.test.ts` (4). |
 
-| Concepto | Comisión aproximada | Ejemplo con el plan Starter (39 €) |
+## 2. Lo que cuesta Stripe (sin cuota mensual)
+Stripe no cobra alta ni mensualidad: solo una comisión por cada pago. Tarifas públicas orientativas para España (compruébalas en stripe.com/es/pricing al activar):
+
+| Concepto | Comisión aproximada | Ejemplo Starter (39 €) |
 |---|---|---|
-| Tarjeta europea estándar | 1,5 % + 0,25 € | 0,84 € → recibes ~38,16 € |
+| Tarjeta europea estándar | 1,5 % + 0,25 € | 0,84 € |
 | Tarjeta del Reino Unido | 2,5 % + 0,25 € | 1,23 € |
 | Tarjeta internacional | ~3,25 % + 0,25 € | 1,52 € |
-| Stripe Billing (suscripciones recurrentes) | ~0,7 % del importe facturado | 0,27 € |
-| Stripe Tax (opcional, calcula el IVA) | ~0,5 % por transacción | 0,20 € |
+| Stripe Billing (suscripciones) | ~0,7 % | 0,27 € |
+| Stripe Tax (opcional, **no activado**) | ~0,5 % | 0,20 € |
 
-Con un Starter cobrado a un cliente europeo te quedan unos **37,9 €** (≈97 %). Tu único coste fijo sigue siendo Cloudflare (5 USD/mes, ya pagado).
+## 3. Antes de cobrar dinero real (decisión de la titular)
+1. Activar la cuenta «DNI Growth» en Stripe (datos fiscales y bancarios, KYC) — solo la titular.
+2. Textos legales definitivos con datos fiscales: condiciones de contratación, cancelación y reembolso (hoy el portal enlaza `/legal/privacidad` y `/legal/aviso-legal`, que son borradores).
+3. IVA: decidir Stripe Tax o gestor (hoy los precios son «sin IVA» y Stripe Tax no está activado).
+4. Guardar la clave real: `npx wrangler secret put STRIPE_SECRET_KEY` con `sk_live_…`, pulsar «Sincronizar» (crea el catálogo y el webhook reales) y, solo entonces, `BILLING_ENABLED="true"` en `wrangler.jsonc` + despliegue.
 
-## 2. Lo que necesitas antes de cobrar (requisitos legales, no técnicos)
-1. **Estar dado de alta para facturar** (autónomo o sociedad) y tener una cuenta bancaria a tu nombre o al de la empresa: Stripe verifica tu identidad (KYC) y paga en esa cuenta.
-2. **IVA**: a empresas de la UE con NIF-IVA, factura sin IVA con inversión del sujeto pasivo; a particulares de otros países de la UE, el IVA de su país (régimen OSS); en España, 21 %. Stripe Tax lo automatiza, o lo lleva tu gestor.
-3. **Textos legales** con tus datos fiscales: condiciones de contratación, política de cancelación y reembolso, privacidad (hoy son borradores en `/legal/*`).
-4. **Dominio propio** (lo vas a comprar): Stripe y los clientes confían más, y el email de recibos sale de tu dominio.
+## 4. Estrategia comercial sugerida (sin presupuesto)
+- Auditoría gratuita (Free: 3/mes) como gancho; Asesor IA e imágenes consumen créditos.
+- Empezar mostrando Starter (39 €) y Growth (89 €); Pro y Agency bajo petición.
+- Servicio «hecho por ti» (auditoría + plan explicado en una llamada) como ingreso rápido.
+- Garantía de 14 días en el primer mes (reembolso con un clic en Stripe).
 
-## 3. Lo que haré cuando digas «activa Stripe» (unas 2 horas de trabajo)
-1. Tú creas la cuenta de Stripe y me dices que ya está; **las claves las pegas tú** con `npx wrangler secret put STRIPE_SECRET_KEY` y `STRIPE_WEBHOOK_SECRET` (nunca en el chat).
-2. Empezamos en **modo prueba** (`sk_test_…`): creo los productos y precios mensuales (Starter, Growth, Pro, Agency) y guardo cada `price_…` en la tabla `plans`.
-3. Registro el webhook en `https://<tu-dominio>/api/v1/webhooks/stripe` (eventos `checkout.session.completed` y `customer.subscription.*`).
-4. Pongo `BILLING_ENABLED=true`, despliego y hago un pago de prueba con la tarjeta de prueba de Stripe: la suscripción debe aparecer activa, el plan y los créditos subir una sola vez aunque Stripe repita el evento, y la cancelación debe devolver la cuenta a Free.
-5. Solo cuando todo lo anterior esté verde, cambiamos a claves `sk_live_…`. El primer cobro real lo autorizas tú.
-6. Activo el **portal de cliente de Stripe** (cambiar tarjeta, descargar facturas, cancelar) para no tener que gestionar eso a mano.
-
-## 4. Estrategia para ganar rápido sin presupuesto
-- **Producto de entrada que ya funciona**: la auditoría gratuita (Free: 3 análisis/mes) es el gancho. Quien la usa ve sus problemas reales y el plan de 30 días; el Asesor IA y las imágenes consumen créditos, que es lo que empuja a pagar.
-- **Empieza con 2 planes, no 5**: Starter 39 €/mes y Growth 89 €/mes. Pro y Agency se activan cuando un cliente lo pida. Menos opciones = decisión más rápida.
-- **Precio anual con 2 meses gratis** (390 € y 890 €): cobras por adelantado, lo que te da caja inmediata.
-- **Servicio «hecho por ti» con la herramienta**: vende a negocios locales (como DNI GYM y su entorno) una auditoría + plan explicado en una llamada por un pago único de 150–300 €, usando DNI Growth. Es el ingreso más rápido: no depende de tráfico orgánico y cada cliente puede convertirse en suscripción.
-- **Sin anuncios de pago al principio**: canales gratuitos (tus redes, contactos de DNI GYM y DNI DIRECTO, grupos de empresarios locales, LinkedIn) y el propio blog/auditoría pública para SEO.
-- **Garantía simple**: 14 días de devolución en el primer mes; reduce el miedo a pagar y Stripe permite reembolsar con un clic.
-- Coste variable por cliente casi nulo: la IA tiene tope diario y créditos; el resto está incluido en Workers Paid. Por eso casi todo lo que cobres (menos ~3 % de Stripe e impuestos) es margen.
-
-Ninguna cifra de ventas está garantizada: son precios orientativos (definidos en `migrations/0003_seed_plans.sql`, editables) y comisiones públicas que pueden cambiar.
+Ninguna cifra de ventas está garantizada: precios orientativos (`migrations/0003_seed_plans.sql`) y comisiones públicas que pueden cambiar.

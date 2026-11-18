@@ -171,6 +171,73 @@ export function TeamPage() {
 const ENTRY_LABEL: Record<string, string> = { grant: "Asignación mensual", reserve: "Reserva", release: "Liberación", settle: "Consumo", adjustment: "Ajuste" };
 const SUB_STATUS: Record<string, string> = { active: "activa", trialing: "en prueba", past_due: "con pago pendiente", canceled: "cancelada", incomplete: "incompleta" };
 
+const ACCESS_LABEL: Record<string, string> = {
+  not_configured: "Sin conectar",
+  off: "Desactivado",
+  test_admin_only: "Modo prueba (solo administradores)",
+  open: "Pagos abiertos",
+};
+
+/** Platform-admin view of the Stripe connection: secrets present (never their values), mode and catalogue sync. */
+function StripeAdminPanel({ onSynced }: { onSynced: () => void }) {
+  const { data, error, reload } = useApi<any>("/admin/billing/stripe");
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<ApiError | null>(null);
+  const [result, setResult] = useState<any>(null);
+  const sync = async () => {
+    setErr(null);
+    setBusy(true);
+    try {
+      setResult(await post("/admin/billing/stripe/sync", {}));
+      reload();
+      onSynced();
+    } catch (e) {
+      setErr(e as ApiError);
+    } finally {
+      setBusy(false);
+    }
+  };
+  if (error || !data) return null;
+  const ok = (b: boolean) => <Badge tone={b ? "ok" : "warn"}>{b ? "presente" : "falta"}</Badge>;
+  return (
+    <Card title="Stripe · administración de la plataforma" subtitle="Visible solo para administradores de DNI Growth. Las claves viven en los secretos de Cloudflare y nunca se muestran.">
+      <dl className="grid gap-3 text-sm sm:grid-cols-2">
+        <div>
+          <dt className="text-mute">Modo</dt>
+          <dd>
+            {data.mode === "none" ? "—" : data.mode === "test" ? "Prueba" : "Real"} · {ACCESS_LABEL[data.access] ?? data.access}
+          </dd>
+        </div>
+        <div>
+          <dt className="text-mute">Claves</dt>
+          <dd className="flex flex-wrap gap-2">
+            <span>STRIPE_SECRET_KEY {ok(data.secretKeyPresent)}</span>
+            <span>STRIPE_WEBHOOK_SECRET {ok(data.webhookSecretPresent)}</span>
+          </dd>
+        </div>
+        <div className="sm:col-span-2">
+          <dt className="text-mute">URL del webhook (eventos checkout.session.completed y customer.subscription.*)</dt>
+          <dd className="break-all font-mono text-xs">{data.webhookUrl}</dd>
+        </div>
+        <div className="sm:col-span-2">
+          <dt className="text-mute">Precios en Stripe</dt>
+          <dd className="text-xs">
+            {data.plans
+              .filter((p: any) => p.price_eur_month > 0)
+              .map((p: any) => `${p.name}: ${p.stripe_price_id ?? "sin precio"}`)
+              .join(" · ")}
+          </dd>
+        </div>
+      </dl>
+      <ErrorState error={err} />
+      {result && <Notice tone="ok">Catálogo sincronizado: {result.plans.map((p: any) => `${p.code} (${p.action})`).join(", ")}; portal {result.portalAction === "created" ? "creado" : "actualizado"}.</Notice>}
+      <Button className="mt-4" onClick={sync} loading={busy} disabled={!data.secretKeyPresent}>
+        Sincronizar productos, precios y portal
+      </Button>
+    </Card>
+  );
+}
+
 export function BillingPage() {
   const { orgId } = useParams();
   const [params] = useSearchParams();
@@ -178,6 +245,7 @@ export function BillingPage() {
   const { data, error, loading, reload } = useApi<any>(`/orgs/${orgId}/billing`);
   const [err, setErr] = useState<ApiError | null>(null);
   const [busyPlan, setBusyPlan] = useState<string | null>(null);
+  const { me } = useAuth();
   if (loading && !data) return <Spinner />;
   if (error) return <ErrorState error={error} onRetry={reload} />;
 
@@ -193,14 +261,42 @@ export function BillingPage() {
       setBusyPlan(null);
     }
   };
+  const openPortal = async () => {
+    setErr(null);
+    setBusyPlan("portal");
+    try {
+      const r = await post<{ url: string }>(`/orgs/${orgId}/billing/portal`, {});
+      if (r.url.startsWith("https://billing.stripe.com/")) window.location.assign(r.url);
+    } catch (e) {
+      setErr(e as ApiError);
+    } finally {
+      setBusyPlan(null);
+    }
+  };
   const limits = data.plan.limits;
+  const stripeSub = data.subscription?.provider === "stripe" && data.subscription.status !== "canceled";
+  const canPay = !!data.stripe.canCheckout && access.can("billing:manage");
 
   return (
     <>
       <PageHeader eyebrow="Organización" title="Facturación y créditos" subtitle="Cuota del software y créditos de uso separados. Cada consumo queda registrado en un libro contable inmutable." />
       <div className="mb-4 space-y-3">
         {params.get("checkout") === "success" && <Notice tone="ok">Pago recibido por Stripe. El plan se activa cuando llega la confirmación firmada (normalmente en segundos).</Notice>}
+        {params.get("checkout") === "cancel" && <Notice tone="warn">Pago cancelado. No se ha realizado ningún cargo.</Notice>}
         {!data.stripe.configured && <Notice tone="warn" title="Pagos no activados">Stripe no está conectado en este entorno. Los planes de pago aparecen como «próximamente» y no se realiza ningún cargo.</Notice>}
+        {data.stripe.configured && data.stripe.access === "test_admin_only" && (
+          <Notice tone="warn" title="Stripe en modo prueba">
+            {data.stripe.note} {data.stripe.canCheckout ? "Usa la tarjeta 4242 4242 4242 4242, cualquier fecha futura y cualquier CVC." : ""}
+          </Notice>
+        )}
+        {stripeSub && access.can("billing:manage") && (
+          <div className="flex flex-wrap items-center gap-3 rounded-2xl border border-line bg-surface p-4">
+            <p className="flex-1 text-sm">Cambia de plan, actualiza la tarjeta, descarga facturas o cancela desde el portal seguro de Stripe.</p>
+            <Button onClick={openPortal} loading={busyPlan === "portal"} disabled={!data.stripe.canCheckout}>
+              Gestionar suscripción
+            </Button>
+          </div>
+        )}
         <ErrorState error={err} />
       </div>
       <div className="mb-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
@@ -248,15 +344,17 @@ export function BillingPage() {
                   {l.brands} marca(s) · {l.seats} usuario(s)
                 </li>
               </ul>
-              {!current && p.price_eur_month > 0 && (
-                <Button className="mt-4" disabled={!data.stripe.configured || !p.purchasable || !access.can("billing:manage")} loading={busyPlan === p.code} onClick={() => checkout(p.code)}>
-                  {!data.stripe.configured || !p.purchasable ? "Próximamente" : "Cambiar a este plan"}
+              {!current && p.price_eur_month > 0 && !stripeSub && (
+                <Button className="mt-4" disabled={!canPay || !p.purchasable} loading={busyPlan === p.code} onClick={() => checkout(p.code)}>
+                  {!data.stripe.configured || !p.purchasable ? "Próximamente" : !canPay ? "Pagos aún no disponibles" : "Contratar este plan"}
                 </Button>
               )}
             </div>
           );
         })}
       </div>
+
+      {me?.user?.isPlatformAdmin && <StripeAdminPanel onSynced={reload} />}
 
       <Card title="Movimientos de créditos" subtitle="Reserva al iniciar un trabajo, consumo real al terminar y liberación del resto. Si un trabajo falla, se libera todo.">
         {data.ledger.length === 0 ? (

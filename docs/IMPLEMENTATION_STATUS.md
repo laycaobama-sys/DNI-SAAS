@@ -1,6 +1,6 @@
 # Estado de implementación — DNI Growth
 
-Última actualización: 2026-11-18 · Producción: **https://dnigrowth.com** (Worker `dni-growth`, versión `1c75f4dd-bbe3-4728-9355-317fce11062b`; workers.dev redirige con 301 a dnigrowth.com) · Workers Paid, sin servicios de pago adicionales ([verificación de la cuenta](CLOUDFLARE_ACCOUNT_VERIFICATION.md)).
+Última actualización: 2026-11-18 · Producción: **https://dnigrowth.com** (Worker `dni-growth`, versión `7c6037e5-4d38-43eb-8bd4-e52a71ad4afb`; workers.dev redirige con 301 a dnigrowth.com) · Workers Paid, sin servicios de pago adicionales ([verificación de la cuenta](CLOUDFLARE_ACCOUNT_VERIFICATION.md)).
 
 Leyenda:
 - **VERIFICADO EN PRODUCCIÓN**: probado contra la URL pública con una respuesta comprobable.
@@ -8,7 +8,7 @@ Leyenda:
 - **BLOQUEADO POR PERMISOS**: necesita una acción, clave o aceptación del titular.
 - **NO IMPLEMENTADO**.
 
-Pruebas automáticas: lint, typecheck, **231 tests** (117 core + 114 API), build y escaneo de secretos en verde el 2026-11-18 (CI de GitHub en verde).
+Pruebas automáticas: lint, typecheck, **242 tests** (117 core + 125 API), build y escaneo de secretos en verde el 2026-11-18 (CI de GitHub en verde).
 
 Pruebas E2E en producción del 2026-11-18 con la cuenta verificada de la titular (organización propia, plan Free), ejecutadas desde el navegador contra https://dnigrowth.com; cada fila indica la respuesta observada.
 
@@ -38,7 +38,8 @@ Pruebas E2E en producción del 2026-11-18 con la cuenta verificada de la titular
 | **Inicio de sesión con Google** (OIDC + PKCE S256, nonce, vinculación segura) | BLOQUEADO POR PERMISOS | Google acepta la URL de retorno `https://dnigrowth.com/api/v1/auth/google/callback` (selector «Ir a dnigrowth.com», sin `redirect_uri_mismatch`); sin secreto, `/auth/google/start` redirige con `google_not_configured`. Falta `npx wrangler secret put GOOGLE_CLIENT_SECRET` por la titular |
 | Organizaciones, invitaciones, roles, aislamiento multiempresa | VERIFICADO EN PRODUCCIÓN (aislamiento) · LOCAL (invitaciones, roles) | prod: otra organización → 404 en `/dashboard` y `/content`; `tenancy.test.ts` (guard SQL estático ampliado a `content_items`, `content_versions`, `organization_ai_preferences`) |
 | Créditos con reserva → liquidación/liberación | VERIFICADO EN PRODUCCIÓN | ledger: concesión 50 → auditoría −10, asesor −1 ×2, borrador −3, imagen −5 = **30**; cada operación reserva/libera/liquida una sola vez |
-| Stripe detrás de `BILLING_ENABLED=false` | VERIFICADO EN PRODUCCIÓN | webhook → 503 `billing_disabled` |
+| Stripe detrás de `BILLING_ENABLED=false` | VERIFICADO EN PRODUCCIÓN | sin clave: webhook → 503 `billing_disabled` (versión 7c6037e5) |
+| Stripe: catálogo idempotente, portal, webhook gestionado con secreto cifrado, modo prueba solo para administradores, una suscripción por organización, eventos antiguos/cruzados ignorados | VERIFICADO SOLO EN LOCAL | `stripe.test.ts` (11); migración 0006 aplicada en producción con copia previa `backups/dni-growth-db-pre-0006-20261118-0336.sql`. En producción falta `STRIPE_SECRET_KEY` (la guarda la titular) |
 | Cabeceras de seguridad (CSP, HSTS, XFO, nosniff) | VERIFICADO EN PRODUCCIÓN | `curl -I https://dnigrowth.com/` |
 
 ## F1 — URL → análisis → marca → plan

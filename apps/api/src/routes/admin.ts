@@ -21,6 +21,7 @@ import {
 import { rateLimit } from "../lib/ratelimit";
 import { addSeconds, nowIso, uuid } from "../lib/util";
 import { requirePlatformAdmin, requireUser } from "../middleware";
+import { billingAccess, ensureWebhookEndpoint, getSetting, StripeApiError, stripeMode, syncStripeCatalog, webhookSecrets } from "../lib/stripe";
 import { providerStatus } from "./aihub";
 
 /** Platform SuperAdmin endpoints for the AI Model Hub. 404 for everyone else. */
@@ -112,5 +113,38 @@ admin.post("/ai/models/health-check", async (c) => {
     await db.prepare("UPDATE ai_models SET health_status = 'failed', health_checked_at = ?, health_error = ? WHERE model_id = ?").bind(nowIso(), code, modelId).run();
     await logInvocation(c.env, { orgId: null, userId: c.get("user")!.id, requestRef: ref, task: "health_check", strategy: "manual_free", provider: "openrouter", model: modelId, status: "failed", errorCode: code, costState: "zero_expected", isFallback: false });
     return c.json({ ok: false, error: code }, 200);
+  }
+});
+
+// ── Stripe (platform admins only) ─────────────────────────────────────────────────────────────────
+admin.get("/billing/stripe", async (c) => {
+  const { results: plans } = await c.env.DB.prepare("SELECT code, name, price_eur_month, stripe_price_id FROM plans WHERE active = 1 ORDER BY position").all();
+  const mode = stripeMode(c.env);
+  return c.json({
+    mode: mode ?? "none",
+    access: billingAccess(c.env),
+    secretKeyPresent: !!c.env.STRIPE_SECRET_KEY,
+    webhookSecretPresent: !!c.env.STRIPE_WEBHOOK_SECRET,
+    webhookVerifiable: (await webhookSecrets(c.env)).length > 0,
+    webhookEndpoint: mode ? JSON.parse((await getSetting(c.env.DB, `stripe_webhook_endpoint_${mode}`)) ?? "null") : null,
+    billingEnabledFlag: c.env.BILLING_ENABLED === "true",
+    webhookUrl: `${c.env.APP_ORIGIN}/api/v1/webhooks/stripe`,
+    portalConfigurationId: mode ? await getSetting(c.env.DB, `stripe_portal_config_${mode}`) : null,
+    plans,
+  });
+});
+
+admin.post("/billing/stripe/sync", async (c) => {
+  await rateLimit(c.env.DB, "stripe-sync", 10, 3600);
+  if (!stripeMode(c.env)) throw new ApiError(503, "provider_not_configured", "Falta STRIPE_SECRET_KEY (sk_test_… o sk_live_…).");
+  try {
+    const catalog = await syncStripeCatalog(c.env, c.get("deps"), c.env.APP_ORIGIN);
+    const webhook = await ensureWebhookEndpoint(c.env, c.get("deps"), c.env.APP_ORIGIN);
+    const r = { ...catalog, webhook };
+    await auditStmt(c.env.DB, { organizationId: null, actorUserId: c.get("user")!.id, action: "platform.stripe_catalog_sync", entityType: "plan", after: r, requestId: c.get("requestId") }).run();
+    return c.json(r);
+  } catch (e) {
+    if (e instanceof StripeApiError) throw new ApiError(502, "provider_error", `Stripe rechazó la sincronización (${e.code}).`);
+    throw e;
   }
 });
