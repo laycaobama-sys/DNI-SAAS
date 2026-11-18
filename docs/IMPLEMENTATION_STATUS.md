@@ -1,6 +1,6 @@
 # Estado de implementación — DNI Growth
 
-Última actualización: 2026-11-18 · Producción: **https://dnigrowth.com** (Worker `dni-growth`, versión `dd5caec3-b99f-4d80-ab49-ba871406cde5`; workers.dev redirige con 301 a dnigrowth.com) · Workers Paid, sin servicios de pago adicionales ([verificación de la cuenta](CLOUDFLARE_ACCOUNT_VERIFICATION.md)).
+Última actualización: 2026-11-18 · Producción: **https://dnigrowth.com** (Worker `dni-growth`, versión `b9cf00ee-01f9-4f00-a6a0-c1d17d0e12a1`; workers.dev redirige con 301 a dnigrowth.com) · Workers Paid, sin servicios de pago adicionales ([verificación de la cuenta](CLOUDFLARE_ACCOUNT_VERIFICATION.md)).
 
 Leyenda:
 - **VERIFICADO EN PRODUCCIÓN**: probado contra la URL pública con una respuesta comprobable.
@@ -8,7 +8,7 @@ Leyenda:
 - **BLOQUEADO POR PERMISOS**: necesita una acción, clave o aceptación del titular.
 - **NO IMPLEMENTADO**.
 
-Pruebas automáticas: lint, typecheck, **242 tests** (117 core + 125 API), build y escaneo de secretos en verde el 2026-11-18 (CI de GitHub en verde).
+Pruebas automáticas: lint, typecheck, **328 tests** (21 ficheros, core + API), build y escaneo de secretos en verde el 2026-11-18 (`pnpm -s verify`, código de salida 0).
 
 Pruebas E2E en producción del 2026-11-18 con la cuenta verificada de la titular (organización propia, plan Free), ejecutadas desde el navegador contra https://dnigrowth.com; cada fila indica la respuesta observada.
 
@@ -71,6 +71,18 @@ Pruebas E2E en producción del 2026-11-18 con la cuenta verificada de la titular
 | Creative Studio (FLUX.1 schnell → R2 UE) | VERIFICADO EN PRODUCCIÓN | imagen generada en 3,5 s, 5 créditos, archivo servido en privado (`image/jpeg`, 786 KB, `cache-control: private`) |
 | Gemini como último respaldo | NO EJERCITADO EN PRODUCCIÓN | secreto `GEMINI_API_KEY` presente (solo nombre comprobado); se omite en «privacidad primero» y en «solo Cloudflare» |
 
+## IA — Servicio central 100 % gratuito ([ADR 0014](adr/0014-ia-gratuita-y-recomendaciones-geo.md))
+| Elemento | Estado | Prueba |
+|---|---|---|
+| Un único servicio (`apps/api/src/lib/ai.ts`) para Asesor, Content Studio e imágenes; orden «automático»: Workers AI → Groq (si hay clave) → Gemini (si hay clave) → OpenRouter `:free` | VERIFICADO EN PRODUCCIÓN | Asesor de la org «DNI Growth» respondido por `workers_ai` (`@cf/google/gemma-4-26b-a4b-it`, razonamiento desactivado) en 8,3 s: 727 tokens de entrada, 386 de salida, 0,000189 USD ≈ 17 neuronas |
+| Modelo pedido `@cf/meta/llama-3.1-8b-instruct-fp8-fast` | NO DISPONIBLE | no figura en `wrangler ai models list --json` (solo `-fp8`, retirada el 2026-11-20); se usa gemma-4-26b y, de respaldo, `@cf/zai-org/glm-4.7-flash`. Cambiable sin código con la variable `WORKERS_AI_TEXT_MODEL` |
+| Tope duro de Workers AI ≤ 0,10 USD/día (≈ 9.091 neuronas < 10.000 gratuitas) | VERIFICADO EN PRODUCCIÓN | la cuenta está en Workers Paid: por encima de 10.000 neuronas/día Cloudflare cobraría. `AI_DAILY_BUDGET_USD` se recorta a 0,10 aunque se configure más; el Centro de IA muestra «N / 9091 neuronas hoy» |
+| Mensaje claro al agotar el cupo diario (`ai_daily_quota`, 503, «Se renueva cada día a las 00:00 UTC… No se ha cobrado ningún crédito») | VERIFICADO SOLO EN LOCAL | `aiservice.test.ts`; en producción no se agota a propósito |
+| Caché de respuestas 24 h por organización (D1 `ai_response_cache`, clave SHA-256; datos sensibles nunca se guardan) | VERIFICADO EN PRODUCCIÓN | migración 0012 con copia previa `backups/dni-growth-db-pre-0012-20261118-2014.sql`; la misma pregunta repetida → «respuesta reutilizada» en 1,5 s y registro `provider=cache`; el cron borra lo caducado; aislamiento entre organizaciones en tests |
+| Groq opcional (`llama-3.1-8b-instant`, tope `GROQ_DAILY_REQUESTS=1000`) | VERIFICADO SOLO EN LOCAL | sin clave en producción («sin clave (opcional)»); la añade la titular con `npx.cmd wrangler secret put GROQ_API_KEY` |
+| Gemini texto (`gemini-3.5-flash-lite`, tope `GEMINI_TEXT_DAILY=100`, se omite con «privacidad primero») | VERIFICADO SOLO EN LOCAL | `aiservice.test.ts` (respaldos, topes, solo Cloudflare, datos sensibles) |
+| `max_tokens` limitado (`MAX_OUTPUT_TOKENS=2500`) | VERIFICADO SOLO EN LOCAL | tests |
+
 ## F2 — Content Studio (nuevo)
 
 | Funcionalidad | Estado | Prueba |
@@ -131,6 +143,15 @@ Pruebas E2E en producción del 2026-11-18 con la cuenta verificada de la titular
 | Sondeo de progreso tras pulsar «Muestrear ahora» (también Search Console y Analytics) | VERIFICADO EN PRODUCCIÓN | antes la barra se quedaba en 0 % porque el sondeo solo se encadenaba desde la carga inicial; ahora sigue a los datos actuales (`useApi`) |
 | Limitación conocida | — | con el nivel gratuito no hay búsqueda de Google para los modelos 3.x: las respuestas reflejan el conocimiento del modelo, sin fuentes. El nivel gratuito sufre saturación (503) en horas punta; lo pendiente se muestrea en la siguiente ejecución |
 
+## F3 — Recomendaciones GEO explicables, intervalos e informes ([ADR 0014](adr/0014-ia-gratuita-y-recomendaciones-geo.md))
+| Elemento | Estado | Prueba |
+|---|---|---|
+| Visibilidad comparable con intervalo de Wilson al 95 % (global, por intención y por competidor) | VERIFICADO EN PRODUCCIÓN | marca DNI Growth: «2 de 7 · 28,6 % · margen 95 %: 8–64 %»; `geo-recs.test.ts` comprueba valores de referencia (2/7 → 0,082–0,641) |
+| Recomendaciones deterministas (sin IA ni coste): hueco observado → página existente / nueva / todo el sitio, con prueba, método y limitaciones | VERIFICADO EN PRODUCCIÓN | `GET /brands/:id/geo/recommendations`: 7 recomendaciones basadas en 7 respuestas y la auditoría de 5 páginas; las preguntas de marca apuntan a la portada; botón «Crear borrador» rellena Content Studio. `reports.test.ts` verifica 0 llamadas de red |
+| Informe de rendimiento exportable (pantalla «Informes», JSON, CSV, PDF por impresión) | VERIFICADO EN PRODUCCIÓN | versión `b9cf00ee-01f9-4f00-a6a0-c1d17d0e12a1`: CSV 200 `text/csv; charset=utf-8`, `attachment; filename="informe-dnigrowth.com-2026-11-18.csv"`, 26 líneas con fuente, periodo, tipo de medida y nota por fila; Search Console y Analytics «not_connected» (correcto: no conectados en esta org); estilos de impresión activos (menú y cabecera ocultos, tema claro); sin desbordamiento a 390 px |
+| CSV contra inyección de fórmulas, exportación auditada (`report.export`) y limitada (30/h), aislamiento entre organizaciones | VERIFICADO SOLO EN LOCAL | `reports.test.ts` (6 tests) |
+| Pantalla GEO a 390 px | VERIFICADO EN PRODUCCIÓN | antes 757 px de ancho por un `sr-only` absoluto de la tabla; ahora 390 = 390; enlaces con color de texto accesible (#3f6212) |
+
 ## Marca DNI Growth (producción)
 | Elemento | Estado | Prueba |
 |---|---|---|
@@ -139,7 +160,7 @@ Pruebas E2E en producción del 2026-11-18 con la cuenta verificada de la titular
 | Avisos del perfil que ya se resolvieron | VERIFICADO SOLO EN LOCAL | el aviso «varias variantes del nombre» y «Información no encontrada» se ocultan cuando ya están resueltos (antes seguían visibles tras rechazar/rellenar) |
 
 ## NO IMPLEMENTADO (fases siguientes)
-Keywords con proveedor licenciado (F2), recomendaciones GEO explicables e informes exportables (F3; biblioteca y monitor Gemini gratuito ya existen), Video Studio (F4), Landings y CRM (F5), Meta Ads con Spend Guardian (F6), experimentos (F7), agencia/white label, 2FA y SSO (F8), cobros con Stripe ([plan](STRIPE_PLAN.md)).
+Keywords con proveedor licenciado (F2), Video Studio (F4), Landings y CRM (F5), Meta Ads con Spend Guardian (F6), experimentos (F7), agencia/white label, 2FA y SSO (F8), cobros con Stripe ([plan](STRIPE_PLAN.md)).
 
 ## Bloqueos que requieren al titular
 | Bloqueo | Acción mínima |

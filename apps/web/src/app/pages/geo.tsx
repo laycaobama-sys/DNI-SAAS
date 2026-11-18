@@ -54,10 +54,12 @@ type Visibility = {
   mentioned: number;
   cited: number;
   mentionRate: number | null;
+  mentionRateInterval?: Interval | null;
+  intervalMethod?: string;
   citationRate: number | null;
   groundedSamples?: number;
-  byIntent: Array<{ intent: string; label: string; sampled: number; mentioned: number }>;
-  competitors: Array<{ name: string; domain: string | null; mentioned: number; cited: number }>;
+  byIntent: Array<{ intent: string; label: string; sampled: number; mentioned: number; interval?: Interval | null }>;
+  competitors: Array<{ name: string; domain: string | null; mentioned: number; cited: number; mentionRate?: number | null }>;
   period: { from: string; to: string } | null;
   source: string;
   caveats: string[];
@@ -77,6 +79,132 @@ const FAIL: Record<string, string> = {
   gemini_not_configured: "El muestreo con Gemini no está configurado.",
 };
 const pctFmt = (v: number | null) => (v === null ? "—" : `${Math.round(v * 100)} %`);
+type Interval = { low: number; high: number };
+const ciFmt = (i: Interval | null | undefined) => (i ? `${Math.round(i.low * 100)}–${Math.round(i.high * 100)} %` : null);
+
+type Rec = {
+  id: string;
+  priority: "alta" | "media" | "baja";
+  title: string;
+  gap: string;
+  action: string;
+  why: string;
+  target: { type: "existing_page" | "new_page" | "site"; url: string | null; title: string | null; reason: string };
+  draft: { kind: string; title: string; keyword: string; angle: string } | null;
+  evidence: Array<{ promptId: string; sampleId: string; question: string; sampledAt: string; model: string; grounded: boolean; mentioned: boolean; competitorsMentioned: string[] }>;
+  limitations: string[];
+};
+type Recs = { items: Rec[]; method: string; caveats: string[]; basedOn: { sampledPrompts: number; crawlCompletedAt: string | null; crawledPages: number }; observedAt: string | null };
+const PRIORITY_TONE = { alta: "danger", media: "warn", baja: "neutral" } as const;
+const TARGET_LABEL = { existing_page: "Mejorar página existente", new_page: "Página nueva sugerida", site: "Todo el sitio" } as const;
+
+function Recommendations({ orgId, base, brandId, refreshKey }: { orgId: string; base: string; brandId: string; refreshKey: string }) {
+  const recs = useApi<Recs>(`${base}/recommendations${refreshKey ? `?t=${encodeURIComponent(refreshKey)}` : ""}`);
+  const [open, setOpen] = useState<string | null>(null);
+  const r = recs.data;
+  return (
+    <Card title="Recomendaciones GEO explicables" subtitle="Hueco observado → página o acción concreta, con la prueba y sus limitaciones. Sin coste: no usan IA.">
+      {recs.error && <ErrorState error={recs.error} onRetry={recs.reload} />}
+      {!r && !recs.error && <Spinner />}
+      {r && r.items.length === 0 && (
+        <p className="text-sm text-mute">
+          {r.basedOn.sampledPrompts ? "No hay huecos en las últimas respuestas observadas." : "Aún no hay respuestas muestreadas: las recomendaciones se basan en ellas."}
+        </p>
+      )}
+      {r && r.items.length > 0 && (
+        <ol className="space-y-3">
+          {r.items.map((x) => {
+            const isOpen = open === x.id;
+            const draftHref = x.draft
+              ? `/o/${orgId}/content?${new URLSearchParams({ kind: x.draft.kind, title: x.draft.title, keyword: x.draft.keyword, angle: x.draft.angle, brandId, from: "geo" }).toString()}`
+              : null;
+            return (
+              <li key={x.id} className="rounded-xl border border-line p-4">
+                <div className="flex flex-wrap items-start justify-between gap-2">
+                  <p className="font-medium">
+                    <Badge tone={PRIORITY_TONE[x.priority]}>Prioridad {x.priority}</Badge> <span className="ml-1">{x.title}</span>
+                  </p>
+                  <div className="flex gap-2">
+                    {draftHref && (
+                      <Link to={draftHref} className="inline-flex items-center gap-1 rounded-full border border-line px-3 py-1 text-sm hover:bg-surface-2">
+                        <Plus className="size-4" aria-hidden /> Crear borrador
+                      </Link>
+                    )}
+                    <button type="button" className="rounded-full px-3 py-1 text-sm text-accent-text hover:underline" aria-expanded={isOpen} onClick={() => setOpen(isOpen ? null : x.id)}>
+                      {isOpen ? "Ocultar detalles" : "Por qué y limitaciones"}
+                    </button>
+                  </div>
+                </div>
+                <p className="mt-2 text-sm">
+                  <span className="text-mute">Hueco: </span>
+                  {x.gap}
+                </p>
+                <p className="mt-1 text-sm">
+                  <span className="text-mute">Acción: </span>
+                  {x.action}
+                </p>
+                <p className="mt-1 text-sm">
+                  <span className="text-mute">{TARGET_LABEL[x.target.type]}: </span>
+                  {x.target.type === "existing_page" && x.target.url ? (
+                    <a href={x.target.url} target="_blank" rel="noopener noreferrer nofollow" className="break-all text-accent-text hover:underline">
+                      {x.target.title ?? x.target.url} <ExternalLink className="inline size-3" aria-hidden />
+                    </a>
+                  ) : (
+                    <span className="break-all">{x.target.url ?? x.target.title ?? "—"}</span>
+                  )}
+                </p>
+                {isOpen && (
+                  <div className="mt-3 space-y-2 rounded-lg bg-surface-2/50 p-3 text-sm">
+                    <p>
+                      <span className="text-mute">Por qué: </span>
+                      {x.why}
+                    </p>
+                    <p>
+                      <span className="text-mute">Destino: </span>
+                      {x.target.reason}
+                    </p>
+                    {x.evidence.length > 0 && (
+                      <div>
+                        <p className="text-mute">Prueba observada:</p>
+                        <ul className="list-disc pl-5">
+                          {x.evidence.map((e) => (
+                            <li key={e.sampleId}>
+                              «{e.question}» · {fmtDate(e.sampledAt)} · {e.model} · {e.grounded ? "con búsqueda" : "sin búsqueda"} · marca {e.mentioned ? "mencionada" : "no mencionada"}
+                              {e.competitorsMentioned.length > 0 && ` · aparecen: ${e.competitorsMentioned.join(", ")}`}
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                    <div>
+                      <p className="text-mute">Limitaciones:</p>
+                      <ul className="list-disc pl-5">
+                        {x.limitations.map((l) => (
+                          <li key={l}>{l}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  </div>
+                )}
+              </li>
+            );
+          })}
+        </ol>
+      )}
+      {r && (
+        <div className="mt-3 space-y-1 text-xs text-mute">
+          <p>
+            Método: {r.method} Basado en {r.basedOn.sampledPrompts} preguntas muestreadas
+            {r.basedOn.crawlCompletedAt ? ` y en la auditoría del ${fmtDate(r.basedOn.crawlCompletedAt)} (${r.basedOn.crawledPages} páginas)` : " (sin auditoría de la web: no se pueden proponer páginas existentes)"}.
+          </p>
+          {r.caveats.map((c) => (
+            <p key={c}>{c}</p>
+          ))}
+        </div>
+      )}
+    </Card>
+  );
+}
 type Suggestion = { question: string; intent: string; category: string; basedOn: string[] };
 
 const LOCALES = [
@@ -186,6 +314,7 @@ function LibraryView({ orgId, data, archived, canWrite, reload }: { orgId: strin
   return (
     <>
       {!archived && <Monitor base={base} data={data} canWrite={canWrite} reload={reload} />}
+      {!archived && <Recommendations orgId={orgId} base={base} brandId={data.brand.id} refreshKey={data.sampling.lastJob?.finishedAt ?? ""} />}
 
       <div className="grid gap-4 lg:grid-cols-3">
         <Card title="Uso del plan" subtitle="Preguntas activas (pregunta × motor) en la organización">
@@ -254,7 +383,7 @@ function LibraryView({ orgId, data, archived, canWrite, reload }: { orgId: strin
         {items.length === 0 ? (
           <p className="text-sm text-mute">{archived ? "No hay preguntas archivadas." : data.items.length ? "Ninguna fila con estos filtros." : canWrite ? "Aún no hay preguntas. Añádelas arriba o parte de las sugerencias." : "Aún no hay preguntas."}</p>
         ) : (
-          <div className="overflow-x-auto">
+          <div className="relative overflow-x-auto">
             <table className="w-full min-w-[720px] text-sm">
               <thead className="text-left text-xs text-mute">
                 <tr>
@@ -605,7 +734,12 @@ function Monitor({ base, data, canWrite, reload }: { base: string; data: Library
                 <p className="text-2xl font-semibold tabular-nums">
                   {v.mentioned} <span className="text-base font-normal text-mute">de {v.sampledPrompts}</span>
                 </p>
-                <p className="text-xs text-mute">{pctFmt(v.mentionRate)} · observado</p>
+                <p className="text-xs text-mute">
+                  {pctFmt(v.mentionRate)} · observado
+                  {ciFmt(v.mentionRateInterval) && (
+                    <span title={v.intervalMethod}> · margen 95 %: {ciFmt(v.mentionRateInterval)}</span>
+                  )}
+                </p>
               </div>
               <div className="rounded-xl border border-line p-3">
                 <p className="text-xs text-mute">Respuestas que citan la web de la marca</p>
@@ -629,7 +763,9 @@ function Monitor({ base, data, canWrite, reload }: { base: string; data: Library
                   {v.byIntent.map((b) => (
                     <li key={b.intent} className="flex justify-between gap-2">
                       <span>{b.label}</span>
-                      <span className="tabular-nums">{b.sampled ? `${b.mentioned}/${b.sampled}` : "—"}</span>
+                      <span className="tabular-nums" title={ciFmt(b.interval) ? `Margen 95 %: ${ciFmt(b.interval)}` : undefined}>
+                        {b.sampled ? `${b.mentioned}/${b.sampled}` : "—"}
+                      </span>
                     </li>
                   ))}
                 </ul>
@@ -641,7 +777,7 @@ function Monitor({ base, data, canWrite, reload }: { base: string; data: Library
                 <ul className="flex flex-wrap gap-2 text-sm">
                   {v.competitors.map((c) => (
                     <li key={c.domain ?? c.name} className="rounded-full border border-line px-3 py-1">
-                      {c.domain ?? c.name}: aparece en {c.mentioned}, citado en {c.cited}
+                      {c.domain ?? c.name}: aparece en {c.mentioned} de {v.sampledPrompts}, citado en {c.cited}
                     </li>
                   ))}
                 </ul>
@@ -649,6 +785,7 @@ function Monitor({ base, data, canWrite, reload }: { base: string; data: Library
             )}
             <p className="text-xs text-mute">
               Fuente: {v.source}. Periodo: {v.period ? `${fmtDate(v.period.from)} – ${fmtDate(v.period.to)}` : "—"}. Última muestra correcta de cada pregunta activa en los últimos 30 días.
+              {v.intervalMethod ? ` ${v.intervalMethod} Con pocas preguntas el margen es amplio.` : ""}
             </p>
           </>
         ) : (

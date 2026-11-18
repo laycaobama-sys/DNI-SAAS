@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Link, NavLink, Outlet, useLocation, useNavigate, useParams } from "react-router";
 import {
   BarChart3,
+  FileBarChart,
   Bot,
   TrendingUp,
   Building2,
@@ -65,7 +66,7 @@ function navFor(orgId: string): Array<{ section: string; items: NavItem[] }> {
     { section: "Crecimiento", items: [{ to: o, label: "Command Center", icon: LayoutDashboard, live: true, end: true }, { to: `${o}/analyze`, label: "Nueva auditoría", icon: Sparkles, live: true }, { to: `${o}/advisor`, label: "Asesor IA", icon: MessageSquareText, live: true }, { to: `${o}/ai-hub`, label: "Centro de IA", icon: Cpu, live: true }, { to: `${o}/audits`, label: "Auditoría web", icon: FileSearch, live: true }, { to: `${o}/brands`, label: "Proyectos y marcas", icon: Building2, live: true }] },
     { section: "Orgánico", items: [m("seo-tecnico", Gauge), { to: `${o}/search-console`, label: "Search Console", icon: TrendingUp, live: true }, m("keywords", Search), { to: `${o}/ai-visibility`, label: "AI Visibility (GEO)", icon: Bot, live: true }, { to: `${o}/content`, label: "Content Studio", icon: FileText, live: true }, m("authority", Link2)] },
     { section: "Creatividad y pago", items: [{ to: `${o}/creative`, label: "Creative Studio", icon: Palette, live: true }, m("video", Film), m("ads", Megaphone), m("landings", LayoutTemplate), m("experiments", FlaskConical)] },
-    { section: "Ventas y datos", items: [m("crm", Target), { to: `${o}/analytics`, label: "Analytics (GA4)", icon: BarChart3, live: true }, { to: `${o}/jobs`, label: "AI Agent Center", icon: Bot, live: true }, m("automations", Workflow)] },
+    { section: "Ventas y datos", items: [m("crm", Target), { to: `${o}/analytics`, label: "Analytics (GA4)", icon: BarChart3, live: true }, { to: `${o}/reports`, label: "Informes", icon: FileBarChart, live: true }, { to: `${o}/jobs`, label: "AI Agent Center", icon: Bot, live: true }, m("automations", Workflow)] },
     { section: "Organización", items: [{ to: `${o}/integrations`, label: "Integraciones", icon: Plug, live: true }, { to: `${o}/team`, label: "Equipo y accesos", icon: Users, live: true }, { to: `${o}/billing`, label: "Facturación y créditos", icon: CreditCard, live: true }, m("agency", KeyRound), { to: `${o}/audit-log`, label: "Logs de auditoría", icon: ScrollText, live: true }] },
   ];
 }
@@ -171,8 +172,8 @@ export function AppShell() {
   );
 
   return (
-    <div className="min-h-full lg:grid lg:grid-cols-[272px_1fr]">
-      <aside className="sticky top-0 hidden h-screen border-r border-line bg-bg lg:block">{sidebar}</aside>
+    <div className="min-h-full lg:grid lg:grid-cols-[272px_1fr] print:block">
+      <aside className="sticky top-0 hidden h-screen border-r border-line bg-bg lg:block print:hidden">{sidebar}</aside>
       {open && (
         <div className="fixed inset-0 z-40 lg:hidden">
           <div className="absolute inset-0 bg-black/50" onClick={() => setOpen(false)} aria-hidden />
@@ -180,14 +181,14 @@ export function AppShell() {
         </div>
       )}
       <div className="min-w-0">
-        <header className="sticky top-0 z-20 flex items-center justify-between border-b border-line bg-bg/85 px-4 py-3 backdrop-blur lg:hidden">
+        <header className="sticky top-0 z-20 flex items-center justify-between border-b border-line bg-bg/85 px-4 py-3 backdrop-blur lg:hidden print:hidden">
           <button onClick={() => setOpen(true)} className="rounded-lg p-1.5 hover:bg-surface-2" aria-label="Abrir menú">
             <Menu className="size-5" />
           </button>
           <Logo />
           <span className="w-8" />
         </header>
-        <main id="main" className="mx-auto w-full max-w-7xl px-4 py-6 sm:px-6 lg:px-10 lg:py-10">
+        <main id="main" className="mx-auto w-full max-w-7xl px-4 py-6 sm:px-6 lg:px-10 lg:py-10 print:max-w-none print:p-0">
           <Outlet />
         </main>
       </div>

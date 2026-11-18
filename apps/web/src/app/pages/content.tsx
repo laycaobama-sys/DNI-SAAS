@@ -1,5 +1,5 @@
 import { useEffect, useState, type FormEvent } from "react";
-import { Link, useNavigate, useParams } from "react-router";
+import { Link, useNavigate, useParams, useSearchParams } from "react-router";
 import { Archive, CheckCircle2, Download, FileText, RotateCcw, Save, Send, ShieldCheck, Sparkles } from "lucide-react";
 import { api, ApiError, fmtDate, patch, post, timeAgo } from "../lib/api";
 import { useApi } from "../lib/hooks";
@@ -78,7 +78,17 @@ export function ContentListPage() {
   const canWrite = WRITE_ROLES.includes(role);
   const list = useApi<{ items: Item[]; kinds: Array<{ key: string; label: string }> }>(`/orgs/${orgId}/content`);
   const brands = useApi<{ items: Array<{ id: string; name: string }> }>(`/orgs/${orgId}/brands`);
-  const [form, setForm] = useState({ kind: "blog_article", title: "", keyword: "", audience: "", angle: "", sources: "", brandId: "" });
+  const [sp] = useSearchParams();
+  const fromGeo = sp.get("from") === "geo";
+  const [form, setForm] = useState(() => ({
+    kind: sp.get("kind") ?? "blog_article",
+    title: (sp.get("title") ?? "").slice(0, 200),
+    keyword: (sp.get("keyword") ?? "").slice(0, 120),
+    audience: "",
+    angle: (sp.get("angle") ?? "").slice(0, 500),
+    sources: "",
+    brandId: sp.get("brandId") ?? "",
+  }));
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<ApiError | null>(null);
   const [filter, setFilter] = useState("");
@@ -109,6 +119,11 @@ export function ContentListPage() {
       <div className="grid gap-6 lg:grid-cols-[380px_1fr]">
         {canWrite ? (
           <Card title="Nuevo borrador">
+            {fromGeo && (
+              <div className="mb-3">
+                <Notice title="Rellenado desde una recomendación GEO">Revisa el título, la palabra clave y el enfoque antes de generar. El borrador requiere revisión y aprobación humana; nada se publica solo.</Notice>
+              </div>
+            )}
             <form onSubmit={create} className="space-y-3">
               <label className="block text-sm">
                 <span className="font-medium">Tipo de contenido</span>

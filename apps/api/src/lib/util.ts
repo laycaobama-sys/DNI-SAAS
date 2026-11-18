@@ -46,3 +46,13 @@ export function slugify(s: string): string {
 export async function batchChunks(db: D1Database, stmts: D1PreparedStatement[], size = 50) {
   for (let i = 0; i < stmts.length; i += size) await db.batch(stmts.slice(i, i + size));
 }
+
+/** CSV with BOM (Excel-friendly) and a spreadsheet formula-injection guard (cells starting with = + - @ tab CR). */
+export function toCsv(header: string[], rows: unknown[][]): string {
+  const cell = (v: unknown) => {
+    let s = v === null || v === undefined ? "" : String(v);
+    if (/^[=+\-@\t\r]/.test(s)) s = `'${s}`;
+    return /[",\n\r;]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+  };
+  return String.fromCharCode(0xfeff) + [header.map(cell).join(","), ...rows.map((r) => r.map(cell).join(","))].join("\r\n") + "\r\n";
+}

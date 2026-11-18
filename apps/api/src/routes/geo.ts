@@ -12,14 +12,19 @@ import {
   normalizeQuestion,
   suggestGeoPrompts,
   UpdateGeoPromptInput,
+  buildGeoRecommendations,
+  GEO_REC_METHOD,
+  wilsonInterval,
   type BrandFact,
+  type GeoCategory,
+  type GeoIntent,
 } from "@dni/core";
-import type { AppEnv } from "../env";
+import type { AppEnv, Env } from "../env";
 import { auditStmt } from "../lib/audit";
 import { orgPlan } from "../lib/billing";
 import { ApiError, assertUuid, notFound, parseBody } from "../lib/http";
 import { rateLimit } from "../lib/ratelimit";
-import { nowIso, parseJson, uuid } from "../lib/util";
+import { nowIso, parseJson, toCsv, uuid } from "../lib/util";
 import { requireScope } from "../middleware";
 import { dispatchOutbox } from "../jobs/queue";
 import { geoQuotaToday } from "../jobs/geo";
@@ -282,13 +287,7 @@ geo.get("/brands/:brandId/geo/prompts/export", requireScope("brand:read"), async
     return c.json({ brand: { id: brand.id, name: brand.name, domain: brand.domain }, exportedAt, measurement: "none (prompt library only)", caveats: GEO_LIBRARY_CAVEATS, items });
   }
   const cols = ["question", "intent", "category", "engine", "locale", "regionCountry", "regionDetail", "enabled", "source", "createdAt"] as const;
-  // Spreadsheet formula injection guard: prefix cells that start with = + - @ (or tab/CR).
-  const cell = (v: unknown) => {
-    let s = v === null || v === undefined ? "" : String(v);
-    if (/^[=+\-@\t\r]/.test(s)) s = `'${s}`;
-    return /[",\n\r;]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
-  };
-  const csv = String.fromCharCode(0xfeff) + [cols.join(","), ...items.map((i) => cols.map((k) => cell(i[k])).join(","))].join("\r\n") + "\r\n";
+  const csv = toCsv([...cols], items.map((i) => cols.map((k) => i[k])));
   return c.body(csv, 200, { "content-type": "text/csv; charset=utf-8", "content-disposition": `attachment; filename="${fileBase}.csv"` });
 });
 
@@ -464,18 +463,18 @@ geo.get("/brands/:brandId/geo/samples", requireScope("brand:read"), async (c) =>
 });
 
 /** Observed visibility: latest successful sample of each active prompt in the last 30 days. */
-geo.get("/brands/:brandId/geo/visibility", requireScope("brand:read"), async (c) => {
-  const t = c.get("tenant");
-  const brand = await loadBrand(c, t.orgId);
+/** Comparable GEO visibility of a brand: last correct sample per prompt (30 days), with 95 % Wilson intervals. */
+export async function geoVisibility(env: Env, orgId: string, brand: { id: string; name: string }) {
   const since = new Date(Date.now() - 30 * 86_400_000).toISOString();
-  const { results } = await c.env.DB.prepare(
-    `SELECT s.prompt_id, p.intent, p.category, s.engine, s.model, s.grounded, s.brand_mentioned, s.brand_cited, s.competitors_json, s.sampled_at FROM ai_response_samples s
+  const { results } = await env.DB.prepare(
+    `SELECT s.id, s.prompt_id, p.question, p.intent, p.category, s.engine, s.model, s.grounded, s.brand_mentioned, s.brand_cited, s.competitors_json, s.sampled_at FROM ai_response_samples s
      JOIN tracked_prompts p ON p.organization_id = s.organization_id AND p.id = s.prompt_id AND p.archived_at IS NULL
      WHERE s.organization_id = ? AND s.brand_id = ? AND s.status = 'ok' AND s.sampled_at >= ?
-       AND s.sampled_at = (SELECT MAX(x.sampled_at) FROM ai_response_samples x WHERE x.organization_id = s.organization_id AND x.prompt_id = s.prompt_id AND x.status = 'ok')`,
+       AND s.sampled_at = (SELECT MAX(x.sampled_at) FROM ai_response_samples x WHERE x.organization_id = s.organization_id AND x.prompt_id = s.prompt_id AND x.status = 'ok')
+     ORDER BY p.created_at, p.question`,
   )
-    .bind(t.orgId, brand.id, since)
-    .all<{ prompt_id: string; intent: string; category: string; engine: string; model: string; grounded: number; brand_mentioned: number; brand_cited: number; competitors_json: string; sampled_at: string }>();
+    .bind(orgId, brand.id, since)
+    .all<VisRow>();
   const n = results.length;
   const rate = (k: number) => (n ? k / n : null);
   const mentioned = results.filter((r) => r.brand_mentioned === 1).length;
@@ -486,7 +485,8 @@ geo.get("/brands/:brandId/geo/visibility", requireScope("brand:read"), async (c)
   const models = [...new Set(results.map((r) => r.model))].sort();
   const byIntent = GEO_INTENTS.map((intent) => {
     const rows = results.filter((r) => r.intent === intent);
-    return { intent, label: GEO_INTENT_LABEL[intent], sampled: rows.length, mentioned: rows.filter((r) => r.brand_mentioned === 1).length };
+    const m = rows.filter((r) => r.brand_mentioned === 1).length;
+    return { intent, label: GEO_INTENT_LABEL[intent], sampled: rows.length, mentioned: m, interval: wilsonInterval(m, rows.length) };
   });
   const comp = new Map<string, { name: string; domain: string | null; mentioned: number; cited: number }>();
   for (const r of results) {
@@ -499,21 +499,109 @@ geo.get("/brands/:brandId/geo/visibility", requireScope("brand:read"), async (c)
     }
   }
   const dates = results.map((r) => r.sampled_at).sort();
-  return c.json({
-    brand: { id: brand.id, name: brand.name },
-    sampledPrompts: n,
-    mentioned,
-    cited,
-    mentionRate: rate(mentioned),
-    groundedSamples: grounded,
-    models,
-    citationRate: grounded ? cited / grounded : null,
-    byIntent,
-    competitors: [...comp.values()].sort((a, b) => b.mentioned - a.mentioned),
-    period: n ? { from: dates[0], to: dates[n - 1] } : null,
-    source: `Gemini API (${models.join(", ") || geoModel(c.env)}, nivel gratuito; ${grounded} de ${n} con búsqueda de Google)`,
-    measurement: "observed_sample",
-    observedAt: dates[n - 1] ?? null,
-    caveats: GEO_VISIBILITY_CAVEATS,
+  return {
+    rows: results,
+    summary: {
+      brand: { id: brand.id, name: brand.name },
+      sampledPrompts: n,
+      mentioned,
+      cited,
+      mentionRate: rate(mentioned),
+      mentionRateInterval: wilsonInterval(mentioned, n),
+      intervalMethod: "Intervalo de Wilson al 95 % sobre las preguntas muestreadas (no sobre todas las búsquedas reales).",
+      groundedSamples: grounded,
+      models,
+      citationRate: grounded ? cited / grounded : null,
+      byIntent,
+      competitors: [...comp.values()].map((x) => ({ ...x, mentionRate: rate(x.mentioned), interval: wilsonInterval(x.mentioned, n) })).sort((a, b) => b.mentioned - a.mentioned),
+      period: n ? { from: dates[0]!, to: dates[n - 1]! } : null,
+      source: `Gemini API (${models.join(", ") || geoModel(env)}, nivel gratuito; ${grounded} de ${n} con búsqueda de Google)`,
+      measurement: "observed_sample",
+      observedAt: dates[n - 1] ?? null,
+      caveats: GEO_VISIBILITY_CAVEATS,
+    },
+  };
+}
+type VisRow = {
+  id: string;
+  prompt_id: string;
+  question: string;
+  intent: GeoIntent;
+  category: GeoCategory;
+  engine: string;
+  model: string;
+  grounded: number;
+  brand_mentioned: number;
+  brand_cited: number;
+  competitors_json: string;
+  sampled_at: string;
+};
+
+geo.get("/brands/:brandId/geo/visibility", requireScope("brand:read"), async (c) => {
+  const t = c.get("tenant");
+  const brand = await loadBrand(c, t.orgId);
+  return c.json((await geoVisibility(c.env, t.orgId, brand)).summary);
+});
+
+const ORG_LD_TYPES = /^(Organization|Corporation|LocalBusiness|ProfessionalService|OnlineBusiness|OnlineStore|NGO|EducationalOrganization)$/;
+
+/** Explainable recommendations: observed gap → page/action, with evidence and limitations. Deterministic, no AI cost. */
+export async function geoRecommendations(env: Env, orgId: string, brand: { id: string; name: string }) {
+  const db = env.DB;
+  const vis = await geoVisibility(env, orgId, brand);
+  const crawl = await db
+    .prepare(
+      `SELECT w.id, w.llms_txt_found, w.completed_at, s.origin FROM web_crawls w JOIN sites s ON s.organization_id = w.organization_id AND s.id = w.site_id
+       WHERE w.organization_id = ? AND s.brand_id = ? AND w.status = 'completed' ORDER BY w.completed_at DESC LIMIT 1`,
+    )
+    .bind(orgId, brand.id)
+    .first<{ id: string; llms_txt_found: number; completed_at: string; origin: string }>();
+  const pages = crawl
+    ? (
+        await db
+          .prepare("SELECT final_url, title, h1, metadata_json FROM crawl_pages WHERE organization_id = ? AND crawl_id = ? AND status_code = 200 ORDER BY final_url LIMIT 500")
+          .bind(orgId, crawl.id)
+          .all<{ final_url: string; title: string | null; h1: string | null; metadata_json: string }>()
+      ).results
+    : [];
+  const hasOrgLd = pages.some((p) => parseJson<{ jsonLdTypes?: string[] }>(p.metadata_json, {}).jsonLdTypes?.some((x) => ORG_LD_TYPES.test(x)));
+  const items = buildGeoRecommendations({
+    brandName: brand.name,
+    samples: vis.rows.map((r) => ({
+      promptId: r.prompt_id,
+      question: r.question,
+      intent: r.intent,
+      category: r.category,
+      sampleId: r.id,
+      sampledAt: r.sampled_at,
+      model: r.model,
+      grounded: r.grounded === 1,
+      mentioned: r.brand_mentioned === 1,
+      cited: r.brand_cited === 1,
+      competitorsMentioned: parseJson<Array<{ name: string; mentioned: boolean }>>(r.competitors_json, [])
+        .filter((x) => x.mentioned)
+        .map((x) => x.name),
+    })),
+    pages: pages.map((p) => ({ url: p.final_url, title: p.title, h1: p.h1 })),
+    site: { origin: crawl?.origin ?? null, llmsTxt: crawl ? crawl.llms_txt_found === 1 : null, organizationJsonLd: crawl && pages.length ? hasOrgLd : null, crawledAt: crawl?.completed_at ?? null },
   });
+  return {
+    brand: { id: brand.id, name: brand.name },
+    items,
+    basedOn: { sampledPrompts: vis.summary.sampledPrompts, period: vis.summary.period, models: vis.summary.models, crawlCompletedAt: crawl?.completed_at ?? null, crawledPages: pages.length },
+    method: GEO_REC_METHOD,
+    measurement: "derived",
+    caveats: [
+      "Las recomendaciones se deducen de muestras observadas y de la última auditoría de tu web; no son una predicción ni una garantía de menciones.",
+      "Revisa cada propuesta antes de actuar. Nada se publica automáticamente: los borradores se crean en Contenido y requieren aprobación humana.",
+      ...(vis.summary.groundedSamples === 0 && vis.summary.sampledPrompts ? ["Ninguna respuesta usó búsqueda web: reflejan el conocimiento entrenado del modelo, que cambia lentamente."] : []),
+    ],
+    observedAt: vis.summary.observedAt,
+  };
+}
+
+geo.get("/brands/:brandId/geo/recommendations", requireScope("brand:read"), async (c) => {
+  const t = c.get("tenant");
+  const brand = await loadBrand(c, t.orgId);
+  return c.json(await geoRecommendations(c.env, t.orgId, brand));
 });

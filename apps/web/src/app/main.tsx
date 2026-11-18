@@ -14,6 +14,7 @@ import { DashboardPage, OnboardingPage } from "./pages/dashboard";
 import { AnalyzePage, JobPage, JobsPage } from "./pages/analyze";
 import { AdvisorPage, CreativePage } from "./pages/ai";
 import { AiHubPage } from "./pages/aihub";
+import { ReportsPage } from "./pages/reports";
 import { ContentDetailPage, ContentListPage } from "./pages/content";
 import { AuditDetailPage, AuditsPage, BrandPage, BrandsPage, PlanPage } from "./pages/insights";
 import { AuditLogPage, BillingPage, IntegrationsPage, ModulePage, NotFoundPage, TeamPage } from "./pages/org";
@@ -82,6 +83,7 @@ function App() {
           <Route path="search-console" element={<SearchConsolePage />} />
           <Route path="ai-visibility" element={<GeoPage />} />
           <Route path="analytics" element={<AnalyticsPage />} />
+          <Route path="reports" element={<ReportsPage />} />
           <Route path="audit-log" element={<AuditLogPage />} />
           <Route path="m/:moduleKey" element={<ModulePage />} />
           <Route path="*" element={<NotFoundPage />} />

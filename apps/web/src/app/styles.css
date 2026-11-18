@@ -63,3 +63,11 @@ body { background: var(--bg); color: var(--ink); font-family: var(--font-sans); 
 .skeleton { position: relative; overflow: hidden; background: var(--surface-2); border-radius: 8px; }
 .skeleton::after { content: ""; position: absolute; inset: 0; transform: translateX(-100%); background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--ink) 6%, transparent), transparent); animation: shimmer 1.4s infinite; }
 @media (prefers-reduced-motion: reduce) { .skeleton::after { animation: none; } }
+
+/* Printing (reports → «Guardar como PDF»): always light, no shadows, keep blocks together. */
+@media print {
+  :root, [data-theme="dark"] { --bg: #ffffff; --surface: #ffffff; --surface-2: #f4f4f5; --line: #d4d4d8; --ink: #000000; --mute: #3f3f46; --accent-text: #3f6212; color-scheme: light; }
+  html, body { background: #ffffff !important; }
+  * { box-shadow: none !important; }
+  @page { margin: 14mm; }
+}
