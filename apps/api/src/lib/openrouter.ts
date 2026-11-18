@@ -442,11 +442,20 @@ export async function callOpenRouterChat(
   const row = await loadModel(env.DB, modelId);
   const gate = freeGate(row, task);
   if (!gate.ok) throw new OpenRouterCallError(`gate:${gate.reason}`, "model");
-  const maxTokens = Math.max(16, Math.min(opts.maxTokens, row!.maxOutput ?? opts.maxTokens, TASK_PROFILES[task].maxOutputTokens * 2));
+  // Reasoning models spend completion tokens thinking before they answer: with a tight budget they return
+  // an empty, truncated answer. Ask for low effort, keep the reasoning out of the response and leave headroom
+  // for it (still free: max_price = 0 applies to every token).
+  const reasoning = row!.capabilities.includes("reasoning");
+  const taskBudget = TASK_PROFILES[task].maxOutputTokens;
+  const headroom = Math.min(1024, taskBudget);
+  const wanted = reasoning ? opts.maxTokens * 3 + headroom : opts.maxTokens;
+  const cap = reasoning ? taskBudget * 4 + headroom : taskBudget * 2;
+  const maxTokens = Math.max(16, Math.min(wanted, row!.maxOutput ?? wanted, cap));
   const body = {
     model: modelId,
     messages,
     max_tokens: maxTokens,
+    ...(reasoning ? { reasoning: { effort: "low", exclude: true } } : {}),
     temperature: opts.temperature,
     usage: { include: true },
     provider: { max_price: ZERO_MAX_PRICE, ...(opts.privacyFirst ? { data_collection: "deny", zdr: true } : {}) },

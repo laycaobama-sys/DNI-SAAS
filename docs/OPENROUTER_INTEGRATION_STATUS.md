@@ -42,5 +42,7 @@ Contadores atómicos en D1 (`ai_quota_counters`): global por día (45, o el lím
 |---|---|
 | Sincronización automática (cron) | 478 modelos revisados → 15 gratuitos guardados, 15 elegibles |
 | Clave | `is_free_tier: true`, uso facturado 0 USD, 50 solicitudes gratuitas/día |
-| Generación real con coste 0 confirmado | **Pendiente**: requiere una sesión de usuario en dnigrowth.com (cuenta del titular aún sin verificar) |
+| Generación real con coste 0 confirmado | **Verificado**: Asesor y Content Studio con `:free` (ERNIE 5.5 Flash, Cohere North Mini), `reported_cost_usd = 0`, panel «0 USD (confirmado)» |
+| Modelos de pago bloqueados antes de enviar | **Verificado**: 8 intentos → 422; número de invocaciones sin cambios |
+| Guardia de datos sensibles | **Verificado**: mensaje con DNI de ejemplo → Workers AI, sin llamada a OpenRouter |
 | Imágenes | OpenRouter no ofrece modelos gratuitos de imagen: se usan Workers AI (FLUX.1 schnell) |

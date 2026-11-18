@@ -434,7 +434,8 @@ describe("Preferences, kill switches and permissions", () => {
     expect((await owner.post("/api/v1/admin/ai/models/health-check", { modelId: PAID })).status).toBe(422);
     const r = await owner.post("/api/v1/admin/ai/models/health-check", { modelId: FREE_A });
     expect(r.json).toMatchObject({ ok: true, reportedCostUsd: 0 });
-    expect(chatCalls[0]!.body.max_tokens).toBe(16);
+    // Small, bounded budget even for a reasoning model (16 × 3 + classification headroom of 200); still free.
+    expect(chatCalls[0]!.body.max_tokens).toBeLessThanOrEqual(248);
     expect((await owner.post("/api/v1/admin/ai/models/health-check", { modelId: FREE_A })).status).toBe(429);
     expect(chatCalls).toHaveLength(1);
   });
@@ -504,5 +505,29 @@ describe("Privacy guard: sensitive data never reaches free third-party providers
     const r = await owner.post(`/api/v1/orgs/${orgId}/advisor`, { question: "¿Cómo mejoro el SEO local de mi panadería con 3 tiendas y 120 reseñas?" });
     expect(r.json.message.provider).toBe("openrouter");
     expect(chatCalls).toHaveLength(1);
+  });
+});
+
+describe("Reasoning models", () => {
+  it("asks reasoning models for low effort with headroom so answers are not truncated to empty", async () => {
+    const { h, owner, orgId, chatCalls } = await setup();
+    await sync(h);
+    await owner.patch(`/api/v1/orgs/${orgId}/ai/preferences`, { strategy: "manual_free", manualModelId: FREE_A });
+    const r = await ask(owner, orgId);
+    expect(r.json.message.provider).toBe("openrouter");
+    const body = chatCalls[0]!.body as { max_tokens: number; reasoning?: { effort: string; exclude: boolean }; provider: { max_price: Record<string, number> } };
+    expect(body.reasoning).toEqual({ effort: "low", exclude: true });
+    expect(body.max_tokens).toBeGreaterThan(900);
+    expect(body.provider.max_price).toEqual({ prompt: 0, completion: 0, request: 0, image: 0 });
+  });
+
+  it("non-reasoning models keep the task budget and get no reasoning parameter", async () => {
+    const { h, owner, orgId, chatCalls } = await setup();
+    await sync(h);
+    await owner.patch(`/api/v1/orgs/${orgId}/ai/preferences`, { strategy: "manual_free", manualModelId: FREE_B });
+    await ask(owner, orgId);
+    const body = chatCalls[0]!.body as { max_tokens: number; reasoning?: unknown };
+    expect(body.reasoning).toBeUndefined();
+    expect(body.max_tokens).toBeLessThanOrEqual(1800);
   });
 });

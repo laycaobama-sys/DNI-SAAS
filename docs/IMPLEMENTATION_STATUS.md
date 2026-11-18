@@ -1,6 +1,6 @@
 # Estado de implementación — DNI Growth
 
-Última actualización: 2026-11-18 · Producción: **https://dnigrowth.com** (Worker `dni-growth`, versión `286b5a81-6ead-4114-928f-a566e48c4718`; workers.dev redirige con 301 a dnigrowth.com) · Workers Paid, sin servicios de pago adicionales ([verificación de la cuenta](CLOUDFLARE_ACCOUNT_VERIFICATION.md)).
+Última actualización: 2026-11-18 · Producción: **https://dnigrowth.com** (Worker `dni-growth`, versión `1c75f4dd-bbe3-4728-9355-317fce11062b`; workers.dev redirige con 301 a dnigrowth.com) · Workers Paid, sin servicios de pago adicionales ([verificación de la cuenta](CLOUDFLARE_ACCOUNT_VERIFICATION.md)).
 
 Leyenda:
 - **VERIFICADO EN PRODUCCIÓN**: probado contra la URL pública con una respuesta comprobable.
@@ -8,7 +8,9 @@ Leyenda:
 - **BLOQUEADO POR PERMISOS**: necesita una acción, clave o aceptación del titular.
 - **NO IMPLEMENTADO**.
 
-Pruebas automáticas: lint, typecheck, **210 tests** (100 core + 110 API), build y escaneo de secretos en verde el 2026-11-18.
+Pruebas automáticas: lint, typecheck, **231 tests** (117 core + 114 API), build y escaneo de secretos en verde el 2026-11-18 (CI de GitHub en verde).
+
+Pruebas E2E en producción del 2026-11-18 con la cuenta verificada de la titular (organización propia, plan Free), ejecutadas desde el navegador contra https://dnigrowth.com; cada fila indica la respuesta observada.
 
 ## Dominio, correo y plataforma
 
@@ -17,22 +19,25 @@ Pruebas automáticas: lint, typecheck, **210 tests** (100 core + 110 API), build
 | Dominio `dnigrowth.com` + `www` como dominios personalizados del Worker (TLS automático) | VERIFICADO EN PRODUCCIÓN | `wrangler deploy` → `dnigrowth.com (custom domain)`, `www.dnigrowth.com (custom domain)`; `GET /api/v1/health` → 200 `environment: production` |
 | `www` → apex 301 (regla de redirección gratuita, conserva ruta y query) | VERIFICADO EN PRODUCCIÓN | `curl https://www.dnigrowth.com/legal/privacidad?x=1` → 301 `https://dnigrowth.com/legal/privacidad?x=1` |
 | workers.dev → dnigrowth.com (páginas de la app y login con Google) | VERIFICADO EN PRODUCCIÓN | `/app/login` en workers.dev → 301 a dnigrowth.com |
-| Email Sending (DKIM `cf-bounce`, return-path, DMARC `p=reject`) | VERIFICADO EN PRODUCCIÓN | `POST /auth/resend-verification` al titular → outbox `accepted` por `cloudflare_email` con `provider_message_id`. «accepted» ≠ entregado: la llegada al buzón la confirma el titular |
+| Email Sending (SPF `include:_spf.mx.cloudflare.net`, DKIM `cf-bounce._domainkey`, DMARC `p=reject`) | VERIFICADO EN PRODUCCIÓN | DNS consultado por DoH; email de verificación **entregado**: la titular pulsó el enlace y su cuenta figura verificada |
 | Email Routing hola@/soporte@/privacidad@/facturacion@ → buzón del titular | VERIFICADO EN PRODUCCIÓN | reglas activas en el panel de Cloudflare |
 | Tope mensual de emails (`EMAIL_MONTHLY_CAP=2500` < 3.000 incluidos) | VERIFICADO SOLO EN LOCAL | `mail.ts` devuelve `monthly_cap_reached` sin enviar |
-| Search Console `https://dnigrowth.com/` | VERIFICADO EN PRODUCCIÓN (propiedad) · PENDIENTE DE GOOGLE (sitemap) | propiedad verificada automáticamente con el archivo HTML; sitemap enviado el 2026-11-18. Googlebot obtiene `/sitemap.xml` con 200 y `application/xml`; Search Console muestra «No se ha podido obtener» justo tras el envío, pendiente de su lectura real |
+| Search Console `https://dnigrowth.com/` | VERIFICADO EN PRODUCCIÓN | propiedad verificada; `/sitemap.xml` en estado **«Correcto»**, 3 páginas descubiertas (leído el 2026-11-18) |
 | Migración D1 0005 (aditiva) con copia previa | VERIFICADO EN PRODUCCIÓN | `backups/dni-growth-db-pre-0005-20261118-0019.sql`; `wrangler d1 migrations apply --remote` ✅ |
+
+| Worker: errores y CPU | VERIFICADO EN PRODUCCIÓN | `wrangler tail`: peticiones `ok`, 0–1 ms de CPU, 0 excepciones; cron de cada minuto 7 ms de CPU |
+| Coste observado 2026-11-18 | VERIFICADO EN PRODUCCIÓN | OpenRouter 0 USD (4 solicitudes); Workers AI 0,0013 USD estimados (incluido); email 2 envíos de 3.000/mes incluidos |
 
 ## F0 — Fundaciones
 
 | Funcionalidad | Estado | Prueba |
 |---|---|---|
 | Monorepo pnpm, TS strict, Zod en fronteras (entradas de IA estrictas: no admiten `model`, `provider` ni precios) | VERIFICADO SOLO EN LOCAL | `pnpm verify` |
-| Registro, login, logout, bloqueo por fallos, rate limit | VERIFICADO EN PRODUCCIÓN (parcial) | prod: CSRF → 403, `/auth/me` sin sesión → `user:null`; flujo completo en local |
-| Verificación de email | VERIFICADO EN PRODUCCIÓN (envío) | email de verificación aceptado por Cloudflare; falta que el titular pulse el enlace |
-| **Inicio de sesión con Google** (OIDC + PKCE S256, nonce, vinculación segura) | BLOQUEADO POR PERMISOS | cliente OAuth «DNI Growth Web» creado (`GOOGLE_CLIENT_ID` desplegado). Falta `npx wrangler secret put GOOGLE_CLIENT_SECRET` por el titular |
-| Organizaciones, invitaciones, roles, aislamiento multiempresa | VERIFICADO SOLO EN LOCAL | `tenancy.test.ts` (guard SQL estático ampliado a `content_items`, `content_versions`, `organization_ai_preferences`) |
-| Créditos con reserva → liquidación/liberación | VERIFICADO SOLO EN LOCAL | `ai.test.ts`, `content.test.ts` |
+| Registro, verificación, login, sesión, CSRF | VERIFICADO EN PRODUCCIÓN | registro + verificación por email + login de la titular; petición sin cabecera CSRF → 403. Bloqueo por fallos y rate limit solo en local (no se fuerzan en producción para no bloquear cuentas reales) |
+| Verificación de email | VERIFICADO EN PRODUCCIÓN | la titular verificó su cuenta con el enlace recibido |
+| **Inicio de sesión con Google** (OIDC + PKCE S256, nonce, vinculación segura) | BLOQUEADO POR PERMISOS | Google acepta la URL de retorno `https://dnigrowth.com/api/v1/auth/google/callback` (selector «Ir a dnigrowth.com», sin `redirect_uri_mismatch`); sin secreto, `/auth/google/start` redirige con `google_not_configured`. Falta `npx wrangler secret put GOOGLE_CLIENT_SECRET` por la titular |
+| Organizaciones, invitaciones, roles, aislamiento multiempresa | VERIFICADO EN PRODUCCIÓN (aislamiento) · LOCAL (invitaciones, roles) | prod: otra organización → 404 en `/dashboard` y `/content`; `tenancy.test.ts` (guard SQL estático ampliado a `content_items`, `content_versions`, `organization_ai_preferences`) |
+| Créditos con reserva → liquidación/liberación | VERIFICADO EN PRODUCCIÓN | ledger: concesión 50 → auditoría −10, asesor −1 ×2, borrador −3, imagen −5 = **30**; cada operación reserva/libera/liquida una sola vez |
 | Stripe detrás de `BILLING_ENABLED=false` | VERIFICADO EN PRODUCCIÓN | webhook → 503 `billing_disabled` |
 | Cabeceras de seguridad (CSP, HSTS, XFO, nosniff) | VERIFICADO EN PRODUCCIÓN | `curl -I https://dnigrowth.com/` |
 
@@ -40,8 +45,9 @@ Pruebas automáticas: lint, typecheck, **210 tests** (100 core + 110 API), build
 
 | Funcionalidad | Estado | Prueba |
 |---|---|---|
-| SSRF, robots.txt, 31 reglas, perfil de marca, plan de 30 días | VERIFICADO SOLO EN LOCAL | `ssrf.test.ts`, `seo.test.ts`, `flow.test.ts` |
-| **F1 completo en producción** | BLOQUEADO POR PERMISOS | la cuenta del titular existe pero no está verificada; se desbloquea al pulsar el enlace del email (ya enviado) o con Google. No se verifica ninguna cuenta editando la base de datos |
+| SSRF, robots.txt, 31 reglas | VERIFICADO SOLO EN LOCAL | `ssrf.test.ts`, `seo.test.ts` |
+| **F1 en producción**: URL → auditoría → perfil de marca → plan 30 días → exportación | VERIFICADO EN PRODUCCIÓN | auditoría de `https://dnigym.com` (solo lectura de la web pública): job `completed`, 10 páginas, puntuación 79, 8 problemas (2 altos); perfil con hechos y fuente (JSON-LD); plan de 9 tareas; `GET /plans/:id/export` → 200 `text/markdown` |
+| Confirmación humana del perfil de marca | PENDIENTE DE LA TITULAR | paso de revisión humana deliberado; se hace en la pantalla de Marca |
 
 ## IA — OpenRouter solo gratis + Workers AI ([detalle](OPENROUTER_INTEGRATION_STATUS.md))
 
@@ -49,20 +55,26 @@ Pruebas automáticas: lint, typecheck, **210 tests** (100 core + 110 API), build
 |---|---|---|
 | Catálogo dinámico de OpenRouter (solo `:free` + `openrouter/free`, todos los precios = 0) | VERIFICADO EN PRODUCCIÓN | cron: `or_last_sync` 478 modelos revisados → 15 gratuitos guardados, 15 elegibles (13 verificados, 2 con fecha de fin) |
 | Clave de OpenRouter en nivel gratuito y gasto 0 | VERIFICADO EN PRODUCCIÓN | `GET /api/v1/key` (desde el Worker): `is_free_tier: true`, `usage: 0`, límite gratuito 50/día → cuota de la app 45/día |
-| Política FREE ONLY (rechazo antes de llamar, `max_price = 0`, parada global ante coste/402/401/modelo no verificable, cuotas atómicas) | VERIFICADO SOLO EN LOCAL | `openrouter.test.ts` (33) + `ai-models.test.ts` (27). Generación real en producción pendiente de una sesión de usuario |
+| Generación real con OpenRouter y coste 0 | VERIFICADO EN PRODUCCIÓN | Asesor → `baidu/ernie-5.5-flash-preview:free`, `reported_cost_usd = 0`, `cost_state = zero_confirmed`; el panel «Actividad de IA» muestra «0 USD (confirmado)»; uso facturado 0 |
+| Modelos de pago bloqueados **antes** de enviar | VERIFICADO EN PRODUCCIÓN | 8 intentos → 422 (preferencia `openai/gpt-4o`, `gpt-4o-mini`, id falso `…:free`, `allowPaid`, inyección de `model`/`provider` en Asesor y Content, health-check admin de un modelo de pago); invocaciones antes = después (ninguna salió a la red) |
+| Política FREE ONLY completa (402/401, coste > 0, router que sirve pago, 429, cuotas, concurrencia) | VERIFICADO SOLO EN LOCAL | `openrouter.test.ts` (37) + `ai-models.test.ts` (27); en producción no se provocan cobros ni 429 reales |
+| Guardia de privacidad (datos sensibles solo en Workers AI) | VERIFICADO EN PRODUCCIÓN | pregunta con un DNI de ejemplo → `workers_ai` (gemma-4); registro `skipped sensitive_data:dni_nie` sin el valor; `privacy.test.ts` (17) |
+| Modelos de razonamiento con margen de tokens | VERIFICADO EN PRODUCCIÓN | antes: ERNIE devolvía `truncated_empty` en artículos; tras el arreglo, contenido FAQ con ERNIE → 201, coste 0 confirmado |
 | Centro de IA (estado, cuota, catálogo, estrategia, privacidad, actividad, panel de admin) | VERIFICADO SOLO EN LOCAL | `wrangler dev`: catálogo real de 15 modelos; sin desbordamiento en 375 px |
-| Asesor: modelo servido, respaldo y «Usar respaldo automático» | VERIFICADO SOLO EN LOCAL | `openrouter.test.ts` («manual model + policy ask») |
-| Creative Studio (FLUX.1 schnell → R2 UE) | VERIFICADO SOLO EN LOCAL con IA real | sin cambios |
-| Gemini como último respaldo | BLOQUEADO EN PRODUCCIÓN HASTA SESIÓN | secreto `GEMINI_API_KEY` presente (solo nombre comprobado); se omite en «privacidad primero» y en «solo Cloudflare» |
+| Asesor: modelo servido, respaldo y «Usar respaldo automático» | VERIFICADO EN PRODUCCIÓN (modelo servido, respaldo automático) · LOCAL (botón «Usar respaldo») | `openrouter.test.ts` («manual model + policy ask») |
+| Creative Studio (FLUX.1 schnell → R2 UE) | VERIFICADO EN PRODUCCIÓN | imagen generada en 3,5 s, 5 créditos, archivo servido en privado (`image/jpeg`, 786 KB, `cache-control: private`) |
+| Gemini como último respaldo | NO EJERCITADO EN PRODUCCIÓN | secreto `GEMINI_API_KEY` presente (solo nombre comprobado); se omite en «privacidad primero» y en «solo Cloudflare» |
 
 ## F2 — Content Studio (nuevo)
 
 | Funcionalidad | Estado | Prueba |
 |---|---|---|
-| Brief → borrador con IA (6 tipos), fuentes tratadas como DATOS, marcas [VERIFICAR] | VERIFICADO SOLO EN LOCAL con IA real | `wrangler dev`: borrador real con Workers AI (Gemma 4); `content.test.ts` |
-| Editor versionado con concurrencia optimista, restaurar versión | VERIFICADO SOLO EN LOCAL | `content.test.ts` (dos guardados simultáneos → 200 + 409) |
-| Flujo borrador → revisión → aprobado/devuelto → archivado, con auditoría y permisos | VERIFICADO SOLO EN LOCAL | `content.test.ts`; prueba local submit → approve |
-| Revisión con IA (1 crédito) y exportación MD/HTML saneado con aviso de borrador | VERIFICADO SOLO EN LOCAL | `content.test.ts`; exportación local sin `<script>` |
+| Brief → borrador con IA (6 tipos), fuentes tratadas como DATOS, marcas [VERIFICAR] | VERIFICADO EN PRODUCCIÓN | `wrangler dev`: borrador real con Workers AI (Gemma 4); `content.test.ts` |
+| Editor versionado con concurrencia optimista | VERIFICADO EN PRODUCCIÓN | dos guardados simultáneos → 200 + 409 `version_conflict` |
+| Restaurar versión | VERIFICADO SOLO EN LOCAL | `content.test.ts` |
+| Flujo borrador → revisión → aprobado, con auditoría | VERIFICADO EN PRODUCCIÓN (owner) · LOCAL (otros roles, devolver, archivar) | submit 200 → approve 200, estado `approved`, 2 versiones |
+| Exportación MD/HTML saneado con aviso de borrador | VERIFICADO EN PRODUCCIÓN | borrador con «BORRADOR NO APROBADO»; aprobado: MD 200 sin aviso y con la edición, HTML 200 sin `<script>` |
+| Revisión con IA (1 crédito) | VERIFICADO SOLO EN LOCAL | `content.test.ts` |
 | Publicación en CMS | NO IMPLEMENTADO | requiere conectores de CMS del titular |
 
 ## NO IMPLEMENTADO (fases siguientes)
@@ -71,8 +83,7 @@ Keywords con proveedor licenciado (F2), Search Console/GA4 dentro de la app y mo
 ## Bloqueos que requieren al titular
 | Bloqueo | Acción mínima |
 |---|---|
-| Verificar la cuenta de producción | Abrir el email «Verifica tu correo en DNI Growth» y pulsar el enlace |
+| Confirmar el perfil de marca | Revisar los datos en la pantalla de Marca y confirmar |
 | Google sign-in | `npx wrangler secret put GOOGLE_CLIENT_SECRET` (desde `apps/api`) con el secreto del cliente «DNI Growth Web» |
-| Prueba real de generación gratuita | Iniciar sesión en dnigrowth.com en el navegador integrado para lanzar 1 solicitud y comprobar coste 0 |
-| Stripe | Decisión de activarlo; las claves las guarda el titular con `wrangler secret put` |
+| Stripe | Crear la cuenta «DNI Growth» en Stripe (decidido: no usar «RestoPanel»); después se configura en modo prueba y la titular guarda `STRIPE_SECRET_KEY` y `STRIPE_WEBHOOK_SECRET` con `wrangler secret put`. `BILLING_ENABLED=false` hasta su autorización |
 | Textos legales definitivos | Datos fiscales del titular |
