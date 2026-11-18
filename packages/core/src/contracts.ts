@@ -122,7 +122,7 @@ export interface PlanDef {
   code: string;
   name: string;
   priceEurMonth: number | null;
-  limits: { brands: number; seats: number; analysesPerMonth: number; pagesPerCrawl: number; monthlyCredits: number };
+  limits: { brands: number; seats: number; analysesPerMonth: number; pagesPerCrawl: number; monthlyCredits: number; trackedPrompts?: number };
 }
 
 export type ProviderStatus = "not_configured" | "available" | "connected" | "reauth_required" | "disconnected" | "error" | "demo" | "blocked_external_approval" | "planned";

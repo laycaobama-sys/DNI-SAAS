@@ -13,6 +13,7 @@ import { billing, providerManifest, webhooks } from "./routes/billing";
 import { insights } from "./routes/insights";
 import { oauth } from "./routes/oauth";
 import { analytics } from "./routes/analytics";
+import { geo } from "./routes/geo";
 import { searchConsole } from "./routes/searchConsole";
 import { org, orgsPublic } from "./routes/orgs";
 import { work } from "./routes/work";
@@ -57,6 +58,7 @@ export function createApp(deps: Deps) {
   tenant.route("/", content);
   tenant.route("/", searchConsole);
   tenant.route("/", analytics);
+  tenant.route("/", geo);
   tenant.get("/integrations", requireScope("integrations:read"), async (c) => {
     // Per-organization connection state overrides the platform-level availability.
     const { results } = await c.env.DB.prepare("SELECT provider, status, last_sync_at FROM integrations WHERE organization_id = ?")

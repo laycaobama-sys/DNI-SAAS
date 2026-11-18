@@ -101,7 +101,8 @@ Copias exportadas antes de cada migración en `backups/` (fuera de git).
 
 ## Despliegue 2026-11-18 (dominio + Model Hub + Content Studio)
 - Versión actual: `286b5a81-6ead-4114-928f-a566e48c4718` · anterior: `11831c6d-b194-4d2e-9810-d7631a9e0d1d`.
-- Versión actual (configuración legal centralizada + condiciones de uso): `74c3b3ef-27cc-4ce9-aa7b-5fe1f8525528` · anterior `88f00104-f0e8-4b76-b92e-2693fb18af44` (sin migración).
+- Versión actual (biblioteca de prompts GEO, migración 0010): `34d73cb4-a04a-45a0-b495-d36df5d5bd18` · anterior `74c3b3ef-27cc-4ce9-aa7b-5fe1f8525528`. La migración es aditiva: revertir el código no requiere tocar la base de datos.
+- Versión configuración legal centralizada + condiciones de uso: `74c3b3ef-27cc-4ce9-aa7b-5fe1f8525528` · anterior `88f00104-f0e8-4b76-b92e-2693fb18af44` (sin migración).
 - Versión política de privacidad completa: `88f00104-f0e8-4b76-b92e-2693fb18af44` · anterior `b4fd58a3-6282-4c8a-af4b-3db82534a95b` (sin selección automática de propiedades de Google; sin migración).
 - Versión GA4 + política con datos de Google: `bfe01bbc-dae4-4b30-bbb9-c24ef4cae12c` · anterior `ab2bbe5a-6081-4e35-886e-83cbba110f67`.
 - Versión con Google Analytics 4 (F3): `ab2bbe5a-6081-4e35-886e-83cbba110f67` · anterior `dd5caec3-b99f-4d80-ab49-ba871406cde5` (compatible con la migración 0009: solo añade tablas e índice). Copia previa: `backups/dni-growth-db-pre-0009-20261118-1301.sql`.

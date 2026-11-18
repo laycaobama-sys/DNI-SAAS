@@ -14,3 +14,4 @@ export * from "./ai";
 export * from "./ai-models";
 export * from "./content";
 export * from "./privacy";
+export * from "./geo";

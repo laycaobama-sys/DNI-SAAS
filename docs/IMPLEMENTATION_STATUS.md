@@ -112,8 +112,16 @@ Pruebas E2E en producción del 2026-11-18 con la cuenta verificada de la titular
 | Permisos declarados en Google Auth Platform | VERIFICADO EN PRODUCCIÓN | «Acceso a los datos»: `openid`, `userinfo.email`, `webmasters.readonly`, `analytics.readonly` con justificación guardada; ver [GOOGLE_VERIFICATION.md](GOOGLE_VERIFICATION.md) |
 | Search Console tras compartir el código con GA4 | VERIFICADO EN PRODUCCIÓN | versión bfe01bbc: `/search-console` 200, conexión `connected`, propiedad `https://dnigrowth.com/` conservada, sin token ni sobre en la respuesta |
 
+## F3 — Biblioteca de prompts GEO (nuevo, [ADR 0012](adr/0012-biblioteca-prompts-geo.md))
+| Elemento | Estado | Prueba |
+|---|---|---|
+| Migración 0010 `tracked_prompts` + límite `trackedPrompts` por plan | VERIFICADO EN PRODUCCIÓN | copia previa `backups/dni-growth-db-pre-0010-20261118-1519.sql`; migración aplicada; consulta de solo lectura: límites 10/50/150/400/1500 y 0 filas |
+| API (listar, crear pregunta × motor, editar, pausar, archivar, restaurar, sugerencias, exportar CSV/JSON) | VERIFICADO SOLO EN LOCAL | `geo.test.ts` (13 tests): duplicados normalizados, validación de motor/idioma/país, limpieza de caracteres de control y bidi, límite del plan y guarda en la misma transacción, roles (lector/analista no escriben), aislamiento entre organizaciones (404), CSV contra inyección de fórmulas, sugerencias sin inventar ni usar la calle; tabla añadida a la guarda estática de SQL |
+| Pantalla «AI Visibility (GEO)» | VERIFICADO EN PRODUCCIÓN (solo lectura) | versión 34d73cb4: carga sin errores de consola ni desbordamiento; catálogo de 6 motores con estado (API oficial / sin API, manual), aviso de que no hay muestreo, uso 0/50, biblioteca vacía. **No se crearon preguntas en producción**: la única marca de la organización de la titular es DNI GYM, que no se toca, y el plan solo admite una marca |
+| Muestreo de respuestas, menciones, visibilidad | NO IMPLEMENTADO | siguiente ítem F3; no se simula ninguna respuesta |
+
 ## NO IMPLEMENTADO (fases siguientes)
-Keywords con proveedor licenciado (F2), monitor de visibilidad IA (F3), Video Studio (F4), Landings y CRM (F5), Meta Ads con Spend Guardian (F6), experimentos (F7), agencia/white label, 2FA y SSO (F8), cobros con Stripe ([plan](STRIPE_PLAN.md)).
+Keywords con proveedor licenciado (F2), monitor de visibilidad IA por APIs (F3, la biblioteca de prompts ya existe), Video Studio (F4), Landings y CRM (F5), Meta Ads con Spend Guardian (F6), experimentos (F7), agencia/white label, 2FA y SSO (F8), cobros con Stripe ([plan](STRIPE_PLAN.md)).
 
 ## Bloqueos que requieren al titular
 | Bloqueo | Acción mínima |
