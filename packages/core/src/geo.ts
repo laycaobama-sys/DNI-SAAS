@@ -198,3 +198,76 @@ export function suggestGeoPrompts(input: GeoSuggestionInput): { suggestions: Geo
   }
   return { suggestions: out.slice(0, 20), missing };
 }
+
+// ---------------------------------------------------------------------------------------------
+// Monitor: mention and citation detection on a REAL sampled answer (never on simulated text).
+
+export interface GeoCitation {
+  title: string;
+  uri: string;
+  domain: string | null;
+}
+export interface GeoEntity {
+  name: string;
+  domain: string | null;
+}
+export interface GeoMentionResult {
+  mentioned: boolean;
+  mentionCount: number;
+  cited: boolean;
+}
+
+const fold = (s: string) =>
+  s
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(new RegExp("[\u0300-\u036f]", "g"), "");
+const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+/** Bare host of a domain or URL: "https://www.Example.com/x" → "example.com". */
+export function bareDomain(v: string | null | undefined): string | null {
+  if (!v) return null;
+  const host = v.trim().toLowerCase().replace(/^https?:\/\//, "").replace(/^www\./, "").replace(/[/?#].*$/, "").replace(/:\d+$/, "");
+  return /^[a-z0-9-]+(\.[a-z0-9-]+)+$/.test(host) ? host : null;
+}
+
+/** Terms that identify an entity in free text: its name, the name without spaces, the domain and the domain label. */
+export function entityTerms(e: GeoEntity): string[] {
+  const terms = new Set<string>();
+  const name = fold(e.name).replace(/\s+/g, " ").trim();
+  if (name.length >= 3) {
+    terms.add(name);
+    if (name.includes(" ")) terms.add(name.replace(/ /g, ""));
+  }
+  const d = bareDomain(e.domain);
+  if (d) {
+    terms.add(d);
+    const label = d.split(".")[0]!;
+    if (label.length >= 4) terms.add(label);
+  }
+  return [...terms];
+}
+
+/** Counts whole-word occurrences of the entity in the answer and whether a cited source belongs to it. */
+export function detectMention(answer: string, citations: GeoCitation[], e: GeoEntity): GeoMentionResult {
+  const text = fold(answer);
+  let count = 0;
+  const spans: Array<[number, number]> = [];
+  // Longest terms first so "dni growth" is not counted again as "dnigrowth"/"dni".
+  for (const term of entityTerms(e).sort((a, b) => b.length - a.length)) {
+    const re = new RegExp(`(^|[^a-z0-9])(${escapeRe(term)})(?![a-z0-9])`, "g");
+    for (const m of text.matchAll(re)) {
+      const start = (m.index ?? 0) + m[1]!.length;
+      const end = start + m[2]!.length;
+      if (spans.some(([s, f]) => start < f && end > s)) continue;
+      spans.push([start, end]);
+      count++;
+    }
+  }
+  const d = bareDomain(e.domain);
+  const cited = !!d && citations.some((c) => {
+    const cd = c.domain ?? bareDomain(c.title);
+    return !!cd && (cd === d || cd.endsWith(`.${d}`));
+  });
+  return { mentioned: count > 0, mentionCount: count, cited };
+}

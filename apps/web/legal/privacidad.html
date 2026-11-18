@@ -67,12 +67,13 @@
 
       <h2>5. Inteligencia artificial</h2>
       <p>Cuando usas el asesor, la revisión de contenido o el estudio creativo, el texto que escribes y los datos de auditoría de tu web necesarios para responder se envían al proveedor de IA que procesa la petición: Cloudflare Workers AI y, como respaldo, modelos gratuitos a través de OpenRouter o Google Gemini. Algunos proveedores de modelos gratuitos pueden conservar las peticiones según sus propias condiciones, por lo que <strong>no debes escribir datos personales sensibles en estas funciones</strong>. Nunca enviamos a la IA tu contraseña, tus tokens ni datos de Search Console o Google Analytics. El resultado de la IA se presenta como borrador para revisión humana.</p>
+      <p><strong>AI Visibility (GEO).</strong> Cuando una persona de tu organización pulsa «Muestrear ahora», las preguntas que habéis configurado en AI Visibility se envían a la API de Google Gemini (nivel gratuito; con búsqueda de Google cuando el nivel gratuito la ofrece), junto con el idioma y la región indicados, y guardamos la respuesta, el modelo que respondió, las fuentes que cita (si las hay) y la fecha. En el nivel gratuito, Google puede usar ese contenido para mejorar sus productos, por lo que <strong>esas preguntas no deben contener datos personales</strong>. No se envía ningún otro dato de tu cuenta.</p>
 
       <h2>6. Con quién compartimos los datos</h2>
       <p>No vendemos datos personales. Solo los comparten los proveedores que necesitamos para prestar el servicio, como encargados del tratamiento y con las garantías del RGPD:</p>
       <ul>
         <li><strong>Cloudflare</strong>: alojamiento de la aplicación, base de datos (jurisdicción UE), almacenamiento de imágenes, colas de trabajos, correo transaccional y Workers AI.</li>
-        <li><strong>Google</strong>: inicio de sesión con Google y, si lo conectas, Search Console y Analytics (Google es además responsable de sus propios servicios). Google Gemini como respaldo de IA, si está activado.</li>
+        <li><strong>Google</strong>: inicio de sesión con Google y, si lo conectas, Search Console y Analytics (Google es además responsable de sus propios servicios). Google Gemini como respaldo de IA, si está activado, y para obtener las respuestas de AI Visibility.</li>
         <li><strong>OpenRouter</strong>: respaldo de IA con modelos gratuitos.</li>
         <li><strong>Stripe</strong>: pagos y suscripciones, cuando se activen los cobros.</li>
       </ul>

@@ -4,6 +4,7 @@ import { ledgerStmt } from "../lib/billing";
 import { addSeconds, log, nowIso, parseJson, uuid } from "../lib/util";
 import { runSiteAnalysis } from "./analyze";
 import { runGa4Sync } from "./ga4";
+import { runGeoSample } from "./geo";
 import { runGscSync } from "./gsc";
 
 export interface JobRow {
@@ -96,6 +97,9 @@ export async function processJobMessage(env: Env, msg: JobMessage, deps: Deps): 
         break;
       case "ga4_sync":
         output = await runGa4Sync(ctx, parseJson(job.input_json, {} as { propertyId: string }));
+        break;
+      case "geo_sample":
+        output = await runGeoSample(ctx, parseJson(job.input_json, {} as { brandId: string }));
         break;
       default:
         throw new PermanentJobError("unknown_job_kind", `Tipo de trabajo desconocido: ${job.kind}`);

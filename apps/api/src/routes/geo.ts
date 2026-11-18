@@ -21,14 +21,22 @@ import { ApiError, assertUuid, notFound, parseBody } from "../lib/http";
 import { rateLimit } from "../lib/ratelimit";
 import { nowIso, parseJson, uuid } from "../lib/util";
 import { requireScope } from "../middleware";
+import { dispatchOutbox } from "../jobs/queue";
+import { geoQuotaToday } from "../jobs/geo";
+import { geoFallbackModel, geoLimits, geoModel, geoSamplingReady } from "../lib/geoGemini";
 
 /** GEO prompt library (mounted under /orgs/:orgId). Stores questions only — never AI answers. */
 export const geo = new Hono<AppEnv>();
 
 export const GEO_LIBRARY_CAVEATS = [
-  "Esta biblioteca define qué preguntas se medirán; todavía no se ha consultado ningún motor de IA y no se muestra ninguna respuesta ni visibilidad.",
-  "Cuando se active el muestreo, cada respuesta será una muestra puntual (fecha, motor, idioma y región) y no prueba lo que ve cada usuario real.",
-  "Los motores sin API oficial (AI Overviews, app de ChatGPT) no se consultan automáticamente: quedan para revisión manual.",
+  "Cada respuesta es una muestra puntual (fecha, motor, modelo, idioma y región) obtenida por la API oficial; no prueba lo que ve cada usuario real, que puede tener otra personalización, historial o ubicación.",
+  "Solo se muestrea Gemini por API, en el nivel gratuito. Se pide con búsqueda de Google y, si el nivel gratuito no la ofrece para el modelo, sin búsqueda: entonces la respuesta refleja el conocimiento del modelo y no trae fuentes (cada muestra lo indica). Otros motores con API oficial requieren clave y presupuesto aprobados; los motores sin API oficial (AI Overviews, app de ChatGPT) no se consultan automáticamente.",
+  "La región se indica al modelo en la instrucción: la API de Gemini no permite fijar la ubicación real de la búsqueda.",
+  "La detección de menciones busca el nombre y el dominio de la marca en el texto, sin interpretar el contexto (una mención puede ser negativa).",
+];
+export const GEO_VISIBILITY_CAVEATS = [
+  ...GEO_LIBRARY_CAVEATS,
+  "Los porcentajes usan la última muestra correcta de cada pregunta de los últimos 30 días; con pocas preguntas varían mucho de una muestra a otra.",
 ];
 
 type Row = {
@@ -103,7 +111,8 @@ geo.get("/brands/:brandId/geo/prompts", requireScope("brand:read"), async (c) =>
     items: results.map(shape),
     usage: await usage(c.env.DB, t.orgId),
     ...catalog(),
-    sampling: { active: false, reason: "El muestreo de respuestas de IA aún no está activo." },
+    sampling: await samplingInfo(c, t.orgId, brand.id),
+    lastSamples: await lastSamples(c.env.DB, t.orgId, brand.id),
     caveats: GEO_LIBRARY_CAVEATS,
   });
 });
@@ -332,5 +341,179 @@ geo.post("/brands/:brandId/geo/suggestions", requireScope("brand:read"), async (
     inputs: used,
     profile: { exists: Boolean(p), confirmed: Boolean(p?.confirmed_at) },
     note: "Plantillas deterministas a partir del perfil de marca: no se ha usado IA ni se ha guardado nada. Revisa y edita antes de añadirlas.",
+  });
+});
+
+// ---------------------------------------------------------------------------------------------
+// Monitor (Gemini API, free tier): run a sampling job, read samples and the observed visibility.
+
+async function samplingInfo(c: Context<AppEnv>, orgId: string, brandId: string) {
+  const ready = geoSamplingReady(c.env);
+  const lim = geoLimits(c.env);
+  const [quota, active, last] = await Promise.all([
+    geoQuotaToday(c.env.DB, orgId),
+    c.env.DB.prepare("SELECT id, state, progress FROM jobs WHERE organization_id = ? AND kind = 'geo_sample' AND brand_id = ? AND state IN ('queued','validating','running') ORDER BY created_at DESC LIMIT 1")
+      .bind(orgId, brandId)
+      .first<{ id: string; state: string; progress: number }>(),
+    c.env.DB.prepare("SELECT id, state, output_json, failure_code, finished_at FROM jobs WHERE organization_id = ? AND kind = 'geo_sample' AND brand_id = ? AND state IN ('completed','failed','cancelled') ORDER BY created_at DESC LIMIT 1")
+      .bind(orgId, brandId)
+      .first<{ id: string; state: string; output_json: string | null; failure_code: string | null; finished_at: string | null }>(),
+  ]);
+  return {
+    active: ready,
+    engine: "gemini_api",
+    model: geoModel(c.env),
+    fallbackModel: geoFallbackModel(c.env),
+    tier: "free",
+    reason: ready ? "Muestreo con Gemini por API oficial (nivel gratuito)." : "El muestreo con Gemini no está configurado en este entorno.",
+    perRun: lim.perRun,
+    dailyOrgLimit: lim.orgDaily,
+    usedToday: Math.min(quota.org, lim.orgDaily),
+    platformExhausted: quota.global >= lim.globalDaily,
+    activeJob: active ?? null,
+    lastJob: last ? { id: last.id, state: last.state, failureCode: last.failure_code, finishedAt: last.finished_at, output: parseJson(last.output_json, null) } : null,
+  };
+}
+
+type SampleRow = {
+  id: string;
+  prompt_id: string;
+  status: string;
+  error_code: string | null;
+  brand_mentioned: number | null;
+  brand_mention_count: number | null;
+  brand_cited: number | null;
+  sampled_at: string;
+};
+async function lastSamples(db: D1Database, orgId: string, brandId: string) {
+  const { results } = await db
+    .prepare(
+      `SELECT s.id, s.prompt_id, s.status, s.error_code, s.brand_mentioned, s.brand_mention_count, s.brand_cited, s.sampled_at FROM ai_response_samples s
+       WHERE s.organization_id = ? AND s.brand_id = ? AND s.sampled_at = (SELECT MAX(x.sampled_at) FROM ai_response_samples x WHERE x.organization_id = s.organization_id AND x.prompt_id = s.prompt_id)`,
+    )
+    .bind(orgId, brandId)
+    .all<SampleRow>();
+  return Object.fromEntries(
+    results.map((r) => [
+      r.prompt_id,
+      { id: r.id, status: r.status, errorCode: r.error_code, mentioned: r.brand_mentioned === null ? null : r.brand_mentioned === 1, mentionCount: r.brand_mention_count, cited: r.brand_cited === null ? null : r.brand_cited === 1, sampledAt: r.sampled_at },
+    ]),
+  );
+}
+
+geo.post("/brands/:brandId/geo/sample", requireScope("brand:write"), async (c) => {
+  const t = c.get("tenant");
+  const db = c.env.DB;
+  const brand = await loadBrand(c, t.orgId);
+  if (!geoSamplingReady(c.env)) throw new ApiError(409, "geo_sampling_not_configured", "El muestreo con Gemini no está configurado.");
+  const n = await db
+    .prepare("SELECT COUNT(*) AS n FROM tracked_prompts WHERE organization_id = ? AND brand_id = ? AND engine = 'gemini_api' AND enabled = 1 AND archived_at IS NULL")
+    .bind(t.orgId, brand.id)
+    .first<{ n: number }>();
+  if (!n?.n) throw new ApiError(409, "geo_no_prompts", "Añade y activa al menos una pregunta con el motor «Gemini (API)».");
+  const active = await db
+    .prepare("SELECT id, state FROM jobs WHERE organization_id = ? AND kind = 'geo_sample' AND brand_id = ? AND state IN ('queued','validating','running') LIMIT 1")
+    .bind(t.orgId, brand.id)
+    .first<{ id: string; state: string }>();
+  if (active) return c.json({ jobId: active.id, state: active.state, alreadyQueued: true }, 200);
+  const lim = geoLimits(c.env);
+  const quota = await geoQuotaToday(db, t.orgId);
+  if (quota.org >= lim.orgDaily) throw new ApiError(429, "geo_daily_cap", `Hoy ya se han hecho ${lim.orgDaily} muestras en esta organización (tope del nivel gratuito). Vuelve mañana.`, { reason: "org_daily", limit: lim.orgDaily });
+  if (quota.global >= lim.globalDaily) throw new ApiError(429, "geo_daily_cap", "Se ha alcanzado el tope diario de muestras gratuitas de la plataforma. Vuelve mañana.", { reason: "platform_daily" });
+  await rateLimit(db, `geo-sample:${t.orgId}`, 6, 3600);
+  const jobId = uuid();
+  const outboxId = uuid();
+  await db.batch([
+    db
+      .prepare("INSERT INTO jobs (id, organization_id, brand_id, kind, idempotency_key, input_json, cost_estimate, actor_user_id) VALUES (?, ?, ?, 'geo_sample', ?, ?, 0, ?)")
+      .bind(jobId, t.orgId, brand.id, `geo-sample-${jobId}`, JSON.stringify({ brandId: brand.id }), t.userId),
+    db.prepare("INSERT INTO outbox_events (id, organization_id, topic, payload_json, dedupe_key) VALUES (?, ?, 'jobs', ?, ?)").bind(outboxId, t.orgId, JSON.stringify({ jobId, organizationId: t.orgId, outboxId }), `job:${jobId}`),
+    db.prepare("INSERT INTO job_events (id, organization_id, job_id, level, kind, message) VALUES (?, ?, ?, 'info', 'queued', ?)").bind(uuid(), t.orgId, jobId, "En cola: muestrear respuestas de Gemini"),
+    auditStmt(db, { organizationId: t.orgId, actorUserId: t.userId, action: "geo.sample_run", entityType: "job", entityId: jobId, after: { brandId: brand.id, engine: "gemini_api", model: geoModel(c.env), prompts: n.n }, requestId: c.get("requestId") }),
+  ]);
+  await dispatchOutbox(c.env, c.get("deps"), (pr) => c.executionCtx.waitUntil(pr), [outboxId]);
+  return c.json({ jobId, state: "queued" }, 202);
+});
+
+geo.get("/brands/:brandId/geo/samples", requireScope("brand:read"), async (c) => {
+  const t = c.get("tenant");
+  const brand = await loadBrand(c, t.orgId);
+  const promptId = c.req.query("promptId");
+  const limit = Math.max(1, Math.min(100, Number(c.req.query("limit") ?? 20) || 20));
+  const { results } = await c.env.DB.prepare(
+    `SELECT id, prompt_id, engine, model, model_version, grounded, method, question, locale, region_country, region_detail, status, error_code, answer_text, answer_truncated,
+       citations_json, search_queries_json, brand_mentioned, brand_mention_count, brand_cited, competitors_json, input_tokens, output_tokens, latency_ms, sampled_at
+     FROM ai_response_samples WHERE organization_id = ? AND brand_id = ? ${promptId ? "AND prompt_id = ?" : ""} ORDER BY sampled_at DESC LIMIT ?`,
+  )
+    .bind(...(promptId ? [t.orgId, brand.id, assertUuid(promptId, "Pregunta"), limit] : [t.orgId, brand.id, limit]))
+    .all<Record<string, unknown> & { citations_json: string; search_queries_json: string; competitors_json: string }>();
+  return c.json({
+    items: results.map(({ citations_json, search_queries_json, competitors_json, ...r }) => ({
+      ...r,
+      grounded: r.grounded === 1,
+      answer_truncated: r.answer_truncated === 1,
+      brand_mentioned: r.brand_mentioned === null ? null : r.brand_mentioned === 1,
+      brand_cited: r.brand_cited === null ? null : r.brand_cited === 1,
+      citations: parseJson(citations_json, []),
+      searchQueries: parseJson(search_queries_json, []),
+      competitors: parseJson(competitors_json, []),
+    })),
+    measurement: "observed_sample",
+    caveats: GEO_LIBRARY_CAVEATS,
+  });
+});
+
+/** Observed visibility: latest successful sample of each active prompt in the last 30 days. */
+geo.get("/brands/:brandId/geo/visibility", requireScope("brand:read"), async (c) => {
+  const t = c.get("tenant");
+  const brand = await loadBrand(c, t.orgId);
+  const since = new Date(Date.now() - 30 * 86_400_000).toISOString();
+  const { results } = await c.env.DB.prepare(
+    `SELECT s.prompt_id, p.intent, p.category, s.engine, s.model, s.grounded, s.brand_mentioned, s.brand_cited, s.competitors_json, s.sampled_at FROM ai_response_samples s
+     JOIN tracked_prompts p ON p.organization_id = s.organization_id AND p.id = s.prompt_id AND p.archived_at IS NULL
+     WHERE s.organization_id = ? AND s.brand_id = ? AND s.status = 'ok' AND s.sampled_at >= ?
+       AND s.sampled_at = (SELECT MAX(x.sampled_at) FROM ai_response_samples x WHERE x.organization_id = s.organization_id AND x.prompt_id = s.prompt_id AND x.status = 'ok')`,
+  )
+    .bind(t.orgId, brand.id, since)
+    .all<{ prompt_id: string; intent: string; category: string; engine: string; model: string; grounded: number; brand_mentioned: number; brand_cited: number; competitors_json: string; sampled_at: string }>();
+  const n = results.length;
+  const rate = (k: number) => (n ? k / n : null);
+  const mentioned = results.filter((r) => r.brand_mentioned === 1).length;
+  const cited = results.filter((r) => r.brand_cited === 1).length;
+  // Citations only exist when the answer used search: the rate is over grounded samples only.
+  const grounded = results.filter((r) => r.grounded === 1).length;
+  // The models that actually answered (the fallback may have answered instead of the main model).
+  const models = [...new Set(results.map((r) => r.model))].sort();
+  const byIntent = GEO_INTENTS.map((intent) => {
+    const rows = results.filter((r) => r.intent === intent);
+    return { intent, label: GEO_INTENT_LABEL[intent], sampled: rows.length, mentioned: rows.filter((r) => r.brand_mentioned === 1).length };
+  });
+  const comp = new Map<string, { name: string; domain: string | null; mentioned: number; cited: number }>();
+  for (const r of results) {
+    for (const x of parseJson<Array<{ name: string; domain: string | null; mentioned: boolean; cited: boolean }>>(r.competitors_json, [])) {
+      const key = x.domain ?? x.name;
+      const cur = comp.get(key) ?? { name: x.name, domain: x.domain, mentioned: 0, cited: 0 };
+      cur.mentioned += x.mentioned ? 1 : 0;
+      cur.cited += x.cited ? 1 : 0;
+      comp.set(key, cur);
+    }
+  }
+  const dates = results.map((r) => r.sampled_at).sort();
+  return c.json({
+    brand: { id: brand.id, name: brand.name },
+    sampledPrompts: n,
+    mentioned,
+    cited,
+    mentionRate: rate(mentioned),
+    groundedSamples: grounded,
+    models,
+    citationRate: grounded ? cited / grounded : null,
+    byIntent,
+    competitors: [...comp.values()].sort((a, b) => b.mentioned - a.mentioned),
+    period: n ? { from: dates[0], to: dates[n - 1] } : null,
+    source: `Gemini API (${models.join(", ") || geoModel(c.env)}, nivel gratuito; ${grounded} de ${n} con búsqueda de Google)`,
+    measurement: "observed_sample",
+    observedAt: dates[n - 1] ?? null,
+    caveats: GEO_VISIBILITY_CAVEATS,
   });
 });

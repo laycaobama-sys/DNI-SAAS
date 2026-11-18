@@ -24,20 +24,18 @@ export function useApi<T>(path: string | null, opts: { pollMs?: number; pollWhil
   }, [path]);
 
   useEffect(() => {
-    let timer: number | undefined;
-    let alive = true;
     setLoading(!!path);
-    const run = async () => {
-      const d = await load();
-      const o = optsRef.current;
-      if (alive && d && o.pollMs && o.pollWhile?.(d)) timer = window.setTimeout(run, o.pollMs);
-    };
-    void run();
-    return () => {
-      alive = false;
-      if (timer) window.clearTimeout(timer);
-    };
+    void load();
   }, [load, path]);
+
+  // Polling follows the latest data, whoever loaded it: a manual reload() that reveals an active
+  // job (e.g. right after starting one) keeps refreshing until the predicate stops holding.
+  useEffect(() => {
+    const o = optsRef.current;
+    if (!data || !o.pollMs || !o.pollWhile?.(data)) return;
+    const timer = window.setTimeout(() => void load(), o.pollMs);
+    return () => window.clearTimeout(timer);
+  }, [data, load]);
 
   return { data, error, loading, reload: load, setData };
 }

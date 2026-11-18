@@ -41,6 +41,15 @@ export interface Env {
   GOOGLE_CLIENT_SECRET?: string;
   OPENROUTER_API_KEY?: string;
   GEMINI_API_KEY?: string;
+  /** GEO monitor caps (Gemini free tier). Defaults: 150/day platform, 40/day per organization, 20 per run, 4.5 s between calls. */
+  GEO_SAMPLES_DAILY_GLOBAL?: string;
+  GEO_SAMPLES_DAILY_ORG?: string;
+  GEO_RUN_MAX?: string;
+  GEO_SPACING_MS?: string;
+  /** Gemini model for the GEO monitor (free tier). Plain var, not a secret. */
+  GEMINI_MODEL?: string;
+  /** Optional free model used when the main one is overloaded (5xx). */
+  GEMINI_FALLBACK_MODEL?: string;
   STRIPE_SECRET_KEY?: string;
   STRIPE_WEBHOOK_SECRET?: string;
 }

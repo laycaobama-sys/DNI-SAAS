@@ -1,7 +1,7 @@
-import { useEffect, useMemo, useState, type FormEvent } from "react";
+import { Fragment, useEffect, useMemo, useState, type FormEvent } from "react";
 import { Link, useParams, useSearchParams } from "react-router";
-import { Download, Lightbulb, Plus, RotateCcw } from "lucide-react";
-import { ApiError, del, fmtDate, patch, post } from "../lib/api";
+import { Download, ExternalLink, Lightbulb, Play, Plus, RotateCcw } from "lucide-react";
+import { ApiError, del, fmtDate, patch, post, timeAgo } from "../lib/api";
 import { useApi } from "../lib/hooks";
 import { Badge, Button, Card, EmptyState, ErrorState, Field, Notice, PageHeader, Select, Spinner, Textarea, TextField } from "../ui";
 import { useOrgAccess } from "./org";
@@ -30,9 +30,53 @@ type Library = {
   engines: Engine[];
   intents: Opt[];
   categories: Opt[];
-  sampling: { active: boolean; reason: string };
+  sampling: Sampling;
+  lastSamples: Record<string, LastSample>;
   caveats: string[];
 };
+type Sampling = {
+  active: boolean;
+  engine: string;
+  model: string;
+  fallbackModel: string | null;
+  tier: string;
+  reason: string;
+  perRun: number;
+  dailyOrgLimit: number;
+  usedToday: number;
+  platformExhausted: boolean;
+  activeJob: { id: string; state: string; progress: number } | null;
+  lastJob: { id: string; state: string; failureCode: string | null; finishedAt: string | null; output: { requested: number; ok: number; errors: number; mentioned: number; stoppedReason: string | null; grounded?: boolean } | null } | null;
+};
+type LastSample = { id: string; status: string; errorCode: string | null; mentioned: boolean | null; mentionCount: number | null; cited: boolean | null; sampledAt: string };
+type Visibility = {
+  sampledPrompts: number;
+  mentioned: number;
+  cited: number;
+  mentionRate: number | null;
+  citationRate: number | null;
+  groundedSamples?: number;
+  byIntent: Array<{ intent: string; label: string; sampled: number; mentioned: number }>;
+  competitors: Array<{ name: string; domain: string | null; mentioned: number; cited: number }>;
+  period: { from: string; to: string } | null;
+  source: string;
+  caveats: string[];
+};
+const STOP_REASON: Record<string, string> = {
+  daily_cap: "se alcanzó el tope diario gratuito; el resto se muestreará otro día",
+  gemini_quota: "Gemini indicó que se agotó la cuota gratuita por ahora",
+  gemini_unavailable: "Gemini no estaba respondiendo (servicio saturado); el resto se muestreará en la próxima ejecución",
+  gemini_grounding_unavailable: "la búsqueda de Google no está disponible para esta clave",
+};
+const FAIL: Record<string, string> = {
+  gemini_403: "Gemini rechazó la clave (403).",
+  gemini_401: "Gemini rechazó la clave (401).",
+  gemini_grounding_unavailable: "La búsqueda de Google no está disponible en el nivel gratuito de esta clave; no se ha muestreado nada.",
+  gemini_model_unavailable: "Google no ofrece este modelo a esta clave (404); no se ha muestreado nada.",
+  geo_no_prompts: "No había preguntas activas para Gemini.",
+  gemini_not_configured: "El muestreo con Gemini no está configurado.",
+};
+const pctFmt = (v: number | null) => (v === null ? "—" : `${Math.round(v * 100)} %`);
 type Suggestion = { question: string; intent: string; category: string; basedOn: string[] };
 
 const LOCALES = [
@@ -64,7 +108,10 @@ export function GeoPage() {
   const brands = useApi<{ items: Array<{ id: string; name: string; domain: string | null; origin: string | null }> }>(`/orgs/${orgId}/brands`);
   const brandId = params.get("brand") ?? brands.data?.items[0]?.id ?? null;
   const [archived, setArchived] = useState(false);
-  const lib = useApi<Library>(brandId ? `/orgs/${orgId}/brands/${brandId}/geo/prompts${archived ? "?archived=1" : ""}` : null);
+  const lib = useApi<Library>(brandId ? `/orgs/${orgId}/brands/${brandId}/geo/prompts${archived ? "?archived=1" : ""}` : null, {
+    pollMs: 3000,
+    pollWhile: (d) => !!d?.sampling.activeJob,
+  });
 
   if (brands.loading && !brands.data) return <Spinner />;
   if (brands.error) return <ErrorState error={brands.error} onRetry={brands.reload} />;
@@ -116,6 +163,7 @@ function LibraryView({ orgId, data, archived, canWrite, reload }: { orgId: strin
   const [err, setErr] = useState<ApiError | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [filter, setFilter] = useState({ engine: "", intent: "" });
+  const [openId, setOpenId] = useState<string | null>(null);
   const engine = (k: string) => data.engines.find((e) => e.key === k);
   const label = (opts: Opt[], k: string) => opts.find((o) => o.key === k)?.label ?? k;
   const pct = data.usage.limit ? Math.min(100, Math.round((data.usage.used / data.usage.limit) * 100)) : 0;
@@ -137,9 +185,7 @@ function LibraryView({ orgId, data, archived, canWrite, reload }: { orgId: strin
 
   return (
     <>
-      <Notice tone="info" title="Todavía no se consulta ningún motor de IA">
-        {data.sampling.reason} Aquí defines qué preguntas medir; no se muestra ninguna respuesta ni porcentaje de visibilidad hasta que haya muestras reales con fecha, motor, idioma y región.
-      </Notice>
+      {!archived && <Monitor base={base} data={data} canWrite={canWrite} reload={reload} />}
 
       <div className="grid gap-4 lg:grid-cols-3">
         <Card title="Uso del plan" subtitle="Preguntas activas (pregunta × motor) en la organización">
@@ -217,6 +263,7 @@ function LibraryView({ orgId, data, archived, canWrite, reload }: { orgId: strin
                   <th className="py-2 pr-3 font-medium">Intención · tipo</th>
                   <th className="py-2 pr-3 font-medium">Idioma · región</th>
                   <th className="py-2 pr-3 font-medium">Estado</th>
+                  {!archived && <th className="py-2 pr-3 font-medium">Última muestra</th>}
                   {canWrite && <th className="py-2 text-right font-medium"><span className="sr-only">Acciones</span></th>}
                 </tr>
               </thead>
@@ -224,7 +271,8 @@ function LibraryView({ orgId, data, archived, canWrite, reload }: { orgId: strin
                 {items.map((p) => {
                   const e = engine(p.engine);
                   return (
-                    <tr key={p.id} className="border-t border-line align-top">
+                    <Fragment key={p.id}>
+                    <tr className="border-t border-line align-top">
                       <td className="max-w-[340px] py-2 pr-3">
                         <p className="break-words">{p.question}</p>
                         <p className="text-xs text-mute">
@@ -247,6 +295,11 @@ function LibraryView({ orgId, data, archived, canWrite, reload }: { orgId: strin
                         </span>
                       </td>
                       <td className="py-2 pr-3">{archived ? <Badge>Archivada</Badge> : p.enabled ? <Badge tone="ok">Activa</Badge> : <Badge>Pausada</Badge>}</td>
+                      {!archived && (
+                        <td className="py-2 pr-3">
+                          <LastSampleCell s={data.lastSamples[p.id]} open={openId === p.id} onToggle={() => setOpenId(openId === p.id ? null : p.id)} />
+                        </td>
+                      )}
                       {canWrite && (
                         <td className="whitespace-nowrap py-2 text-right">
                           {archived ? (
@@ -266,6 +319,14 @@ function LibraryView({ orgId, data, archived, canWrite, reload }: { orgId: strin
                         </td>
                       )}
                     </tr>
+                    {openId === p.id && (
+                      <tr>
+                        <td colSpan={canWrite ? 7 : 6} className="pb-4">
+                          <SampleDetail base={base} promptId={p.id} />
+                        </td>
+                      </tr>
+                    )}
+                    </Fragment>
                   );
                 })}
               </tbody>
@@ -289,7 +350,7 @@ function AddPrompts({ base, data, onDone }: { base: string; data: Library; onDon
     text: "",
     intent: "comparative",
     category: "product",
-    engines: ["gemini_api", "perplexity_api"] as string[],
+    engines: ["gemini_api"] as string[],
     locale: defaultLocale,
     regionCountry: defaultLocale.split("-")[1] ?? "ES",
     regionDetail: "",
@@ -369,7 +430,7 @@ function AddPrompts({ base, data, onDone }: { base: string; data: Library; onDon
   return (
     <Card title="Añadir preguntas" subtitle="Una pregunta por línea. Se crea una fila por cada motor elegido.">
       <form onSubmit={submit} className="space-y-4">
-        <Field label="Preguntas" htmlFor="geo-q" hint={`${lines.length} pregunta(s) × ${form.engines.length} motor(es) = ${rows} fila(s). Máximo 50 por envío; entre 8 y 300 caracteres.`}>
+        <Field label="Preguntas" htmlFor="geo-q" hint={`${lines.length} pregunta(s) × ${form.engines.length} motor(es) = ${rows} fila(s). Máximo 50 por envío; entre 8 y 300 caracteres. No incluyas datos personales: las preguntas de Gemini se envían a Google (nivel gratuito).`}>
           <Textarea id="geo-q" value={form.text} onChange={(e) => setForm({ ...form, text: e.target.value })} placeholder={"¿Cuál es el mejor software de SEO para pymes en España?\n¿Qué herramientas ayudan a aparecer en respuestas de IA?"} rows={4} />
         </Field>
         <fieldset>
@@ -469,5 +530,236 @@ function AddPrompts({ base, data, onDone }: { base: string; data: Library; onDon
         </div>
       )}
     </Card>
+  );
+}
+
+function Monitor({ base, data, canWrite, reload }: { base: string; data: Library; canWrite: boolean; reload: () => Promise<unknown> | void }) {
+  const smp = data.sampling;
+  const running = !!smp.activeJob;
+  const vis = useApi<Visibility>(`${base}/visibility${smp.lastJob?.finishedAt ? `?t=${encodeURIComponent(smp.lastJob.finishedAt)}` : ""}`);
+  const [err, setErr] = useState<ApiError | null>(null);
+  const [busy, setBusy] = useState(false);
+  const geminiActive = data.items.filter((p) => p.engine === "gemini_api" && p.enabled).length;
+  const left = Math.max(0, smp.dailyOrgLimit - smp.usedToday);
+
+  const start = async () => {
+    setErr(null);
+    setBusy(true);
+    try {
+      await post(`${base}/sample`);
+      await reload();
+    } catch (e) {
+      setErr(e as ApiError);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  if (!smp.active) {
+    return (
+      <Notice tone="info" title="Todavía no se consulta ningún motor de IA">
+        {smp.reason} Aquí defines qué preguntas medir; no se muestra ninguna respuesta ni porcentaje de visibilidad hasta que haya muestras reales.
+      </Notice>
+    );
+  }
+  const v = vis.data;
+  const out = smp.lastJob?.output;
+  return (
+    <Card
+      title="Visibilidad observada en Gemini"
+      subtitle={`Muestras reales por la API oficial · ${smp.model}${smp.fallbackModel ? ` (respaldo: ${smp.fallbackModel})` : ""} · nivel gratuito`}
+      actions={
+        canWrite ? (
+          <Button variant="primary" loading={busy || running} disabled={!geminiActive || left === 0 || smp.platformExhausted} onClick={start}>
+            <Play className="size-4" aria-hidden /> {running ? `Muestreando… ${smp.activeJob?.progress ?? 0} %` : "Muestrear ahora"}
+          </Button>
+        ) : undefined
+      }
+    >
+      <div className="space-y-4">
+        {err && <ErrorState error={err} />}
+        {!geminiActive && <p className="text-sm text-mute">Añade preguntas con el motor «Gemini (API)» para poder muestrear.</p>}
+        <p className="text-xs text-mute">
+          Cada ejecución muestrea hasta {smp.perRun} preguntas (primero las que llevan más tiempo sin muestra). Hoy: {smp.usedToday} de {smp.dailyOrgLimit} muestras gratuitas de la organización
+          {smp.platformExhausted ? " · tope diario de la plataforma alcanzado" : ""}. No tiene coste.
+        </p>
+        {smp.lastJob && !running && (
+          <p className="text-sm">
+            {smp.lastJob.state === "completed" && out ? (
+              <>
+                Última ejecución {timeAgo(smp.lastJob.finishedAt)}: {out.ok} respuesta(s) correcta(s){out.errors ? `, ${out.errors} con error` : ""}; la marca aparece en {out.mentioned}.
+                {out.stoppedReason ? ` Se detuvo antes porque ${STOP_REASON[out.stoppedReason] ?? out.stoppedReason}.` : ""}
+                {out.grounded === false ? " Sin búsqueda de Google: el nivel gratuito no la incluye para este modelo, así que las respuestas reflejan el conocimiento del modelo y no traen fuentes." : ""}
+              </>
+            ) : (
+              <span className="text-danger">Última ejecución sin muestras: {FAIL[smp.lastJob.failureCode ?? ""] ?? smp.lastJob.failureCode ?? smp.lastJob.state}</span>
+            )}
+          </p>
+        )}
+        {vis.error && <ErrorState error={vis.error} onRetry={vis.reload} />}
+        {v && v.sampledPrompts > 0 ? (
+          <>
+            <div className="grid gap-3 sm:grid-cols-3">
+              <div className="rounded-xl border border-line p-3">
+                <p className="text-xs text-mute">Preguntas en las que aparece la marca</p>
+                <p className="text-2xl font-semibold tabular-nums">
+                  {v.mentioned} <span className="text-base font-normal text-mute">de {v.sampledPrompts}</span>
+                </p>
+                <p className="text-xs text-mute">{pctFmt(v.mentionRate)} · observado</p>
+              </div>
+              <div className="rounded-xl border border-line p-3">
+                <p className="text-xs text-mute">Respuestas que citan la web de la marca</p>
+                {v.groundedSamples === 0 ? (
+                  <>
+                    <p className="text-2xl font-semibold">—</p>
+                    <p className="text-xs text-mute">Sin fuentes: ninguna muestra usó la búsqueda de Google (no incluida en el nivel gratuito de este modelo).</p>
+                  </>
+                ) : (
+                  <>
+                    <p className="text-2xl font-semibold tabular-nums">
+                      {v.cited} <span className="text-base font-normal text-mute">de {v.groundedSamples ?? v.sampledPrompts}</span>
+                    </p>
+                    <p className="text-xs text-mute">{pctFmt(v.citationRate)} · observado, sobre respuestas con búsqueda</p>
+                  </>
+                )}
+              </div>
+              <div className="rounded-xl border border-line p-3">
+                <p className="text-xs text-mute">Por intención (aparece / muestreadas)</p>
+                <ul className="mt-1 text-sm">
+                  {v.byIntent.map((b) => (
+                    <li key={b.intent} className="flex justify-between gap-2">
+                      <span>{b.label}</span>
+                      <span className="tabular-nums">{b.sampled ? `${b.mentioned}/${b.sampled}` : "—"}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            </div>
+            {v.competitors.length > 0 && (
+              <div>
+                <p className="mb-1 text-sm font-medium">Competidores del perfil de marca en las mismas respuestas</p>
+                <ul className="flex flex-wrap gap-2 text-sm">
+                  {v.competitors.map((c) => (
+                    <li key={c.domain ?? c.name} className="rounded-full border border-line px-3 py-1">
+                      {c.domain ?? c.name}: aparece en {c.mentioned}, citado en {c.cited}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+            <p className="text-xs text-mute">
+              Fuente: {v.source}. Periodo: {v.period ? `${fmtDate(v.period.from)} – ${fmtDate(v.period.to)}` : "—"}. Última muestra correcta de cada pregunta activa en los últimos 30 días.
+            </p>
+          </>
+        ) : (
+          v && <p className="text-sm text-mute">Aún no hay muestras correctas. Pulsa «Muestrear ahora» para obtener las primeras respuestas reales.</p>
+        )}
+      </div>
+    </Card>
+  );
+}
+
+function LastSampleCell({ s, open, onToggle }: { s: LastSample | undefined; open: boolean; onToggle: () => void }) {
+  if (!s) return <span className="text-xs text-mute">Sin muestras</span>;
+  const badge =
+    s.status !== "ok" ? (
+      <Badge tone="warn">{s.status === "blocked" ? "Bloqueada" : s.status === "empty" ? "Vacía" : "Error"}</Badge>
+    ) : s.mentioned ? (
+      <Badge tone="ok">Aparece{s.cited ? " · citada" : ""}</Badge>
+    ) : (
+      <Badge>No aparece{s.cited ? " · citada" : ""}</Badge>
+    );
+  return (
+    <div className="space-y-1">
+      {badge}
+      <p className="text-xs text-mute">{timeAgo(s.sampledAt)}</p>
+      <button type="button" className="text-xs underline" aria-expanded={open} onClick={onToggle}>
+        {open ? "Ocultar respuesta" : "Ver respuesta"}
+      </button>
+    </div>
+  );
+}
+
+type SampleFull = {
+  id: string;
+  status: string;
+  error_code: string | null;
+  model: string;
+  model_version: string | null;
+  grounded: boolean;
+  answer_text: string | null;
+  answer_truncated: boolean;
+  citations: Array<{ title: string; uri: string; domain: string | null }>;
+  searchQueries: string[];
+  brand_mention_count: number | null;
+  sampled_at: string;
+  latency_ms: number | null;
+};
+
+const SAMPLE_ERROR: Record<string, string> = {
+  gemini_503: "Gemini estaba saturado (503)",
+  gemini_500: "error interno de Gemini (500)",
+  gemini_quota: "cuota gratuita de Gemini agotada por ahora",
+  gemini_network: "no se pudo contactar con Gemini",
+  gemini_model_unavailable: "modelo no disponible para esta clave (404)",
+};
+function sampleErrorLabel(x: { status: string; error_code: string | null }) {
+  if (x.status === "blocked") return "Gemini no respondió (bloqueo de seguridad)";
+  if (x.status === "empty") return "Gemini devolvió una respuesta vacía";
+  return SAMPLE_ERROR[x.error_code ?? ""] ?? `error de Gemini (${x.error_code ?? "desconocido"})`;
+}
+
+function SampleDetail({ base, promptId }: { base: string; promptId: string }) {
+  const { data, error, loading } = useApi<{ items: SampleFull[] }>(`${base}/samples?promptId=${promptId}&limit=5`);
+  if (loading && !data) return <Spinner />;
+  if (error) return <ErrorState error={error} />;
+  const items = data?.items ?? [];
+  if (!items.length) return <p className="text-sm text-mute">Sin muestras.</p>;
+  // Show the latest real answer; if the most recent attempt failed, say so above it.
+  const latest = items[0]!;
+  const s = items.find((i) => i.status === "ok") ?? latest;
+  const older = items.filter((i) => i !== s);
+  return (
+    <div className="rounded-xl border border-line bg-surface-2/40 p-4 text-sm">
+      {s !== latest && (
+        <p className="mb-2 text-xs text-mute">
+          El último intento ({fmtDate(latest.sampled_at)}) no obtuvo respuesta: {sampleErrorLabel(latest)}. Se muestra la última respuesta correcta.
+        </p>
+      )}
+      <p className="text-xs text-mute">
+        {fmtDate(s.sampled_at)} · {s.model}
+        {s.model_version ? ` (${s.model_version})` : ""} · {s.grounded ? "con búsqueda de Google" : "sin búsqueda"}
+        {s.latency_ms ? ` · ${(s.latency_ms / 1000).toFixed(1)} s` : ""}
+      </p>
+      {s.status === "ok" ? (
+        <>
+          <p className="mt-2 whitespace-pre-wrap break-words">{s.answer_text}</p>
+          {s.answer_truncated && <p className="mt-1 text-xs text-mute">Respuesta recortada a 12.000 caracteres.</p>}
+        </>
+      ) : (
+        <p className="mt-2 text-mute">{sampleErrorLabel(s)}. No se muestra ninguna respuesta.</p>
+      )}
+      {s.citations.length > 0 && (
+        <div className="mt-3">
+          <p className="text-xs font-medium">Fuentes que citó Gemini</p>
+          <ul className="mt-1 flex flex-wrap gap-2">
+            {s.citations.map((c) => (
+              <li key={c.uri}>
+                <a className="inline-flex items-center gap-1 rounded-full border border-line px-2 py-0.5 text-xs hover:bg-surface-2" href={c.uri} target="_blank" rel="noopener noreferrer nofollow">
+                  {c.domain ?? c.title} <ExternalLink className="size-3" aria-hidden />
+                </a>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+      {s.searchQueries.length > 0 && <p className="mt-2 text-xs text-mute">Búsquedas que hizo: {s.searchQueries.join(" · ")}</p>}
+      {older.length > 0 && (
+        <p className="mt-2 text-xs text-mute">
+          Muestras anteriores: {older.map((o) => `${fmtDate(o.sampled_at)} (${o.status === "ok" ? ((o.brand_mention_count ?? 0) > 0 ? "aparece" : "no aparece") : o.status})`).join(" · ")}
+        </p>
+      )}
+      <p className="mt-2 text-xs text-mute">Texto generado por un modelo de IA y mostrado tal cual: puede contener errores. Es una muestra puntual.</p>
+    </div>
   );
 }

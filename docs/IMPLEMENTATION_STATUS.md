@@ -118,15 +118,32 @@ Pruebas E2E en producción del 2026-11-18 con la cuenta verificada de la titular
 | Migración 0010 `tracked_prompts` + límite `trackedPrompts` por plan | VERIFICADO EN PRODUCCIÓN | copia previa `backups/dni-growth-db-pre-0010-20261118-1519.sql`; migración aplicada; consulta de solo lectura: límites 10/50/150/400/1500 y 0 filas |
 | API (listar, crear pregunta × motor, editar, pausar, archivar, restaurar, sugerencias, exportar CSV/JSON) | VERIFICADO SOLO EN LOCAL | `geo.test.ts` (13 tests): duplicados normalizados, validación de motor/idioma/país, limpieza de caracteres de control y bidi, límite del plan y guarda en la misma transacción, roles (lector/analista no escriben), aislamiento entre organizaciones (404), CSV contra inyección de fórmulas, sugerencias sin inventar ni usar la calle; tabla añadida a la guarda estática de SQL |
 | Pantalla «AI Visibility (GEO)» | VERIFICADO EN PRODUCCIÓN (solo lectura) | versión 34d73cb4: carga sin errores de consola ni desbordamiento; catálogo de 6 motores con estado (API oficial / sin API, manual), aviso de que no hay muestreo, uso 0/50, biblioteca vacía. **No se crearon preguntas en producción**: la única marca de la organización de la titular es DNI GYM, que no se toca, y el plan solo admite una marca |
-| Muestreo de respuestas, menciones, visibilidad | NO IMPLEMENTADO | siguiente ítem F3; no se simula ninguna respuesta |
+| Preguntas en producción (marca DNI Growth) | VERIFICADO EN PRODUCCIÓN | organización «DNI Growth» (separada de DNI GYM): 8 preguntas Gemini es-ES/ES (4 sugerencias aceptadas + 4 manuales), uso 8/10; las sugerencias se añaden todas (comprobado tras recargar) |
+
+## F3 — Monitor GEO con Gemini gratuito (nuevo, [ADR 0013](adr/0013-monitor-geo-gemini-gratis.md))
+| Elemento | Estado | Prueba |
+|---|---|---|
+| Migración 0011 `ai_response_samples` | VERIFICADO EN PRODUCCIÓN | copia previa `backups/dni-growth-db-pre-0011-20261118-1608.sql`; aditiva; tabla en la guarda estática de SQL multitenant |
+| Trabajo `geo_sample` (cola + outbox), topes diarios 40/organización y 150/plataforma, auditoría `geo.sample_run` | VERIFICADO EN PRODUCCIÓN | `geomonitor.test.ts` (17 tests). Producción: trabajos completados con eventos; contador «Hoy: N de 40» actualizado por cada llamada |
+| Modelo configurable `GEMINI_MODEL=gemini-3.8-flash` + respaldo `GEMINI_FALLBACK_MODEL=gemini-3.5-flash-lite` (ambos nivel gratuito, sin facturación vinculada) | VERIFICADO EN PRODUCCIÓN | a petición de la titular. `gemini-2.5-flash-lite` → 404 para esta clave (registrado). `gemini-3.8-flash` con búsqueda → 429 de cuota cero → se repite sin búsqueda; con 503 «high demand» → 2 reintentos y respaldo. Muestras correctas guardadas con `model=gemini-3.5-flash-lite`, `grounded=0`, método `gemini-api:generateContent:v1` |
+| Respuestas sin búsqueda etiquetadas; tasa de citas solo sobre respuestas con búsqueda; «Fuente» con los modelos que respondieron | VERIFICADO EN PRODUCCIÓN | pantalla: «1 de 3 · 33 % · observado», citas «—» con explicación, desglose por intención, periodo y fuente; sin errores de consola |
+| Paradas seguras | VERIFICADO SOLO EN LOCAL | 404/401/403: 1 llamada y fallo definitivo; 3 errores temporales seguidos: `gemini_unavailable`; cuota agotada también en el respaldo: `gemini_quota`; extracto del error de Google ≤ 300 caracteres sin claves |
+| Sondeo de progreso tras pulsar «Muestrear ahora» (también Search Console y Analytics) | VERIFICADO EN PRODUCCIÓN | antes la barra se quedaba en 0 % porque el sondeo solo se encadenaba desde la carga inicial; ahora sigue a los datos actuales (`useApi`) |
+| Limitación conocida | — | con el nivel gratuito no hay búsqueda de Google para los modelos 3.x: las respuestas reflejan el conocimiento del modelo, sin fuentes. El nivel gratuito sufre saturación (503) en horas punta; lo pendiente se muestrea en la siguiente ejecución |
+
+## Marca DNI Growth (producción)
+| Elemento | Estado | Prueba |
+|---|---|---|
+| Organización y marca «DNI Growth» (dnigrowth.com) | VERIFICADO EN PRODUCCIÓN | org `9fe0d8cc…`, auditoría completada (5 páginas, salud 94/100) |
+| Perfil de marca revisado y confirmado | VERIFICADO EN PRODUCCIÓN | versión 2 confirmada: rechazados la variante de nombre con eslogan, 5 titulares H2 que no eran servicios y el teléfono; público, tono, objetivo «Leads / contactos» y afirmación prohibida «Garantizar posiciones en Google o menciones en motores de IA»; sin competidores inventados |
+| Avisos del perfil que ya se resolvieron | VERIFICADO SOLO EN LOCAL | el aviso «varias variantes del nombre» y «Información no encontrada» se ocultan cuando ya están resueltos (antes seguían visibles tras rechazar/rellenar) |
 
 ## NO IMPLEMENTADO (fases siguientes)
-Keywords con proveedor licenciado (F2), monitor de visibilidad IA por APIs (F3, la biblioteca de prompts ya existe), Video Studio (F4), Landings y CRM (F5), Meta Ads con Spend Guardian (F6), experimentos (F7), agencia/white label, 2FA y SSO (F8), cobros con Stripe ([plan](STRIPE_PLAN.md)).
+Keywords con proveedor licenciado (F2), recomendaciones GEO explicables e informes exportables (F3; biblioteca y monitor Gemini gratuito ya existen), Video Studio (F4), Landings y CRM (F5), Meta Ads con Spend Guardian (F6), experimentos (F7), agencia/white label, 2FA y SSO (F8), cobros con Stripe ([plan](STRIPE_PLAN.md)).
 
 ## Bloqueos que requieren al titular
 | Bloqueo | Acción mínima |
 |---|---|
-| Confirmar el perfil de marca | Revisar los datos en la pantalla de Marca y confirmar |
 | Search Console y Analytics para clientes | App publicada; permisos y justificación declarados; marca enviada a verificación. Falta: **vídeo de demostración en YouTube** (guion en [GOOGLE_VERIFICATION.md](GOOGLE_VERIFICATION.md)) y «Enviar a revisión» |
 | GA4 de la propia web de DNI Growth | La cuenta de Google conectada solo ve la propiedad de DNI GYM. Para tener datos de dnigrowth.com hay que crear una propiedad de GA4 (acepta las condiciones de Google Analytics la titular) e instalar la etiqueta con banner de consentimiento de cookies; hoy la web no usa cookies de analítica |
 | Stripe (cobros reales) | Modo prueba listo y verificado. Para cobrar: activar la cuenta «DNI Growth» (KYC), textos legales con datos fiscales, decidir IVA, guardar la clave `sk_live_…` con `wrangler secret put`, «Sincronizar» y `BILLING_ENABLED="true"` ([pasos](STRIPE_PLAN.md#3-antes-de-cobrar-dinero-real-decisión-de-la-titular)). La suscripción de prueba Starter queda con cancelación programada (sin dinero real) |

@@ -259,6 +259,18 @@ export function BrandPage() {
       </>
     );
 
+  // Warnings and "missing" are stored at extraction time; hide the ones the user has already resolved.
+  const liveFacts = (key: string) => p.facts.filter((f: any) => f.key === key && f.status !== "rejected").length;
+  const warnings: string[] = p.warnings.filter((w: string) => !(w.startsWith("Hay varias variantes del nombre") && liveFacts("name") <= 1));
+  const resolved: Record<string, boolean> = {
+    name: liveFacts("name") > 0,
+    description: liveFacts("description") > 0,
+    audience: !!p.audience?.trim(),
+    tone: !!p.tone?.trim(),
+    objective: !!p.objective,
+  };
+  const missing: any[] = p.missing.filter((m: any) => !resolved[m.key]);
+
   const edit = (fn: (d: any) => void) => {
     const d = structuredClone(p);
     fn(d);
@@ -319,7 +331,7 @@ export function BrandPage() {
         {p.confirmedAt && !draft && <Notice tone="ok">Confirmado por {p.confirmedByName ?? "un miembro"} el {fmtDate(p.confirmedAt)}. Si lo editas tendrás que reconfirmarlo.</Notice>}
         {msg && <Notice tone={msg.tone}>{msg.text}</Notice>}
         {apiErr && <ErrorState error={apiErr} />}
-        {p.warnings.map((w: string) => (
+        {warnings.map((w: string) => (
           <Notice key={w} tone="warn">{w}</Notice>
         ))}
       </div>
@@ -398,10 +410,10 @@ export function BrandPage() {
               <ListEditor label="Competidores (dominios)" hint="SEO, comerciales o publicitarios." values={p.competitors} onChange={(v) => edit((d) => (d.competitors = v))} />
             </div>
           </Card>
-          {p.missing.length > 0 && (
+          {missing.length > 0 && (
             <Card title="Información no encontrada">
               <ul className="space-y-2 text-sm">
-                {p.missing.map((m: any) => (
+                {missing.map((m: any) => (
                   <li key={m.key}>
                     <span className="font-medium">{m.label}:</span> <span className="text-mute">{m.hint}</span>
                   </li>

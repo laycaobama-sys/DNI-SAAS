@@ -69,6 +69,10 @@
     "EMAIL_MONTHLY_CAP": "2500",
     "GOOGLE_CLIENT_ID": "1028756015912-90c4g5idtm8tgea4s6dh92lj3ljfs2e2.apps.googleusercontent.com",
     "BILLING_ENABLED": "false",
+    // GEO monitor: Gemini API on the FREE tier only (no billing account on the key project).
+    "GEMINI_MODEL": "gemini-3.8-flash",
+    // Free model used only when the main one is overloaded (5xx); each sample stores who answered.
+    "GEMINI_FALLBACK_MODEL": "gemini-3.5-flash-lite",
     "AI_DAILY_BUDGET_USD": "0.10",
     // OpenRouter FREE-ONLY policy (fail-closed). Authorised OpenRouter spend: 0.00 USD, always.
     "OPENROUTER_FREE_ONLY": "true",
