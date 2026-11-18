@@ -233,6 +233,14 @@ describe("Subscription lifecycle via signed webhooks", () => {
     expect((await webhook(h, subEvent("evt_old", "customer.subscription.updated", orgId, await price("starter"), t0 + 5))).status).toBe(200);
     expect((await owner.get(`/api/v1/orgs/${orgId}/billing`)).json.plan.code).toBe("pro");
 
+    // Cancellation scheduled in the portal: access stays until the period ends, and the app says so.
+    await webhook(h, subEvent("evt_c1", "customer.subscription.updated", orgId, await price("pro"), t0 + 12, "active", { cancel_at_period_end: true }));
+    bill = (await owner.get(`/api/v1/orgs/${orgId}/billing`)).json;
+    expect(bill.plan.code).toBe("pro");
+    expect(bill.subscription.cancel_at_period_end).toBe(1);
+    await webhook(h, subEvent("evt_c2", "customer.subscription.updated", orgId, await price("pro"), t0 + 14, "active", { cancel_at_period_end: false }));
+    expect((await owner.get(`/api/v1/orgs/${orgId}/billing`)).json.subscription.cancel_at_period_end).toBe(0);
+
     // Payment trouble downgrades access until it is paid.
     await webhook(h, subEvent("evt_3", "customer.subscription.updated", orgId, await price("pro"), t0 + 20, "past_due"));
     expect((await owner.get(`/api/v1/orgs/${orgId}/billing`)).json.plan.code).toBe("free");

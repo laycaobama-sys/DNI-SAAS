@@ -32,7 +32,7 @@ billing.get("/billing", requireScope("billing:read"), async (c) => {
   await ensureMonthlyGrant(c.env.DB, t.orgId, plan);
   const [sub, ledger, plans, balance, admin] = await Promise.all([
     c.env.DB.prepare(
-      "SELECT plan_code, provider, status, current_period_end, updated_at, provider_customer_id IS NOT NULL AS has_customer FROM subscriptions WHERE organization_id = ?",
+      "SELECT plan_code, provider, status, current_period_end, updated_at, provider_customer_id IS NOT NULL AS has_customer, cancel_at_period_end FROM subscriptions WHERE organization_id = ?",
     )
       .bind(t.orgId)
       .first(),
@@ -205,18 +205,20 @@ webhooks.post("/stripe", async (c) => {
         const periodEndRaw = typeof obj["current_period_end"] === "number" ? (obj["current_period_end"] as number) : items[0]?.current_period_end;
         const periodEnd = typeof periodEndRaw === "number" ? new Date(periodEndRaw * 1000).toISOString() : null;
         const paid = status === "active" || status === "trialing";
+        const cancelScheduled = isSubEvent && (obj["cancel_at_period_end"] === true || typeof obj["cancel_at"] === "number") ? 1 : 0;
         await db.batch([
           db
             .prepare(
-              `INSERT INTO subscriptions (id, organization_id, plan_code, provider, provider_sub_id, provider_customer_id, status, current_period_end, provider_event_at)
-               VALUES (?, ?, ?, 'stripe', ?, ?, ?, ?, ?)
+              `INSERT INTO subscriptions (id, organization_id, plan_code, provider, provider_sub_id, provider_customer_id, status, current_period_end, provider_event_at, cancel_at_period_end)
+               VALUES (?, ?, ?, 'stripe', ?, ?, ?, ?, ?, ?)
                ON CONFLICT(organization_id) DO UPDATE SET plan_code = excluded.plan_code, provider = 'stripe',
                  provider_sub_id = COALESCE(excluded.provider_sub_id, subscriptions.provider_sub_id),
                  provider_customer_id = COALESCE(excluded.provider_customer_id, subscriptions.provider_customer_id),
                  status = excluded.status, current_period_end = COALESCE(excluded.current_period_end, subscriptions.current_period_end),
-                 provider_event_at = MAX(COALESCE(subscriptions.provider_event_at, 0), excluded.provider_event_at), updated_at = ?`,
+                 provider_event_at = MAX(COALESCE(subscriptions.provider_event_at, 0), excluded.provider_event_at),
+                 cancel_at_period_end = CASE WHEN ? THEN excluded.cancel_at_period_end ELSE subscriptions.cancel_at_period_end END, updated_at = ?`,
             )
-            .bind(uuid(), orgId, planCode, subId ?? null, customerId, status, periodEnd, created, nowIso()),
+            .bind(uuid(), orgId, planCode, subId ?? null, customerId, status, periodEnd, created, cancelScheduled, isSubEvent ? 1 : 0, nowIso()),
           db.prepare("UPDATE organizations SET plan_code = ? WHERE id = ?").bind(paid ? planCode : "free", orgId),
           ...(paid ? [grantStmt(db, orgId, plan.limits.monthlyCredits, `grant:${orgId}:${monthKey()}:${planCode}`, "plan_upgrade", "stripe")] : []),
           auditStmt(db, { organizationId: orgId, actorUserId: null, action: "billing.subscription_sync", entityType: "subscription", after: { planCode, status, eventId: event.id } }),
@@ -225,7 +227,7 @@ webhooks.post("/stripe", async (c) => {
       } else if (stale) handled = true;
     } else if (orgId && event.type === "customer.subscription.deleted") {
       await db.batch([
-        db.prepare("UPDATE subscriptions SET status = 'canceled', plan_code = 'free', provider_event_at = ?, updated_at = ? WHERE organization_id = ?").bind(created, nowIso(), orgId),
+        db.prepare("UPDATE subscriptions SET status = 'canceled', plan_code = 'free', cancel_at_period_end = 0, provider_event_at = ?, updated_at = ? WHERE organization_id = ?").bind(created, nowIso(), orgId),
         db.prepare("UPDATE organizations SET plan_code = 'free' WHERE id = ?").bind(orgId),
         auditStmt(db, { organizationId: orgId, actorUserId: null, action: "billing.subscription_canceled", entityType: "subscription", after: { eventId: event.id } }),
       ]);

@@ -294,6 +294,12 @@ export function BillingPage() {
             {data.stripe.note} {data.stripe.canCheckout ? "Usa la tarjeta 4242 4242 4242 4242, cualquier fecha futura y cualquier CVC." : ""}
           </Notice>
         )}
+        {stripeSub && !!data.subscription.cancel_at_period_end && (
+          <Notice tone="warn" title="Cancelación programada">
+            La suscripción no se renovará. Mantienes el plan {data.plan.name} hasta el{" "}
+            {data.subscription.current_period_end ? new Date(data.subscription.current_period_end).toLocaleDateString("es-ES", { day: "numeric", month: "long", year: "numeric" }) : "final del periodo"}; después pasarás al plan Free. Puedes deshacerlo en «Gestionar suscripción».
+          </Notice>
+        )}
         {stripeSub && access.can("billing:manage") && (
           <div className="flex flex-wrap items-center gap-3 rounded-2xl border border-line bg-surface p-4">
             <p className="flex-1 text-sm">Cambia de plan, actualiza la tarjeta, descarga facturas o cancela desde el portal seguro de Stripe.</p>

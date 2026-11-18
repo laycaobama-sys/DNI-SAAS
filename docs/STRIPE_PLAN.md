@@ -10,9 +10,9 @@ Cuenta de Stripe: **«DNI Growth»** (separada de «RestoPanel», decisión de l
 | Catálogo | Botón «Sincronizar productos, precios y portal» (Facturación → panel de administración) o `POST /api/v1/admin/billing/stripe/sync`: crea productos con id fijo (`dni_growth_<plan>`), precios mensuales en EUR sin IVA con `lookup_key`, y el **portal de cliente**. Idempotente: repetirlo no duplica nada; si cambia un precio, crea uno nuevo y archiva el anterior (los clientes actuales conservan su precio). |
 | Webhook | La sincronización registra `https://dnigrowth.com/api/v1/webhooks/stripe` (eventos `checkout.session.completed`, `customer.subscription.created/updated/deleted`). Su secreto de firma, que Stripe entrega una sola vez, se guarda **cifrado** (AES-256-GCM con `DATA_ENC_KEY`) y nunca sale del servidor. Si la titular prefiere su propio endpoint, basta con `STRIPE_WEBHOOK_SECRET` y la plataforma no crea otro. |
 | Checkout | Stripe Checkout en español, dirección de facturación y NIF-IVA, códigos promocionales, email del usuario. **Una sola suscripción por organización** (409 si ya existe: los cambios van por el portal). |
-| Portal | «Gestionar suscripción»: cambiar de plan, tarjeta, facturas, cancelar al final del periodo. |
+| Portal | «Gestionar suscripción»: cambiar de plan, tarjeta, facturas, cancelar al final del periodo. Si hay una cancelación programada, la app la muestra con la fecha en que se pasa a Free. |
 | Webhooks | Firma verificada sobre el cuerpo crudo, cada evento se procesa una vez, se ignoran eventos de modo cruzado (real/prueba) y eventos antiguos que llegan tarde; el plan se deduce del precio contratado; `past_due`/impago → plan Free hasta que se pague; créditos del plan una sola vez por mes. |
-| Pruebas | `apps/api/test/stripe.test.ts` (11) + `flow.test.ts` (4). |
+| Pruebas | `apps/api/test/stripe.test.ts` (11) + `flow.test.ts` (4). En producción (entorno de prueba, 2026-11-18): pago con 4242, créditos una sola vez, 409 en el segundo checkout, portal, cancelar/renovar/cancelar reflejado en la app. |
 
 ## 2. Lo que cuesta Stripe (sin cuota mensual)
 Stripe no cobra alta ni mensualidad: solo una comisión por cada pago. Tarifas públicas orientativas para España (compruébalas en stripe.com/es/pricing al activar):

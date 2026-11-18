@@ -1,6 +1,6 @@
 # Estado de implementación — DNI Growth
 
-Última actualización: 2026-11-18 · Producción: **https://dnigrowth.com** (Worker `dni-growth`, versión `88123eb7-3969-4089-9d66-92914ebe3c83`; workers.dev redirige con 301 a dnigrowth.com) · Workers Paid, sin servicios de pago adicionales ([verificación de la cuenta](CLOUDFLARE_ACCOUNT_VERIFICATION.md)).
+Última actualización: 2026-11-18 · Producción: **https://dnigrowth.com** (Worker `dni-growth`, versión `73543193-44d6-4e24-a483-9e0337c910d2`; workers.dev redirige con 301 a dnigrowth.com) · Workers Paid, sin servicios de pago adicionales ([verificación de la cuenta](CLOUDFLARE_ACCOUNT_VERIFICATION.md)).
 
 Leyenda:
 - **VERIFICADO EN PRODUCCIÓN**: probado contra la URL pública con una respuesta comprobable.
@@ -40,8 +40,11 @@ Pruebas E2E en producción del 2026-11-18 con la cuenta verificada de la titular
 | Créditos con reserva → liquidación/liberación | VERIFICADO EN PRODUCCIÓN | ledger: concesión 50 → auditoría −10, asesor −1 ×2, borrador −3, imagen −5 = **30**; cada operación reserva/libera/liquida una sola vez |
 | Stripe detrás de `BILLING_ENABLED=false` | VERIFICADO EN PRODUCCIÓN | sin clave: webhook → 503 `billing_disabled` (versión 7c6037e5) |
 | Stripe (modo prueba): sincronización de catálogo, portal y webhook | VERIFICADO EN PRODUCCIÓN | contra la cuenta «DNI Growth» (entorno de prueba): 4 productos/precios EUR creados (39/89/179/349), portal `bpc_…` y webhook `we_…` en `https://dnigrowth.com/api/v1/webhooks/stripe` con firma gestionada y cifrada; segunda sincronización → todo `kept`/`updated` (sin duplicados) |
-| Stripe: checkout de prueba | VERIFICADO EN PRODUCCIÓN (apertura) | «Contratar este plan» (Starter) → Stripe Checkout del entorno de prueba «Suscribirse a DNI Growth Starter 39,00 € por mes». Pago con tarjeta de prueba pendiente de la titular |
-| Stripe: una suscripción por organización, plan según precio, eventos antiguos/cruzados ignorados, past_due → Free | VERIFICADO SOLO EN LOCAL | `stripe.test.ts` (11) |
+| Stripe: checkout de prueba pagado | VERIFICADO EN PRODUCCIÓN | la titular pagó Starter con la tarjeta de prueba 4242: webhooks `customer.subscription.created` + `checkout.session.completed` procesados (03:10:14 UTC), plan Starter activo hasta 2026-12-18, `+500` créditos (`plan_upgrade`) concedidos **una sola vez** pese a recibir 2 eventos (saldo 27 → 527) |
+| Stripe: una suscripción por organización | VERIFICADO EN PRODUCCIÓN | segundo checkout con la suscripción activa → `409 subscription_exists`; los cambios van por el portal |
+| Stripe: portal de cliente | VERIFICADO EN PRODUCCIÓN | «Gestionar suscripción» → `200`, portal del entorno de prueba con plan, facturas y cancelación; auditoría `billing.portal_open` |
+| Stripe: cancelación al final del periodo | VERIFICADO EN PRODUCCIÓN | cancelar en el portal → `customer.subscription.updated` procesado, el plan sigue activo hasta el 18 dic; migración 0007 (`cancel_at_period_end`, aditiva, copia previa en `backups/`): renovar → indicador 0; volver a cancelar → la app muestra «Cancelación programada… hasta el 18 de diciembre de 2026» (versión 73543193) |
+| Stripe: plan según precio, cambio de plan con prorrateo, eventos antiguos/cruzados ignorados, past_due → Free, baja → Free | VERIFICADO SOLO EN LOCAL | `stripe.test.ts` (11, incluye cancelación programada y deshecha) |
 | Cabeceras de seguridad (CSP, HSTS, XFO, nosniff) | VERIFICADO EN PRODUCCIÓN | `curl -I https://dnigrowth.com/` |
 
 ## F1 — URL → análisis → marca → plan
@@ -87,5 +90,5 @@ Keywords con proveedor licenciado (F2), Search Console/GA4 dentro de la app y mo
 | Bloqueo | Acción mínima |
 |---|---|
 | Confirmar el perfil de marca | Revisar los datos en la pantalla de Marca y confirmar |
-| Stripe | Crear la cuenta «DNI Growth» en Stripe (decidido: no usar «RestoPanel»); después se configura en modo prueba y la titular guarda `STRIPE_SECRET_KEY` y `STRIPE_WEBHOOK_SECRET` con `wrangler secret put`. `BILLING_ENABLED=false` hasta su autorización |
+| Stripe (cobros reales) | Modo prueba listo y verificado. Para cobrar: activar la cuenta «DNI Growth» (KYC), textos legales con datos fiscales, decidir IVA, guardar la clave `sk_live_…` con `wrangler secret put`, «Sincronizar» y `BILLING_ENABLED="true"` ([pasos](STRIPE_PLAN.md#3-antes-de-cobrar-dinero-real-decisión-de-la-titular)). La suscripción de prueba Starter queda con cancelación programada (sin dinero real) |
 | Textos legales definitivos | Datos fiscales del titular |
