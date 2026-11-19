@@ -63,6 +63,31 @@ describe("plan gate on the API", () => {
     }
   });
 
+  it("a new organisation starts free and its Command Center only offers what each plan includes", async () => {
+    const h = createHarness();
+    const owner = await h.signup("nueva@luna.es", "Nuria");
+    const created = await owner.post("/api/v1/orgs", { name: "Cuenta nueva" });
+    const orgId = created.json.id as string;
+    const me = (await owner.get("/api/v1/auth/me")).json;
+    expect(me.user.isPlatformAdmin).toBe(false);
+    expect(me.memberships.find((m: any) => m.id === orgId).plan_code).toBe("free");
+    const cards = async () => {
+      const d = (await owner.get(`/api/v1/orgs/${orgId}/dashboard`)).json;
+      return { kpis: d.kpis.map((k: any) => k.key), unavailable: d.unavailable.map((u: any) => u.key) };
+    };
+    expect(await cards()).toEqual({ kpis: ["organic_traffic", "attributed_revenue"], unavailable: [] });
+    const expected: Record<string, string[]> = {
+      starter: ["organic_traffic", "ai_visibility", "attributed_revenue"],
+      growth: ["organic_traffic", "ai_visibility", "attributed_revenue"],
+      pro: ["organic_traffic", "ai_visibility", "attributed_revenue", "ads_plan"],
+      agency: ["organic_traffic", "ai_visibility", "attributed_revenue", "ads_plan"],
+    };
+    for (const [plan, kpis] of Object.entries(expected)) {
+      await h.db.prepare("UPDATE organizations SET plan_code = ? WHERE id = ?").bind(plan, orgId).run();
+      expect(await cards(), plan).toEqual({ kpis, unavailable: planIncludes(plan, "ads") ? ["ad_spend"] : [] });
+    }
+  });
+
   it("Pro cannot use white label or create client organisations; Agency can", async () => {
     const h = createHarness();
     const owner = await h.signup("owner@luna.es", "Olga");

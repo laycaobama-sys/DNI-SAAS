@@ -38,8 +38,8 @@ import { post } from "./lib/api";
 import { useAuth } from "./lib/auth";
 import { useApi, useTheme } from "./lib/hooks";
 import { cx, LegalLinks } from "./ui";
-import { MODULE_MIN_PLAN, PLAN_LABEL, requiredPlan } from "@dni/core/plan-access";
-import { AdminBypassNotice, PlanBadge, PlanLockedPanel, usePlanAccess } from "./planaccess";
+import { MODULE_MIN_PLAN, PLAN_LABEL, menuShowsModule, requiredPlan } from "@dni/core/plan-access";
+import { AdminBypassNotice, PlanLockedPanel, usePlanAccess } from "./planaccess";
 
 export const MODULES: Record<string, { label: string; phase: string; description: string }> = {
   "seo-tecnico": { label: "SEO técnico", phase: "F2", description: "Rastreos programados, histórico, hreflang, enlaces rotos y Core Web Vitals con datos de campo." },
@@ -175,6 +175,8 @@ export function AppShell() {
       </div>
       <nav className="flex-1 overflow-y-auto px-3 pb-4" aria-label="Módulos">
         {navFor(orgId)
+          // Customers only see what their plan includes; upgrades live in «Plan, límites y créditos».
+          .map((g) => ({ ...g, items: g.items.filter((it) => menuShowsModule(access.plan, it.module, access.bypass)) }))
           .map((g) => ({ ...g, items: g.items.filter((it) => !filter.trim() || norm(it.label + " " + g.section).includes(norm(filter.trim()))) }))
           .filter((g) => g.items.length)
           .map((g) => (
@@ -191,7 +193,6 @@ export function AppShell() {
                   >
                     <it.icon className="size-4 shrink-0" aria-hidden />
                     <span className="min-w-0 flex-1 break-words">{it.label}</span>
-                    {!access.unlocked(it.module) && <PlanBadge plan={requiredPlan(it.module)} />}
                     {access.bypass && !access.includes(it.module) && <span className="shrink-0 rounded border border-dashed border-line px-1 text-[10px] text-mute" title={`Plan ${requiredPlan(it.module)}: visible por ser administrador`}>admin</span>}
                   </NavLink>
                 </li>
@@ -200,6 +201,16 @@ export function AppShell() {
           </div>
         ))}
       </nav>
+      {!access.bypass && access.plan !== "agency" && (
+        <div className="px-3 pb-3">
+          <Link to={`/o/${orgId}/billing`} className="flex items-center justify-between gap-2 rounded-xl border border-line px-3 py-2 text-xs hover:bg-surface-2">
+            <span className="text-mute">
+              Plan <strong className="text-ink">{PLAN_LABEL[access.plan]}</strong>
+            </span>
+            <span className="font-semibold text-accent-text">Mejorar plan</span>
+          </Link>
+        </div>
+      )}
       <div className="border-t border-line p-3">
         <div className="flex items-center gap-2">
           <div className="grid size-8 place-items-center rounded-full bg-surface-2 text-xs font-semibold">{me?.user?.name?.slice(0, 1).toUpperCase()}</div>

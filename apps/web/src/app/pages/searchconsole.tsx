@@ -176,7 +176,7 @@ export function SearchConsolePage() {
           }
         >
           <p>Aquí no se muestra ninguna cifra hasta que conectes una cuenta con acceso real a tu propiedad. No estimamos ni inventamos clics.</p>
-          <p className="mt-2">Pediremos solo el permiso «Ver datos de Search Console» (webmasters.readonly). Puedes desconectar cuando quieras y Google revoca el acceso.</p>
+          <p className="mt-2">Pediremos solo el permiso «Ver datos de Search Console» (webmasters.readonly). Puedes desconectar cuando quieras.</p>
         </EmptyState>
       ) : (
         <div className="space-y-6">
@@ -279,7 +279,7 @@ export function SearchConsolePage() {
                   )}
                   {confirmOff && (
                     <div className="rounded-xl border border-line p-3 text-sm">
-                      <p>Se pedirá a Google que revoque el acceso y se borrará el permiso guardado (cifrado).</p>
+                      <p>Se borrará el permiso guardado (cifrado) de esta organización. Si tu cuenta de Google no está conectada en ninguna otra organización ni en otro módulo, también se pedirá a Google que revoque el acceso; si lo está, esas conexiones siguen funcionando y puedes retirar el permiso cuando quieras en myaccount.google.com/permissions.</p>
                       <label className="mt-2 flex items-center gap-2">
                         <input type="checkbox" checked={purge} onChange={(e) => setPurge(e.target.checked)} />
                         Borrar también los datos ya importados (no se puede deshacer)

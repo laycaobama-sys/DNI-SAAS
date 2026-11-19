@@ -286,7 +286,7 @@ describe("Search Console (F3): OAuth de solo lectura", () => {
     await owner.post(`/api/v1/orgs/${orgId}/search-console/sync`);
     await h.drain();
     const d = await owner.del(`/api/v1/orgs/${orgId}/search-console`);
-    expect(d.json).toEqual({ ok: true, revokedAtGoogle: true, dataPurged: false });
+    expect(d.json).toEqual({ ok: true, revokedAtGoogle: true, grantInUseElsewhere: false, dataPurged: false });
     const revoke = calls.find((c) => c.url === "https://oauth2.googleapis.com/revoke");
     expect(new URLSearchParams(revoke!.body).get("token")).toBe(RT);
     expect((await h.db.prepare("SELECT COUNT(*) AS n FROM integration_secrets").first<{ n: number }>())!.n).toBe(0);
@@ -300,6 +300,31 @@ describe("Search Console (F3): OAuth de solo lectura", () => {
     const p = await owner.del(`/api/v1/orgs/${orgId}/search-console?purge=true`);
     expect(p.json.dataPurged).toBe(true);
     expect((await h.db.prepare("SELECT COUNT(*) AS n FROM gsc_daily_metrics").first<{ n: number }>())!.n).toBe(0);
+  });
+
+  it("disconnecting one organisation never revokes a Google grant another organisation still uses", async () => {
+    const { h, calls, connect, ownerOrg } = setup();
+    const { owner, orgId } = await ownerOrg();
+    const orgB = await h.createOrg(owner, "Org GSC B");
+    await h.db.prepare("UPDATE organizations SET plan_code = 'agency' WHERE id = ?").bind(orgB).run();
+    // Same Google account (Google returns the same grant) connected in two organisations.
+    await connect(owner, orgId);
+    await connect(owner, orgB);
+    const revokes = () => calls.filter((c) => c.url === "https://oauth2.googleapis.com/revoke").length;
+
+    const a = await owner.del(`/api/v1/orgs/${orgId}/search-console`);
+    expect(a.json).toEqual({ ok: true, revokedAtGoogle: false, grantInUseElsewhere: true, dataPurged: false });
+    expect(revokes()).toBe(0);
+    // Org B keeps working: still connected, token still stored and usable.
+    expect((await owner.get(`/api/v1/orgs/${orgB}/search-console`)).json.connection.status).toBe("connected");
+    expect((await h.db.prepare("SELECT COUNT(*) AS n FROM integration_secrets WHERE organization_id = ?").bind(orgB).first<{ n: number }>())!.n).toBe(1);
+    const audit = await h.db.prepare("SELECT after_redacted FROM audit_logs WHERE organization_id = ? AND action = 'integration.disconnect'").bind(orgId).first<{ after_redacted: string }>();
+    expect(JSON.parse(audit!.after_redacted)).toMatchObject({ revokedAtGoogle: false, grantInUseElsewhere: true });
+
+    // The last connection that uses the account does revoke the grant at Google.
+    const b = await owner.del(`/api/v1/orgs/${orgB}/search-console`);
+    expect(b.json).toEqual({ ok: true, revokedAtGoogle: true, grantInUseElsewhere: false, dataPurged: false });
+    expect(revokes()).toBe(1);
   });
 
   it("Search Console API disabled → connected but the panel explains the error; properties refresh later", async () => {

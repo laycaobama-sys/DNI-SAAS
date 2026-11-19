@@ -167,6 +167,9 @@ describe("Static SQL guard", () => {
       /^"DELETE FROM ai_response_cache WHERE expires_at < \?"$/,
       /^"SELECT SUM\(kind = 'site_analysis' AND created_at >= \?\) AS audits30, SUM\(state = 'failed' AND created_at >= \?\) AS failed7, SUM\(state IN \('queued','running'\)\) AS running FROM jobs"$/,
       /^"SELECT COUNT\(\*\) AS n FROM leads WHERE created_at >= \?"$/,
+      // Google disconnect: a COUNT of other live connections of the SAME Google account (revoking at
+      // Google kills the whole grant, so it must not break another organisation). No rows are returned.
+      /^`SELECT COUNT\(\*\) AS n FROM integrations WHERE id != \? AND status IN \('connected','error','reauth_required'\)\s+AND provider IN \(\$\{GOOGLE_PROVIDERS\.map\(\(\) => "\?"\)\.join\(","\)\}\) AND lower\(account_ref\) = lower\(\?\)`$/,
     ];
     for (const f of files) {
       const src = readFileSync(f, "utf8");

@@ -363,7 +363,7 @@ describe("Google Analytics 4 (F3): ingesta de solo lectura", () => {
     await owner.post(`/api/v1/orgs/${orgId}/analytics/sync`);
     await h.drain();
     const d = await owner.del(`/api/v1/orgs/${orgId}/analytics`);
-    expect(d.json).toEqual({ ok: true, revokedAtGoogle: true, dataPurged: false });
+    expect(d.json).toEqual({ ok: true, revokedAtGoogle: true, grantInUseElsewhere: false, dataPurged: false });
     expect(new URLSearchParams(calls.find((c) => c.url.endsWith("/revoke"))!.body).get("token")).toBe(RT);
     expect((await h.db.prepare("SELECT COUNT(*) AS n FROM integration_secrets").first<{ n: number }>())!.n).toBe(0);
     expect((await owner.get(`/api/v1/orgs/${orgId}/analytics`)).json.report.totals.sessions).toBe(30);

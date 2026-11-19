@@ -158,22 +158,46 @@ export async function completeGoogleConnect(
   return back(`${p}=connected`);
 }
 
+/** Every Google data source shares one OAuth client, so one Google account has one grant across them. */
+const GOOGLE_PROVIDERS = ["google_search_console", "ga4"] as const;
+
 /**
- * DELETE: Google is asked to revoke the grant (best effort), the encrypted token is deleted, pending
- * syncs are cancelled and the connection is marked disconnected. Observed data stays unless purged.
+ * DELETE: the encrypted token is deleted, pending syncs are cancelled and the connection is marked
+ * disconnected. Observed data stays unless purged.
+ *
+ * Google revokes the WHOLE grant of a Google account for our client (every refresh token, every scope),
+ * not just this token. So the grant is revoked at Google only when no other live connection (any
+ * organisation, Search Console or Analytics) uses the same Google account; otherwise disconnecting one
+ * organisation would silently break the others. The answer says which case applied.
  */
 export async function disconnectGoogle(c: Context<AppEnv>, src: GoogleDataSource, purgeStmts: (orgId: string) => D1PreparedStatement[]) {
   const t = c.get("tenant");
   const db = c.env.DB;
   const purge = c.req.query("purge") === "true";
-  const row = await db.prepare("SELECT id FROM integrations WHERE organization_id = ? AND provider = ?").bind(t.orgId, src.provider).first<{ id: string }>();
+  const row = await db
+    .prepare("SELECT id, account_ref FROM integrations WHERE organization_id = ? AND provider = ?")
+    .bind(t.orgId, src.provider)
+    .first<{ id: string; account_ref: string | null }>();
   if (!row) throw notFound("Conexión");
-  let revoked: boolean;
-  try {
-    const conn = await loadGoogleConnection(c.env, src, t.orgId);
-    revoked = await revokeToken(c.get("deps"), conn.refreshToken);
-  } catch {
-    revoked = false; // nothing usable to revoke (already disconnected or reauth needed)
+  // Only a count crosses tenants here: no other organisation's data is read or returned.
+  const others = row.account_ref
+    ? await db
+        .prepare(
+          `SELECT COUNT(*) AS n FROM integrations WHERE id != ? AND status IN ('connected','error','reauth_required')
+             AND provider IN (${GOOGLE_PROVIDERS.map(() => "?").join(",")}) AND lower(account_ref) = lower(?)`,
+        )
+        .bind(row.id, ...GOOGLE_PROVIDERS, row.account_ref)
+        .first<{ n: number }>()
+    : null;
+  const grantInUseElsewhere = (others?.n ?? 0) > 0;
+  let revoked = false;
+  if (!grantInUseElsewhere) {
+    try {
+      const conn = await loadGoogleConnection(c.env, src, t.orgId);
+      revoked = await revokeToken(c.get("deps"), conn.refreshToken);
+    } catch {
+      revoked = false; // nothing usable to revoke (already disconnected or reauth needed)
+    }
   }
   await db.batch([
     db.prepare("DELETE FROM integration_secrets WHERE organization_id = ? AND integration_id = ?").bind(t.orgId, row.id),
@@ -188,9 +212,9 @@ export async function disconnectGoogle(c: Context<AppEnv>, src: GoogleDataSource
       action: "integration.disconnect",
       entityType: "integration",
       entityId: row.id,
-      after: { provider: src.provider, revokedAtGoogle: revoked, dataPurged: purge },
+      after: { provider: src.provider, revokedAtGoogle: revoked, grantInUseElsewhere, dataPurged: purge },
       requestId: c.get("requestId"),
     }),
   ]);
-  return c.json({ ok: true, revokedAtGoogle: revoked, dataPurged: purge });
+  return c.json({ ok: true, revokedAtGoogle: revoked, grantInUseElsewhere, dataPurged: purge });
 }

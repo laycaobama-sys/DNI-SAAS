@@ -120,7 +120,8 @@ describe("E2E F1: URL → job → audit → brand → plan", () => {
     const dash = (await owner.get(`/api/v1/orgs/${orgId}/dashboard`)).json;
     for (const m of dash.metrics) expect(m).toMatchObject({ measurement: expect.stringMatching(/observed|derived/), source: expect.any(String), observedAt: expect.any(String) });
     expect(dash.metrics.find((m: { metric: string }) => m.metric === "completed_audits").value).toBe(1);
-    expect(dash.unavailable.map((u: { key: string }) => u.key)).toContain("ad_spend");
+    // Free plan: no card pointing at Ads (Pro). The plan-modules test covers each plan.
+    expect(dash.unavailable.map((u: { key: string }) => u.key)).not.toContain("ad_spend");
 
     // Re-analysis does not overwrite a confirmed brand profile.
     await owner.post(`/api/v1/orgs/${orgId}/sites/analyze`, { url: "https://panaderia-luna.es" });

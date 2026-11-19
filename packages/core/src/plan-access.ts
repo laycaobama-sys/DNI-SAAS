@@ -53,6 +53,14 @@ export function planIncludes(planCode: string, module: string): boolean {
   return planRank(planCode) >= planRank(requiredPlan(module));
 }
 
+/**
+ * Whether the app menu lists a module. Customers see only what their plan includes (no locked teasers);
+ * a platform admin sees everything unless «Ver como cliente» is on. Modules outside the matrix are base.
+ */
+export function menuShowsModule(planCode: string, module: string, adminBypass: boolean): boolean {
+  return adminBypass || planIncludes(planCode, module);
+}
+
 export function aiDailyLimit(planCode: string): number {
   return AI_DAILY_REQUESTS[isPlanCode(planCode) ? planCode : "free"];
 }

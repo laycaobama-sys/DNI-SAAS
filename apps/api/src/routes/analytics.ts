@@ -291,7 +291,7 @@ analytics.post("/analytics/sync", requireScope("integrations:manage"), async (c)
   return c.json({ jobId: q.jobId, state: "queued" }, 202);
 });
 
-/** Disconnect (revoke at Google, delete the encrypted token). Observed data stays unless `purge=true`. */
+/** Disconnect (delete the encrypted token; revoke at Google only if no other connection uses that Google account). Observed data stays unless `purge=true`. */
 analytics.delete("/analytics", requireScope("integrations:manage"), (c) =>
   disconnectGoogle(c, GA4_SOURCE, (orgId) => [c.env.DB.prepare("DELETE FROM ga4_properties WHERE organization_id = ?").bind(orgId)]),
 );

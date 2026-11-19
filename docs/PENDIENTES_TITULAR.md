@@ -4,7 +4,9 @@ Dos tareas que solo puedes hacer tú porque necesitan tu sesión de Meta y de Go
 
 ---
 
-## 1. Icono de la app en Meta (2 minutos)
+## 1. Icono de la app en Meta: HECHO (2026-11-19)
+
+Comprobado en Meta for Developers → Configuración → Básica: icono `icon-1024.png` subido, con privacidad, condiciones y eliminación de datos apuntando a dnigrowth.com.
 
 **Archivo:** `apps/web/public/icon-1024.png` (1024 × 1024, PNG). También se descarga desde https://dnigrowth.com/icon-1024.png
 

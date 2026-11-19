@@ -1,5 +1,6 @@
 import { Hono } from "hono";
 import { canAssignRole, CreateOrgInput, InviteInput, randomToken, scopesFor, sha256Hex, UpdateMemberInput, type Role } from "@dni/core";
+import { planIncludes } from "@dni/core/plan-access";
 import type { AppEnv } from "../env";
 import { auditStmt } from "../lib/audit";
 import { creditBalance, ensureMonthlyGrant, getPlan, grantStmt, orgPlan, analysesThisMonth } from "../lib/billing";
@@ -109,12 +110,16 @@ org.get("/dashboard", requireScope("org:read"), async (c) => {
     latestAudit: latest ?? null,
     recentJobs: jobs.results,
     tasksByStatus: tasks.results,
-    kpis: await growthKpis(db, t.orgId, observedAt),
-    unavailable: [
-      { key: "ad_spend", label: "Gasto publicitario real", reason: "Requiere la conexión aprobada por Meta o Google Ads (bloqueo externo). Las campañas aquí son borradores con presupuesto propuesto." },
-    ],
+    // Only what the organisation's plan includes: no cards that lead to modules of a higher plan.
+    kpis: (await growthKpis(db, t.orgId, observedAt)).filter((k) => planIncludes(plan.code, KPI_MODULE[k.key] ?? "")),
+    unavailable: planIncludes(plan.code, "ads")
+      ? [{ key: "ad_spend", label: "Gasto publicitario real", reason: "Requiere la conexión aprobada por Meta o Google Ads (bloqueo externo). Las campañas aquí son borradores con presupuesto propuesto." }]
+      : [],
   });
 });
+
+/** Module each Command Center KPI belongs to (base modules map to "" = every plan). */
+const KPI_MODULE: Record<string, string> = { organic_traffic: "search-console", ai_visibility: "ai-visibility", attributed_revenue: "crm", ads_plan: "ads" };
 
 /** Growth KPIs with source, or an actionable next step when the source is not connected yet. */
 async function growthKpis(db: D1Database, orgId: string, observedAt: string) {
