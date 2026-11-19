@@ -179,9 +179,11 @@ export function createHarness(opts: { site?: Record<string, FakeRoute>; dns?: Re
     return m[1]!;
   }
 
-  async function createOrg(c: Client, name: string): Promise<string> {
+  /** New organisation (plan «free» unless a plan is given, e.g. to reach a module that a paid plan unlocks). */
+  async function createOrg(c: Client, name: string, plan?: string): Promise<string> {
     const r = await c.post("/api/v1/orgs", { name });
     if (r.status !== 201) throw new Error(`org create failed ${r.status} ${JSON.stringify(r.json)}`);
+    if (plan) await db.prepare("UPDATE organizations SET plan_code = ? WHERE id = ?").bind(plan, r.json.id).run();
     return r.json.id as string;
   }
 

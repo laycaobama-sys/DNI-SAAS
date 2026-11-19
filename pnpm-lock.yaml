@@ -51,6 +51,9 @@ importers:
 
   apps/web:
     dependencies:
+      '@dni/core':
+        specifier: workspace:*
+        version: link:../../packages/core
       lucide-react:
         specifier: ^1.70.0
         version: 1.73.0(@types/react@19.3.0)(react@19.3.1)

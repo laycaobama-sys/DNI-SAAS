@@ -8,6 +8,7 @@ import "./styles.css";
 import { AuthProvider, useAuth } from "./lib/auth";
 import { useTheme } from "./lib/hooks";
 import { AppShell } from "./shell";
+import { AdminConsolePage } from "./pages/admin";
 import { Spinner } from "./ui";
 import { ForgotPage, InvitePage, LoginPage, RegisterPage, ResetPage, VerifyPage } from "./pages/auth";
 import { DashboardPage, OnboardingPage } from "./pages/dashboard";
@@ -67,6 +68,7 @@ function App() {
       <Route path="/invite" element={<InvitePage />} />
       <Route path="/onboarding" element={<RequireAuth><OnboardingPage /></RequireAuth>} />
       <Route path="/" element={<RequireAuth><Home /></RequireAuth>} />
+      <Route path="/admin" element={<RequireAuth><AdminConsolePage /></RequireAuth>} />
       <Route path="/o/:orgId" element={<RequireAuth><AppShell /></RequireAuth>}>
         <Route element={<OrgGuard />}>
           <Route index element={<DashboardPage />} />

@@ -4,7 +4,7 @@ import { bodyLimit } from "hono/body-limit";
 import type { AppEnv, Deps } from "./env";
 import { ApiError, problem } from "./lib/http";
 import { log } from "./lib/util";
-import { csrf, requestId, requireMembership, requireScope, requireUser, securityHeaders, session } from "./middleware";
+import { csrf, requestId, requireMembership, requirePlanModule, requireScope, requireUser, securityHeaders, session } from "./middleware";
 import { admin } from "./routes/admin";
 import { ai } from "./routes/ai";
 import { aihub } from "./routes/aihub";
@@ -29,17 +29,35 @@ import { work } from "./routes/work";
 /** IndexNow key for dnigrowth.com (public; see https://www.indexnow.org/documentation). */
 export const INDEXNOW_KEY = "c2d713b310de907a6ead8590e603ff8c";
 
+/** Ownership files must answer on every host that has its own search-engine property. */
+const OWNERSHIP_FILE = /^\/(google[0-9a-f]+\.html|BingSiteAuth\.xml|[0-9a-f]{32}\.txt)$/;
+
+/**
+ * Returns the 301 target when a GET for a public page arrives on a non-canonical variant
+ * (workers.dev or www host, http, /index.html, /x.html, /x/), or null when the URL is canonical.
+ * The JSON API keeps answering on any host (health checks, webhooks).
+ */
+export function canonicalRedirect(url: URL, canon: URL): string | null {
+  const path = url.pathname;
+  if (OWNERSHIP_FILE.test(path)) return null;
+  if (path.startsWith("/api/") && path !== "/api/v1/auth/google/start") return null;
+  let clean = path;
+  if (clean === "/index.html") clean = "/";
+  else if (/^\/legal\/[a-z-]+(\.html|\/)$/.test(clean)) clean = clean.replace(/(\.html|\/)$/, "");
+  const offHost = url.host !== canon.host || url.protocol !== canon.protocol;
+  if (!offHost && clean === path) return null;
+  return `${canon.origin}${clean}${url.search}`;
+}
+
 export function createApp(deps: Deps) {
   const app = new Hono<AppEnv>();
 
-  // Browser pages and the Google sign-in start live on the canonical origin only (cookies, OAuth state).
+  // One canonical URL per page (search engines flag duplicates otherwise): every public page and the
+  // Google sign-in start answer only on APP_ORIGIN over https, without ".html" or trailing-slash variants.
   app.use("*", async (c, next) => {
     if (c.env.ENVIRONMENT !== "production" || (c.req.method !== "GET" && c.req.method !== "HEAD")) return next();
-    const url = new URL(c.req.url);
-    const canon = new URL(c.env.APP_ORIGIN);
-    const page = url.pathname === "/app" || url.pathname.startsWith("/app/") || url.pathname === "/api/v1/auth/google/start";
-    if (page && url.host !== canon.host) return c.redirect(`${canon.origin}${url.pathname}${url.search}`, 301);
-    return next();
+    const target = canonicalRedirect(new URL(c.req.url), new URL(c.env.APP_ORIGIN));
+    return target ? c.redirect(target, 301) : next();
   });
 
   app.use("/api/*", requestId, securityHeaders, async (c, next) => {
@@ -63,7 +81,7 @@ export function createApp(deps: Deps) {
 
   // Every tenant route: authenticated user + active membership resolved from the path.
   const tenant = new Hono<AppEnv>();
-  tenant.use("*", requireUser, requireMembership);
+  tenant.use("*", requireUser, requireMembership, requirePlanModule);
   tenant.route("/", org);
   tenant.route("/", work);
   tenant.route("/", insights);
@@ -140,6 +158,7 @@ export function createApp(deps: Deps) {
       const res = await c.env.ASSETS.fetch(new Request(new URL("/app/", url), c.req.raw));
       const h = new Headers(res.headers);
       h.set("cache-control", "no-store");
+      h.set("x-robots-tag", "noindex, nofollow");
       h.set("x-frame-options", "DENY");
       h.set("x-content-type-options", "nosniff");
       h.set("referrer-policy", "strict-origin-when-cross-origin");

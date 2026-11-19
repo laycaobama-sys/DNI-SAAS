@@ -160,8 +160,14 @@ describe("Static SQL guard", () => {
     };
     walk(srcDir);
     const offenders: string[] = [];
-    // Justified exceptions: background recovery scans every tenant by design (no user input).
-    const allow = [/FROM jobs WHERE state = 'running' AND started_at < \?/, /^"DELETE FROM ai_response_cache WHERE expires_at < \?"$/];
+    // Justified exceptions: background recovery scans every tenant by design (no user input), and the
+    // Platform SuperAdmin console reads platform-wide COUNT/SUM aggregates (no rows, no content).
+    const allow = [
+      /FROM jobs WHERE state = 'running' AND started_at < \?/,
+      /^"DELETE FROM ai_response_cache WHERE expires_at < \?"$/,
+      /^"SELECT SUM\(kind = 'site_analysis' AND created_at >= \?\) AS audits30, SUM\(state = 'failed' AND created_at >= \?\) AS failed7, SUM\(state IN \('queued','running'\)\) AS running FROM jobs"$/,
+      /^"SELECT COUNT\(\*\) AS n FROM leads WHERE created_at >= \?"$/,
+    ];
     for (const f of files) {
       const src = readFileSync(f, "utf8");
       const sqls = src.match(/`[^`]*`|"(?:SELECT|INSERT|UPDATE|DELETE)[^"]*"/g) ?? [];

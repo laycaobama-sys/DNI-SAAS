@@ -6,6 +6,8 @@ export interface Membership {
   name: string;
   slug: string;
   plan_code: string;
+  /** Plan whose modules apply (client organisations inherit their agency's plan). */
+  effective_plan?: string;
   role: string;
 }
 export interface Me {

@@ -1,0 +1,35 @@
+import { describe, expect, it } from "vitest";
+import { canonicalRedirect } from "../src/app";
+
+const canon = new URL("https://dnigrowth.com");
+const r = (u: string) => canonicalRedirect(new URL(u), canon);
+
+describe("canonicalRedirect (duplicate-content guard)", () => {
+  it("keeps canonical URLs untouched", () => {
+    expect(r("https://dnigrowth.com/")).toBeNull();
+    expect(r("https://dnigrowth.com/legal/privacidad")).toBeNull();
+    expect(r("https://dnigrowth.com/?utm_source=x")).toBeNull();
+    expect(r("https://dnigrowth.com/app/orgs/1")).toBeNull();
+  });
+
+  it("sends other hosts and http to the canonical origin", () => {
+    expect(r("https://dni-growth.example.workers.dev/")).toBe("https://dnigrowth.com/");
+    expect(r("http://dnigrowth.com/legal/condiciones")).toBe("https://dnigrowth.com/legal/condiciones");
+    expect(r("https://www.dnigrowth.com/app?x=1")).toBe("https://dnigrowth.com/app?x=1");
+    expect(r("https://dni-growth.example.workers.dev/api/v1/auth/google/start")).toBe("https://dnigrowth.com/api/v1/auth/google/start");
+  });
+
+  it("strips .html, /index.html and trailing slashes on public pages", () => {
+    expect(r("https://dnigrowth.com/index.html")).toBe("https://dnigrowth.com/");
+    expect(r("https://dnigrowth.com/legal/privacidad.html")).toBe("https://dnigrowth.com/legal/privacidad");
+    expect(r("https://dnigrowth.com/legal/aviso-legal/")).toBe("https://dnigrowth.com/legal/aviso-legal");
+  });
+
+  it("never redirects the JSON API or search-engine ownership files", () => {
+    expect(r("https://dni-growth.example.workers.dev/api/v1/health")).toBeNull();
+    expect(r("http://dni-growth.example.workers.dev/api/v1/webhooks/stripe")).toBeNull();
+    expect(r("https://dni-growth.example.workers.dev/google07bca8a276fd14a6.html")).toBeNull();
+    expect(r("https://dni-growth.example.workers.dev/BingSiteAuth.xml")).toBeNull();
+    expect(r("https://dni-growth.example.workers.dev/c2d713b310de907a6ead8590e603ff8c.txt")).toBeNull();
+  });
+});

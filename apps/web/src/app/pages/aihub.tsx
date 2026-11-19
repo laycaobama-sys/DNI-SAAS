@@ -99,7 +99,7 @@ const TESTABLE = [
 ] as const;
 
 /** Platform admins only: one tiny real request per provider (max. 20 a day for the platform). */
-function ProviderTests() {
+export function ProviderTests() {
   const [busy, setBusy] = useState<string | null>(null);
   const [res, setRes] = useState<Record<string, ProviderTest | string>>({});
   const run = async (provider: string) => {
@@ -400,7 +400,7 @@ function CatalogTable({ data, admin, onChanged }: { data: Catalog; admin: boolea
   );
 }
 
-function AdminPanel({ status, onChanged }: { status: Status; onChanged: () => void }) {
+export function AdminPanel({ status, onChanged }: { status: Status; onChanged: () => void }) {
   const [busy, setBusy] = useState<string | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
   const run = async (key: string, fn: () => Promise<string>) => {

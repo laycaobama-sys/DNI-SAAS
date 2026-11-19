@@ -38,6 +38,8 @@ import { post } from "./lib/api";
 import { useAuth } from "./lib/auth";
 import { useApi, useTheme } from "./lib/hooks";
 import { cx, LegalLinks } from "./ui";
+import { MODULE_MIN_PLAN, PLAN_LABEL, requiredPlan } from "@dni/core/plan-access";
+import { AdminBypassNotice, PlanBadge, PlanLockedPanel, usePlanAccess } from "./planaccess";
 
 export const MODULES: Record<string, { label: string; phase: string; description: string }> = {
   "seo-tecnico": { label: "SEO técnico", phase: "F2", description: "Rastreos programados, histórico, hreflang, enlaces rotos y Core Web Vitals con datos de campo." },
@@ -57,11 +59,11 @@ export const MODULES: Record<string, { label: string; phase: string; description
   agency: { label: "Agency / White Label", phase: "F8", description: "Subclientes aislados, portal de cliente y marca propia." },
 };
 
-type NavItem = { to: string; label: string; icon: typeof Gauge; live?: boolean; end?: boolean };
+type NavItem = { to: string; label: string; icon: typeof Gauge; live?: boolean; end?: boolean; module: string };
 
 function navFor(orgId: string): Array<{ section: string; items: NavItem[] }> {
   const o = `/o/${orgId}`;
-  const i = (path: string, label: string, icon: typeof Gauge, end?: boolean): NavItem => ({ to: path ? `${o}/${path}` : o, label, icon, live: true, end });
+  const i = (path: string, label: string, icon: typeof Gauge, end?: boolean): NavItem => ({ to: path ? `${o}/${path}` : o, label, icon, live: true, end, module: path });
   return [
     { section: "Crecimiento", items: [i("", "Command Center", LayoutDashboard, true), i("analyze", "Nueva auditoría", Sparkles), i("advisor", "Asesor IA", MessageSquareText), i("ai-hub", "Centro de IA", Cpu), i("audits", "Auditoría web", FileSearch), i("brands", "Proyectos y marcas", Building2)] },
     { section: "Orgánico", items: [i("seo-tecnico", "SEO técnico", Gauge), i("search-console", "Search Console", TrendingUp), i("keywords", "Keywords y competencia", Search), i("ai-visibility", "AI Visibility (GEO)", Bot), i("content", "Content Studio", FileText), i("authority", "Backlinks / Authority", Link2)] },
@@ -104,6 +106,10 @@ export function AppShell() {
   const nav = useNavigate();
   useEffect(() => setOpen(false), [loc.pathname]);
   const current = me?.memberships.find((m) => m.id === orgId);
+  const access = usePlanAccess(orgId);
+  // Module of the current page (first path segment after /o/:orgId) and whether this viewer may open it.
+  const pageModule = loc.pathname.split("/")[3] ?? "";
+  const gated = pageModule in MODULE_MIN_PLAN && !access.includes(pageModule);
   const { data: brand } = useApi<{ displayName: string | null; logoUrl: string | null; accent: string | null }>(orgId ? `/orgs/${orgId}/branding` : null);
   const accentStyle = brand?.accent ? ({ "--accent": brand.accent, "--accent-ink": inkFor(brand.accent) } as React.CSSProperties) : undefined;
   const brandMark = brand?.displayName || brand?.logoUrl ? (
@@ -136,7 +142,7 @@ export function AppShell() {
           <span className="min-w-0">
             <span className="block truncate font-medium">{current?.name ?? "Organización"}</span>
             <span className="block text-xs text-mute">
-              Plan {current?.plan_code ?? "—"} · {current?.role ?? ""}
+              Plan {PLAN_LABEL[access.plan]} · {current?.role ?? ""}
             </span>
           </span>
           <ChevronsUpDown className="size-4 shrink-0 text-mute" />
@@ -185,7 +191,8 @@ export function AppShell() {
                   >
                     <it.icon className="size-4 shrink-0" aria-hidden />
                     <span className="min-w-0 flex-1 break-words">{it.label}</span>
-                    {!it.live && <span className="shrink-0 rounded border border-line px-1 text-[10px] text-mute">pronto</span>}
+                    {!access.unlocked(it.module) && <PlanBadge plan={requiredPlan(it.module)} />}
+                    {access.bypass && !access.includes(it.module) && <span className="shrink-0 rounded border border-dashed border-line px-1 text-[10px] text-mute" title={`Plan ${requiredPlan(it.module)}: visible por ser administrador`}>admin</span>}
                   </NavLink>
                 </li>
               ))}
@@ -207,6 +214,17 @@ export function AppShell() {
             <LogOut className="size-4" />
           </button>
         </div>
+        {access.isAdmin && (
+          <div className="mt-2 flex flex-col gap-1.5 rounded-lg border border-line px-2.5 py-2 text-xs">
+            <Link to="/admin" className="font-medium text-accent-text hover:underline">
+              Panel de administración
+            </Link>
+            <label className="flex cursor-pointer items-center justify-between gap-2 text-mute">
+              Ver como cliente
+              <input type="checkbox" className="size-4 accent-[var(--accent)]" checked={access.viewAsClient} onChange={(e) => access.setViewAsClient(e.target.checked)} />
+            </label>
+          </div>
+        )}
         <LegalLinks className="mt-2 px-1" />
       </div>
     </div>
@@ -230,7 +248,14 @@ export function AppShell() {
           <span className="w-8" />
         </header>
         <main id="main" className="mx-auto w-full max-w-7xl px-4 py-6 sm:px-6 lg:px-10 lg:py-10 print:max-w-none print:p-0">
-          <Outlet />
+          {gated && !access.bypass ? (
+            <PlanLockedPanel orgId={orgId} module={pageModule} plan={access.plan} />
+          ) : (
+            <>
+              {gated && <AdminBypassNotice module={pageModule} onViewAsClient={() => access.setViewAsClient(true)} />}
+              <Outlet />
+            </>
+          )}
         </main>
       </div>
     </div>

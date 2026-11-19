@@ -14,6 +14,7 @@ import {
   OPENROUTER_FREE_ROUTER,
   WORKERS_AI_IMAGE_MODEL,
   WORKERS_AI_TEXT_MODELS,
+  aiDailyLimit,
   type AiProviderKey,
   type AiTask,
   type ChatMessage,
@@ -29,6 +30,7 @@ import {
   releaseQuota,
   reserveQuota,
 } from "./openrouter";
+import { orgPlan } from "./billing";
 import { ApiError } from "./http";
 import { log, nowIso, uuid } from "./util";
 
@@ -76,6 +78,13 @@ export class AiUnavailableError extends Error {
 
 /** Spanish, user-facing API error for any AI failure. No credit is ever charged when this is thrown. */
 export function aiApiError(e: unknown): unknown {
+  if (e instanceof AiPlanDailyLimitError)
+    return new ApiError(
+      429,
+      "ai_plan_daily_limit",
+      `Has usado las ${e.limit} peticiones de IA de hoy incluidas en tu plan. Se renuevan a las 00:00 UTC. No se ha cobrado ningún crédito.`,
+      { limit: e.limit, plan: e.planCode },
+    );
   if (e instanceof SelectedModelFailedError)
     return new ApiError(503, "selected_model_failed", "El modelo gratuito que elegiste no ha respondido. No se ha cobrado ningún crédito. ¿Quieres usar el respaldo automático?", { attempts: e.attempts });
   if (e instanceof AiUnavailableError) {
@@ -94,6 +103,15 @@ export function aiApiError(e: unknown): unknown {
     );
   }
   return e;
+}
+/** The organisation used today's AI requests included in its plan (AI_DAILY_REQUESTS). */
+export class AiPlanDailyLimitError extends Error {
+  constructor(
+    readonly planCode: string,
+    readonly limit: number,
+  ) {
+    super("ai_plan_daily_limit");
+  }
 }
 /** The organisation chose a specific model, it failed, and its policy is to ask before falling back. */
 export class SelectedModelFailedError extends Error {
@@ -314,6 +332,15 @@ export async function generateText(env: Env, deps: Deps, messages: ChatMessage[]
       await logInvocation(env, { ...base, provider: "cache", model: hit.model, status: "ok", errorCode: "cache_hit", latencyMs: 0, inputTokens: 0, outputTokens: 0, costState: "zero_confirmed", isFallback: false });
       return { text: hit.response_text, provider: hit.provider, model: hit.model, inputTokens: hit.input_tokens ?? 0, outputTokens: hit.output_tokens ?? 0, costUsd: 0, fallback: false, attempts, cached: true };
     }
+  }
+  // Fair use per plan (cache hits above never count): one organisation cannot drain the shared free quota.
+  if (base.orgId && !o.onlyProvider) {
+    const plan = await orgPlan(env.DB, base.orgId);
+    const limit = aiDailyLimit(plan.code);
+    const used = await env.DB.prepare("SELECT COUNT(*) AS n FROM ai_invocations WHERE organization_id = ? AND status = 'ok' AND provider != 'cache' AND created_at >= ?")
+      .bind(base.orgId, `${nowIso().slice(0, 10)}T00:00:00.000Z`)
+      .first<{ n: number }>();
+    if ((used?.n ?? 0) >= limit) throw new AiPlanDailyLimitError(plan.code, limit);
   }
   const done = async (r: Omit<TextResult, "cached" | "attempts" | "fallback">): Promise<TextResult> => {
     const result: TextResult = { ...r, fallback: attempts.length > (thirdPartyAllowed ? 0 : 1), attempts, cached: false };

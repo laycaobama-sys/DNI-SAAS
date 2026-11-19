@@ -130,7 +130,7 @@ function BrandingCard({ orgId, canEdit }: { orgId: string; canEdit: boolean }) {
     }
   };
   return (
-    <Card title="Marca blanca" subtitle={data?.inherited ? "Ahora se usa la marca de tu agencia" : "Tu nombre, logo y color en el menú y en los informes (planes Pro y Agency)"}>
+    <Card title="Marca blanca" subtitle={data?.inherited ? "Ahora se usa la marca de tu agencia" : "Tu nombre, logo y color en el menú y en los informes (plan Agency)"}>
       <fieldset disabled={!canEdit} className="grid gap-3 sm:grid-cols-2">
         <TextField label="Nombre visible" maxLength={80} value={f.displayName} onChange={(e) => setF({ ...f, displayName: e.target.value })} placeholder="Agencia Luna" />
         <TextField label="Logo (URL https)" type="url" value={f.logoUrl} onChange={(e) => setF({ ...f, logoUrl: e.target.value })} placeholder="https://agencia.es/logo.png" />

@@ -5,6 +5,8 @@ import { ApiError, del, fmtDate, patch, post, timeAgo } from "../lib/api";
 import { useAuth } from "../lib/auth";
 import { useApi } from "../lib/hooks";
 import { MODULES } from "../shell";
+import { AI_DAILY_REQUESTS, PLAN_PITCH } from "@dni/core/plan-access";
+import { PlanModulesTable } from "../planaccess";
 import { Entitlements } from "./agency";
 import { Badge, Button, Card, EmptyState, ErrorState, Notice, PageHeader, Select, Spinner, TextField } from "../ui";
 
@@ -180,7 +182,7 @@ const ACCESS_LABEL: Record<string, string> = {
 };
 
 /** Platform-admin view of the Stripe connection: secrets present (never their values), mode and catalogue sync. */
-function StripeAdminPanel({ onSynced }: { onSynced: () => void }) {
+export function StripeAdminPanel({ onSynced }: { onSynced: () => void }) {
   const { data, error, reload } = useApi<any>("/admin/billing/stripe");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<ApiError | null>(null);
@@ -360,7 +362,9 @@ export function BillingPage() {
                 {l.videoProjects !== undefined && <li>{l.videoProjects} proyectos de vídeo</li>}
                 {l.trackedPrompts !== undefined && <li>{l.trackedPrompts} preguntas GEO</li>}
                 {l.clientOrgs ? <li>{l.clientOrgs} clientes (agencia) y marca blanca</li> : null}
+                <li>{AI_DAILY_REQUESTS[p.code as keyof typeof AI_DAILY_REQUESTS] ?? 10} peticiones de IA al día</li>
               </ul>
+              <p className="mt-3 text-xs leading-snug">{PLAN_PITCH[p.code as keyof typeof PLAN_PITCH] ?? ""}</p>
               {!current && p.price_eur_month > 0 && !stripeSub && (
                 <Button className="mt-4" disabled={!canPay || !p.purchasable} loading={busyPlan === p.code} onClick={() => checkout(p.code)}>
                   {!data.stripe.configured || !p.purchasable ? "Próximamente" : !canPay ? "Pagos aún no disponibles" : "Contratar este plan"}
@@ -370,6 +374,12 @@ export function BillingPage() {
           );
         })}
       </div>
+
+      <section className="mb-6" aria-labelledby="plan-modules-title">
+        <h2 id="plan-modules-title" className="mb-1 font-serif text-2xl">Qué módulos incluye cada plan</h2>
+        <p className="mb-3 text-sm text-mute">Los módulos fuera de tu plan aparecen con candado en el menú. Tus datos se conservan si cambias de plan.</p>
+        <PlanModulesTable current={data.plan.code} />
+      </section>
 
       <div className="mb-6"><Entitlements orgId={orgId!} /></div>
 

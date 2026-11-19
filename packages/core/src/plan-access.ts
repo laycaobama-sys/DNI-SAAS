@@ -1,0 +1,94 @@
+/**
+ * What each plan unlocks. Single source of truth for the API guard (403 «plan_required») and for the
+ * app menu (locked modules show the plan that unlocks them). Numeric limits stay in plans.limits_json.
+ */
+export const PLAN_ORDER = ["free", "starter", "growth", "pro", "agency"] as const;
+export type PlanCode = (typeof PLAN_ORDER)[number];
+
+export const PLAN_LABEL: Record<PlanCode, string> = { free: "Gratis", starter: "Starter", growth: "Growth", pro: "Pro", agency: "Agency" };
+
+/** One-line promise per plan, shown on the plan page. Honest: no results guaranteed. */
+export const PLAN_PITCH: Record<PlanCode, string> = {
+  free: "Prueba la auditoría, el plan de 30 días, el asesor IA, Search Console y el CRM básico.",
+  starter: "Para un negocio: SEO técnico, keywords, visibilidad en IA, contenidos, landings e informes.",
+  growth: "Crecimiento completo: backlinks, creatividades, vídeo, automatizaciones, atribución y GA4.",
+  pro: "Equipos con publicidad: Ads Manager con Spend Guardian y límites más altos.",
+  agency: "Agencias: organizaciones cliente aisladas y marca blanca.",
+};
+
+/** Minimum plan per module (app path segment). Modules not listed are included in every plan. */
+export const MODULE_MIN_PLAN: Record<string, PlanCode> = {
+  "seo-tecnico": "starter",
+  keywords: "starter",
+  "ai-visibility": "starter",
+  content: "starter",
+  landings: "starter",
+  reports: "starter",
+  authority: "growth",
+  creative: "growth",
+  video: "growth",
+  automations: "growth",
+  attribution: "growth",
+  analytics: "growth",
+  ads: "pro",
+  agency: "agency",
+};
+
+/** Fair-use AI requests per organisation per day (UTC). Keeps one tenant from draining the shared free quota. */
+export const AI_DAILY_REQUESTS: Record<PlanCode, number> = { free: 10, starter: 60, growth: 150, pro: 300, agency: 600 };
+
+export function isPlanCode(v: string): v is PlanCode {
+  return (PLAN_ORDER as readonly string[]).includes(v);
+}
+
+export function planRank(code: string): number {
+  return isPlanCode(code) ? PLAN_ORDER.indexOf(code) : 0;
+}
+
+export function requiredPlan(module: string): PlanCode {
+  return MODULE_MIN_PLAN[module] ?? "free";
+}
+
+export function planIncludes(planCode: string, module: string): boolean {
+  return planRank(planCode) >= planRank(requiredPlan(module));
+}
+
+export function aiDailyLimit(planCode: string): number {
+  return AI_DAILY_REQUESTS[isPlanCode(planCode) ? planCode : "free"];
+}
+
+/** Modules a plan adds on top of the previous one (for the comparison table). */
+export function modulesAddedBy(plan: PlanCode): string[] {
+  return Object.entries(MODULE_MIN_PLAN)
+    .filter(([, p]) => p === plan)
+    .map(([m]) => m);
+}
+
+const API_MODULES: Array<[RegExp, string]> = [
+  [/^\/seo\//, "seo-tecnico"],
+  [/^\/keywords(\/|\.csv|$)/, "keywords"],
+  [/^\/brands\/[^/]+\/geo\//, "ai-visibility"],
+  [/^\/content(\/|$)/, "content"],
+  [/^\/landings(\/|$)/, "landings"],
+  [/^\/reports(\/|$)/, "reports"],
+  [/^\/backlinks(\/|\.csv|$)/, "authority"],
+  [/^\/creative\//, "creative"],
+  [/^\/video\//, "video"],
+  [/^\/automations\//, "automations"],
+  [/^\/crm\/attribution(\/|$)/, "attribution"],
+  [/^\/analytics(\/|$)/, "analytics"],
+  [/^\/ads\//, "ads"],
+  [/^\/agency\//, "agency"],
+];
+
+/**
+ * Module guarded by an API path relative to /orgs/:orgId. Reading /branding stays open (the app
+ * shell loads it for every organisation); changing it is white label, which belongs to Agency.
+ * Deleting is never gated: after a downgrade the customer can still erase their data (GDPR).
+ */
+export function moduleForApiPath(path: string, method = "GET"): string | null {
+  if (method === "DELETE") return null;
+  if (path.startsWith("/branding")) return method === "GET" || method === "HEAD" ? null : "agency";
+  for (const [re, m] of API_MODULES) if (re.test(path)) return m;
+  return null;
+}

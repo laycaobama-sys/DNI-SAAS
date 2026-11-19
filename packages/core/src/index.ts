@@ -20,3 +20,4 @@ export * from "./crm";
 export * from "./landing";
 export * from "./features";
 export * from "./growth";
+export * from "./plan-access";

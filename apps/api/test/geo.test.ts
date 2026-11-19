@@ -6,7 +6,7 @@ import { createHarness } from "./helpers";
 async function setup() {
   const h = createHarness();
   const alice = await h.signup("alice@a.es", "Alice");
-  const orgA = await h.createOrg(alice, "Org A");
+  const orgA = await h.createOrg(alice, "Org A", "starter");
   const b = await alice.post(`/api/v1/orgs/${orgA}/brands`, { name: "Tienda A", domain: "tienda-a.es" });
   expect(b.status).toBe(201);
   const brandA = b.json.id as string;
@@ -34,7 +34,7 @@ describe("GEO prompt library", () => {
     const list = await alice.get(`${base}/prompts`);
     expect(list.status).toBe(200);
     expect(list.json.items).toHaveLength(6);
-    expect(list.json.usage).toMatchObject({ used: 6, limit: 10, plan: "free" });
+    expect(list.json.usage).toMatchObject({ used: 6, limit: 50, plan: "starter" });
     expect(list.json.sampling.active).toBe(false);
     expect(list.json.engines.find((e: { key: string }) => e.key === "google_ai_overviews").status).toBe("no_official_api");
     expect(list.json.items[0]).toMatchObject({ locale: "es-ES", regionCountry: "ES", regionDetail: "Madrid", enabled: true, source: "manual", createdByName: "Alice" });
@@ -66,14 +66,16 @@ describe("GEO prompt library", () => {
 
   it("enforces the plan limit and frees capacity when archiving", async () => {
     const { alice, base } = await setup();
-    const many = Array.from({ length: 6 }, (_, i) => `Pregunta de prueba número ${i + 1} sobre zapatillas`);
-    expect((await alice.post(`${base}/prompts`, body({ questions: many.slice(0, 5), engines: ["gemini_api", "openai_api"] }))).json.created).toBe(10);
-    const over = await alice.post(`${base}/prompts`, body({ questions: [many[5]] }));
+    // Starter: 50 tracked prompts (question × engine).
+    const many = Array.from({ length: 26 }, (_, i) => `Pregunta de prueba número ${i + 1} sobre zapatillas`);
+    expect((await alice.post(`${base}/prompts`, body({ questions: many.slice(0, 13), engines: ["gemini_api", "openai_api"] }))).json.created).toBe(26);
+    expect((await alice.post(`${base}/prompts`, body({ questions: many.slice(13, 25), engines: ["gemini_api", "openai_api"] }))).json.created).toBe(24);
+    const over = await alice.post(`${base}/prompts`, body({ questions: [many[25]] }));
     expect(over.status).toBe(402);
-    expect(over.json).toMatchObject({ code: "plan_limit", used: 10, limit: 10, requested: 1 });
+    expect(over.json).toMatchObject({ code: "plan_limit", used: 50, limit: 50, requested: 1 });
     const id = (await alice.get(`${base}/prompts`)).json.items[0].id;
     expect((await alice.del(`${base}/prompts/${id}`)).status).toBe(200);
-    expect((await alice.post(`${base}/prompts`, body({ questions: [many[5]] }))).json.created).toBe(1);
+    expect((await alice.post(`${base}/prompts`, body({ questions: [many[25]] }))).json.created).toBe(1);
     // Library is full again: restoring the archived row must respect the limit.
     expect((await alice.post(`${base}/prompts/${id}/restore`)).status).toBe(402);
     const archived = (await alice.get(`${base}/prompts?archived=1`)).json.items;
@@ -82,9 +84,9 @@ describe("GEO prompt library", () => {
 
   it("the in-transaction guard stops concurrent requests from exceeding the limit", async () => {
     const { alice, base } = await setup();
-    const reqs = Array.from({ length: 4 }, (_, k) => alice.post(`${base}/prompts`, body({ questions: [1, 2, 3].map((i) => `Pregunta concurrente ${k}-${i} sobre zapatillas`) })));
+    const reqs = Array.from({ length: 4 }, (_, k) => alice.post(`${base}/prompts`, body({ questions: Array.from({ length: 8 }, (_, i) => `Pregunta concurrente ${k}-${i} sobre zapatillas`), engines: ["gemini_api", "openai_api"] })));
     await Promise.all(reqs);
-    expect((await alice.get(`${base}/prompts`)).json.usage.used).toBeLessThanOrEqual(10);
+    expect((await alice.get(`${base}/prompts`)).json.usage.used).toBeLessThanOrEqual(50);
   });
 
   it("restore refuses when an equal active prompt exists; edit detects duplicates", async () => {
@@ -126,7 +128,7 @@ describe("GEO prompt library", () => {
     await alice.post(`${base}/prompts`, body());
     const id = (await alice.get(`${base}/prompts`)).json.items[0].id;
     const bob = await h.signup("bob@b.es", "Bob");
-    const orgB = await h.createOrg(bob, "Org B");
+    const orgB = await h.createOrg(bob, "Org B", "starter");
     const viaB = `/api/v1/orgs/${orgB}/brands/${brandA}/geo`;
     expect((await bob.get(`${base}/prompts`)).status).toBe(404);
     expect((await bob.get(`${viaB}/prompts`)).status).toBe(404);

@@ -6,6 +6,11 @@ import { describe, expect, it } from "vitest";
 import { deliverWebhooks, scanOverdueTasks, WEBHOOK_BACKOFF_SECONDS } from "../src/lib/rules";
 import { createHarness, html, type FakeRoute } from "./helpers";
 
+/** Test data: the cheapest plan with the module, with small limits so the limit itself is exercised. */
+async function capPlan(h: ReturnType<typeof createHarness>, plan: string, limits: Record<string, number>) {
+  for (const [k, v] of Object.entries(limits)) await h.db.prepare("UPDATE plans SET limits_json = json_set(limits_json, ?, ?) WHERE code = ?").bind(`$.${k}`, v, plan).run();
+}
+
 async function setup(site: Record<string, FakeRoute> = {}, plan = "growth") {
   const h = createHarness({ site, dns: { "intranet.example": ["10.0.0.5"] } });
   const owner = await h.signup("owner@luna.es", "Olga");
@@ -52,7 +57,7 @@ describe("SEO técnico", () => {
     expect(String(csv.json)).toMatch(/thin_content.*fixed/);
     // Another tenant cannot read or modify it.
     const eve = await h.signup("eve@x.es", "Eve");
-    const evil = await h.createOrg(eve, "Evil");
+    const evil = await h.createOrg(eve, "Evil", "agency");
     expect((await eve.patch(`/api/v1/orgs/${evil}/seo/issues/${issue!.id}`, { status: "ignored" })).status).toBe(404);
     expect((await eve.get(`/api/v1/orgs/${evil}/seo/compare?crawlId=${b.id}&baseId=${a.id}`)).status).toBe(404);
   });
@@ -93,7 +98,10 @@ describe("Backlinks", () => {
       "https://blog.es/a": { body: html({ body: '<p>Recomendado: <a href="https://luna.es/" rel="nofollow">Panadería Luna</a></p>' }) },
       "https://blog.es/b": { body: html({ body: "<p>Sin enlaces</p>" }) },
     };
-    const { owner, O } = await setup(site, "free");
+    const { h, owner, O } = await setup(site, "free");
+    expect((await owner.get(`${O}/backlinks`)).json).toMatchObject({ code: "plan_required", requiredPlan: "growth" });
+    await capPlan(h, "growth", { backlinks: 50 });
+    await h.db.prepare("UPDATE organizations SET plan_code = 'growth'").run();
     const imp = await owner.post(`${O}/backlinks`, { csv: "origen,destino\nhttps://blog.es/a,https://luna.es/\nhttps://blog.es/b,https://luna.es/\nhttps://blog.es/bloqueado/x,https://luna.es/\nno-es-url,https://luna.es/" });
     expect(imp.status).toBe(201);
     expect(imp.json).toMatchObject({ added: 3, errors: [{ line: 5 }] });
@@ -113,6 +121,9 @@ describe("Backlinks", () => {
 describe("Automation rules", () => {
   it("runs lead_created / stage_changed rules once, with conditions, dry-run, logs and plan limits", async () => {
     const { h, owner, orgId, O } = await setup({}, "free");
+    expect((await owner.get(`${O}/automations/rules`)).status).toBe(402);
+    await capPlan(h, "growth", { automationRules: 2 });
+    await h.db.prepare("UPDATE organizations SET plan_code = 'growth' WHERE id = ?").bind(orgId).run();
     const r1 = await owner.post(`${O}/automations/rules`, { name: "Tarea al entrar", trigger: "lead_created", actions: [{ type: "create_task", title: "Llamar en 1 hora", dueHours: 1 }], enabled: true });
     expect(r1.status).toBe(201);
     const r2 = await owner.post(`${O}/automations/rules`, {
@@ -256,7 +267,8 @@ describe("Ads Manager (drafts only)", () => {
 
 describe("Video Studio", () => {
   it("creates projects within the plan, guards concurrent edits and exports SRT", async () => {
-    const { owner, O } = await setup({}, "free");
+    const { h, owner, O } = await setup({}, "growth");
+    await capPlan(h, "growth", { videoProjects: 2 });
     const p = await owner.post(`${O}/video/projects`, { name: "Roscón de Reyes", aspect: "9:16" });
     expect(p.status).toBe(201);
     const id = p.json.id as string;
@@ -321,7 +333,7 @@ describe("Agency, white label and entitlements", () => {
     expect(list.usage).toEqual({ used: 1, limit: 50 });
     // Someone else's agency never lists our clients.
     const eve = await h.signup("eve@x.es", "Eve");
-    const evil = await h.createOrg(eve, "Evil");
+    const evil = await h.createOrg(eve, "Evil", "agency");
     await h.db.prepare("UPDATE organizations SET plan_code = 'agency' WHERE id = ?").bind(evil).run();
     expect((await eve.get(`/api/v1/orgs/${evil}/agency/clients`)).json.clients).toHaveLength(0);
     expect((await eve.get(`${C}/branding`)).status).toBe(404);
@@ -330,7 +342,7 @@ describe("Agency, white label and entitlements", () => {
   it("entitlements change with the plan and the dashboard shows actionable KPIs instead of locked cards", async () => {
     const { h, owner, orgId, O } = await setup({}, "free");
     const limit = async (k: string) => (await owner.get(`${O}/entitlements`)).json.rows.find((r: any) => r.key === k).limit;
-    const expected: Record<string, [number, number, number]> = { free: [1, 2, 0], starter: [5, 10, 0], growth: [20, 30, 0], pro: [50, 100, 5], agency: [200, 300, 50] };
+    const expected: Record<string, [number, number, number]> = { free: [1, 2, 0], starter: [5, 10, 0], growth: [20, 30, 0], pro: [50, 100, 0], agency: [200, 300, 50] };
     for (const [plan, [landings, rules, clients]] of Object.entries(expected)) {
       await h.db.prepare("UPDATE organizations SET plan_code = ? WHERE id = ?").bind(plan, orgId).run();
       expect([await limit("landingPages"), await limit("automationRules"), await limit("clientOrgs")]).toEqual([landings, rules, clients]);

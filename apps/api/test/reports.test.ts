@@ -8,7 +8,7 @@ import { createHarness } from "./helpers";
 async function setup() {
   const h = createHarness();
   const alice = await h.signup("alice@a.es", "Alice");
-  const orgA = await h.createOrg(alice, "Org A");
+  const orgA = await h.createOrg(alice, "Org A", "starter");
   const brandA = (await alice.post(`/api/v1/orgs/${orgA}/brands`, { name: "Tienda A", domain: "tienda-a.es" })).json.id as string;
   const now = Date.now();
   let i = 0;
@@ -84,7 +84,7 @@ describe("GEO explainable recommendations", () => {
   it("is tenant-isolated", async () => {
     const { h, orgA, brandA } = await setup();
     const mallory = await h.signup("mallory@b.es");
-    await h.createOrg(mallory, "Org B");
+    await h.createOrg(mallory, "Org B", "starter");
     expect((await mallory.get(`/api/v1/orgs/${orgA}/brands/${brandA}/geo/recommendations`)).status).toBe(404);
   });
 });
@@ -124,7 +124,7 @@ describe("Exportable performance report", () => {
   it("another tenant cannot export my report or name my brand", async () => {
     const { h, orgA, brandA } = await setup();
     const mallory = await h.signup("mallory@b.es");
-    const orgB = await h.createOrg(mallory, "Org B");
+    const orgB = await h.createOrg(mallory, "Org B", "starter");
     expect((await mallory.get(`/api/v1/orgs/${orgA}/reports/performance?format=json`)).status).toBe(404);
     expect((await mallory.get(`/api/v1/orgs/${orgB}/reports/performance?brandId=${brandA}`)).status).toBe(404);
   });

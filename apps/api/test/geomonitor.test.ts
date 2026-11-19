@@ -32,7 +32,7 @@ async function setup(opts: { key?: boolean; replies?: Reply[]; env?: Record<stri
     return realFetch(input, init);
   }) as typeof fetch;
   const alice = await h.signup("alice@a.es", "Alice");
-  const orgA = await h.createOrg(alice, "Org A");
+  const orgA = await h.createOrg(alice, "Org A", "starter");
   const brandA = (await alice.post(`/api/v1/orgs/${orgA}/brands`, { name: "Tienda A", domain: "tienda-a.es" })).json.id as string;
   await h.db.prepare("INSERT INTO brand_profiles (id, organization_id, brand_id, competitors_json) VALUES (?, ?, ?, ?)").bind(crypto.randomUUID(), orgA, brandA, JSON.stringify(["www.rival.es"])).run();
   const base = `/api/v1/orgs/${orgA}/brands/${brandA}/geo`;
@@ -264,7 +264,7 @@ describe("GEO monitor (Gemini API, free tier)", () => {
     expect((await viewer.get(`${base}/visibility`)).status).toBe(200);
     expect((await viewer.post(`${base}/sample`)).status).toBe(403);
     const bob = await h.signup("bob@b.es", "Bob");
-    const orgB = await h.createOrg(bob, "Org B");
+    const orgB = await h.createOrg(bob, "Org B", "starter");
     const viaB = base.replace(orgA, orgB);
     for (const p of [`${base}/samples`, `${base}/visibility`, `${viaB}/samples`, `${viaB}/visibility`]) expect((await bob.get(p)).status).toBe(404);
     expect((await bob.post(`${viaB}/sample`)).status).toBe(404);

@@ -175,10 +175,13 @@ auth.get("/me", async (c) => {
   const u = c.get("user");
   if (!u) return c.json({ user: null, memberships: [] });
   const { results } = await c.env.DB.prepare(
-    `SELECT o.id, o.name, o.slug, o.plan_code, m.role FROM memberships m JOIN organizations o ON o.id = m.organization_id
+    // effective_plan: a client organisation on «free» uses its agency's plan (same rule as orgPlan()).
+    `SELECT o.id, o.name, o.slug, o.plan_code, m.role,
+            CASE WHEN o.plan_code = 'free' AND a.plan_code IS NOT NULL THEN a.plan_code ELSE o.plan_code END AS effective_plan
+     FROM memberships m JOIN organizations o ON o.id = m.organization_id LEFT JOIN organizations a ON a.id = o.agency_org_id
      WHERE m.user_id = ? AND m.status = 'active' ORDER BY o.created_at`,
   )
     .bind(u.id)
-    .all<{ id: string; name: string; slug: string; plan_code: string; role: string }>();
+    .all<{ id: string; name: string; slug: string; plan_code: string; role: string; effective_plan: string }>();
   return c.json({ user: { id: u.id, email: u.email, name: u.name, emailVerified: u.emailVerified, isPlatformAdmin: await isPlatformAdmin(c.env, u) }, memberships: results });
 });

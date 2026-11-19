@@ -145,7 +145,7 @@ describe("Landing pages", () => {
     expect(leadRow).toEqual({ landing_id: id, landing_variant: "A" });
     // A forged landing id from another organisation is ignored.
     const other = await s.h.signup("otra@x.es");
-    const otherOrg = await s.h.createOrg(other, "Otra");
+    const otherOrg = await s.h.createOrg(other, "Otra", "starter");
     expect(otherOrg).toBeTruthy();
     await s.submit(s.lead({ email: "b@x.es", _lp: "11111111-1111-1111-1111-111111111111", _v: "B" }));
     expect((await s.owner.get(`${s.L}/${id}`)).json.stats.a.conversions).toBe(1);
@@ -201,7 +201,7 @@ describe("Landing pages", () => {
     expect((await analyst.get(s.L)).status).toBe(200);
     expect((await analyst.patch(`${s.L}/${id}`, { name: "No" })).status).toBe(403);
     const intruder = await s.h.signup("intruso@x.es");
-    const iOrg = await s.h.createOrg(intruder, "Intrusa");
+    const iOrg = await s.h.createOrg(intruder, "Intrusa", "starter");
     expect((await intruder.get(s.L)).status).toBe(404);
     expect((await intruder.get(`/api/v1/orgs/${iOrg}/landings/${id}`)).status).toBe(404);
     expect((await intruder.patch(`/api/v1/orgs/${iOrg}/landings/${id}`, { formId: s.formId })).status).toBe(404);
@@ -274,7 +274,7 @@ describe("Follow-up automations", () => {
     const editor = await s.h.invite(s.owner, s.orgId, "editor@luna.es", "editor");
     expect((await editor.put(A, { kind: "follow_up_task", enabled: true, config: { title: "Llamar" } })).status).toBe(403);
     const intruder = await s.h.signup("intruso@x.es");
-    const iOrg = await s.h.createOrg(intruder, "Intrusa");
+    const iOrg = await s.h.createOrg(intruder, "Intrusa", "starter");
     expect((await intruder.get(`/api/v1/orgs/${iOrg}/crm/forms/${s.formId}/automations`)).status).toBe(404);
   });
 });

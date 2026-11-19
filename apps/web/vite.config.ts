@@ -52,7 +52,7 @@ function seoFiles(): Plugin {
       this.emitFile({
         type: "asset",
         fileName: "robots.txt",
-        source: `User-agent: *\nAllow: /\nDisallow: /app/\nDisallow: /api/\n\nSitemap: ${SITE_URL}/sitemap.xml\n`,
+        source: `User-agent: *\nAllow: /\nDisallow: /app\nDisallow: /api/\n\nSitemap: ${SITE_URL}/sitemap.xml\n`,
       });
       this.emitFile({
         type: "asset",

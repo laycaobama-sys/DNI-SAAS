@@ -1,7 +1,8 @@
 import type { MiddlewareHandler } from "hono";
-import { can, isRole, type Scope } from "@dni/core";
+import { can, isPlanCode, isRole, moduleForApiPath, PLAN_LABEL, planIncludes, requiredPlan, type Scope } from "@dni/core";
 import type { AppEnv } from "./env";
 import { ApiError, assertUuid, forbidden, notFound, unauthorized } from "./lib/http";
+import { orgPlan } from "./lib/billing";
 import { loadSession } from "./lib/session";
 
 export const requestId: MiddlewareHandler<AppEnv> = async (c, next) => {
@@ -100,4 +101,25 @@ export const requirePlatformAdmin: MiddlewareHandler<AppEnv> = async (c, next) =
   if (!u) throw unauthorized();
   if (!(await isPlatformAdmin(c.env, u))) throw notFound("Recurso");
   return next();
+};
+
+/**
+ * Plan gate for whole modules (see MODULE_MIN_PLAN). Runs after requireMembership. Platform admins
+ * keep full access so the owner can support any plan; everyone else gets 402 «plan_required».
+ */
+export const requirePlanModule: MiddlewareHandler<AppEnv> = async (c, next) => {
+  const t = c.get("tenant");
+  if (!t) throw unauthorized();
+  const rel = c.req.path.replace(/^\/api\/v1\/orgs\/[^/]+/, "");
+  const module = moduleForApiPath(rel, c.req.method);
+  if (!module) return next();
+  const plan = await orgPlan(c.env.DB, t.orgId);
+  if (planIncludes(plan.code, module)) return next();
+  if (await isPlatformAdmin(c.env, c.get("user") ?? null)) return next();
+  const need = requiredPlan(module);
+  throw new ApiError(402, "plan_required", `Este módulo está incluido desde el plan ${PLAN_LABEL[need]}. Tu plan actual es ${PLAN_LABEL[isPlanCode(plan.code) ? plan.code : "free"]}.`, {
+    module,
+    requiredPlan: need,
+    currentPlan: plan.code,
+  });
 };

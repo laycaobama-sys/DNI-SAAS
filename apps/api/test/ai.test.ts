@@ -35,13 +35,13 @@ function fakeR2() {
   };
 }
 
-async function setup(b: Behaviour = {}) {
+async function setup(b: Behaviour = {}, plan?: string) {
   const h = createHarness();
   const aiBinding = fakeAi(b);
   const r2 = fakeR2();
   Object.assign(h.env, { AI: aiBinding, MEDIA: r2 });
   const owner = await h.signup("owner@luna.es");
-  const orgId = await h.createOrg(owner, "Panadería Luna");
+  const orgId = await h.createOrg(owner, "Panadería Luna", plan);
   return { h, owner, orgId, aiBinding, r2 };
 }
 
@@ -94,6 +94,25 @@ describe("AI advisor", () => {
     expect(st.json).toMatchObject({ workersAi: true, openRouter: false, gemini: false, budgetExhausted: true });
   });
 
+  it("fair use per plan: the free plan stops at its daily AI requests without charging credits", async () => {
+    const { h, owner, orgId, aiBinding } = await setup();
+    const today = new Date().toISOString();
+    // Test data: 10 successful calls already today (the free plan's daily allowance).
+    for (let i = 0; i < 10; i++)
+      await h.db
+        .prepare("INSERT INTO ai_invocations (id, organization_id, request_ref, task, strategy, provider, model, status, cost_state, is_fallback, created_at) VALUES (?, ?, ?, 'advisor_chat', 'automatic_free', 'workers_ai', 'm', 'ok', 'zero_expected', 0, ?)")
+        .bind(`inv-${i}`, orgId, `ref-${i}`, today)
+        .run();
+    const before = await balance(owner, orgId);
+    const r = await owner.post(`/api/v1/orgs/${orgId}/advisor`, { question: "¿Qué hago hoy?" });
+    expect(r.status).toBe(429);
+    expect(r.json).toMatchObject({ code: "ai_plan_daily_limit", limit: 10, plan: "free" });
+    expect(aiBinding.calls).toHaveLength(0);
+    expect(await balance(owner, orgId)).toBe(before);
+    await h.db.prepare("UPDATE organizations SET plan_code = 'starter' WHERE id = ?").bind(orgId).run();
+    expect((await owner.post(`/api/v1/orgs/${orgId}/advisor`, { question: "¿Qué hago hoy?" })).status).toBe(200);
+  });
+
   it("without credits: 402 and no model call", async () => {
     const { h, owner, orgId, aiBinding } = await setup();
     await owner.get(`/api/v1/orgs/${orgId}/billing`); // materialise the monthly grant
@@ -134,7 +153,7 @@ describe("AI advisor", () => {
     const { h, owner, orgId } = await setup();
     const r = await owner.post(`/api/v1/orgs/${orgId}/advisor`, { question: "Privado" });
     const intruder = await h.signup("intruso@otra.es");
-    const otherOrg = await h.createOrg(intruder, "Otra");
+    const otherOrg = await h.createOrg(intruder, "Otra", "growth");
     expect((await intruder.get(`/api/v1/orgs/${orgId}/advisor/conversations/${r.json.conversationId}`)).status).toBe(404); // non-members get 404 (no org enumeration)
     expect((await intruder.get(`/api/v1/orgs/${otherOrg}/advisor/conversations/${r.json.conversationId}`)).status).toBe(404);
     expect((await intruder.post(`/api/v1/orgs/${otherOrg}/advisor`, { question: "x y", conversationId: r.json.conversationId })).status).toBe(404);
@@ -151,7 +170,7 @@ describe("AI advisor", () => {
 
 describe("AI images (Workers AI → R2)", () => {
   it("generates, stores under the tenant prefix, serves it and charges 5 credits", async () => {
-    const { owner, orgId, r2 } = await setup();
+    const { owner, orgId, r2 } = await setup({}, "growth");
     const before = await balance(owner, orgId);
     const r = await owner.post(`/api/v1/orgs/${orgId}/creative/images`, { prompt: "Barra de pan artesanal sobre mesa de madera, luz cálida" });
     expect(r.status).toBe(201);
@@ -164,14 +183,14 @@ describe("AI images (Workers AI → R2)", () => {
   });
 
   it("rejects disallowed prompts before spending anything", async () => {
-    const { owner, orgId, aiBinding } = await setup();
+    const { owner, orgId, aiBinding } = await setup({}, "growth");
     const r = await owner.post(`/api/v1/orgs/${orgId}/creative/images`, { prompt: "foto desnuda de una modelo" });
     expect(r.status).toBe(422);
     expect(aiBinding.calls).toHaveLength(0);
   });
 
   it("a non-image payload from the model is refused and the credits are released", async () => {
-    const { owner, orgId } = await setup({ image: btoa("<html>not an image</html>") });
+    const { owner, orgId } = await setup({ image: btoa("<html>not an image</html>") }, "growth");
     const before = await balance(owner, orgId);
     const r = await owner.post(`/api/v1/orgs/${orgId}/creative/images`, { prompt: "Logo abstracto de panadería" });
     expect(r.status).toBe(503);
@@ -179,10 +198,10 @@ describe("AI images (Workers AI → R2)", () => {
   });
 
   it("another tenant cannot download my image", async () => {
-    const { h, owner, orgId } = await setup();
+    const { h, owner, orgId } = await setup({}, "growth");
     const r = await owner.post(`/api/v1/orgs/${orgId}/creative/images`, { prompt: "Croissant dorado en primer plano" });
     const intruder = await h.signup("intruso@otra.es");
-    const otherOrg = await h.createOrg(intruder, "Otra");
+    const otherOrg = await h.createOrg(intruder, "Otra", "growth");
     expect((await intruder.req("GET", `/api/v1/orgs/${otherOrg}/creative/images/${r.json.id}/file`)).status).toBe(404);
     expect((await intruder.req("GET", r.json.url)).status).toBe(404);
   });

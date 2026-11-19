@@ -170,3 +170,143 @@ admin.post("/billing/stripe/sync", async (c) => {
     throw e;
   }
 });
+
+// ── Platform control panel (owner / SuperAdmin) ────────────────────────────────────────────────────
+// Read-only platform metrics (observed from D1) plus one audited write: assigning an internal plan.
+// Organisation content (leads, brands, texts) is never returned here: only counts and metadata.
+
+admin.get("/overview", async (c) => {
+  const db = c.env.DB;
+  const now = Date.now();
+  const d7 = new Date(now - 7 * 86400_000).toISOString();
+  const d30 = new Date(now - 30 * 86400_000).toISOString();
+  const day = new Date(now - 86400_000).toISOString();
+  const one = <T,>(sql: string, ...b: unknown[]) => db.prepare(sql).bind(...b).first<T>();
+  const [users, orgs, byPlan, subs, ai, jobs, leads, recent, signups] = await Promise.all([
+    one<{ total: number; verified: number; admins: number; new7: number; new30: number }>(
+      `SELECT COUNT(*) AS total, SUM(email_verified_at IS NOT NULL) AS verified, SUM(is_platform_admin = 1) AS admins,
+              SUM(created_at >= ?) AS new7, SUM(created_at >= ?) AS new30 FROM users`,
+      d7,
+      d30,
+    ),
+    one<{ total: number; new30: number; clients: number }>("SELECT COUNT(*) AS total, SUM(created_at >= ?) AS new30, SUM(agency_org_id IS NOT NULL) AS clients FROM organizations", d30),
+    db.prepare("SELECT p.code, p.name, p.price_eur_month AS price, COUNT(o.id) AS orgs FROM plans p LEFT JOIN organizations o ON o.plan_code = p.code GROUP BY p.code ORDER BY p.position").all<{ code: string; name: string; price: number; orgs: number }>(),
+    db
+      .prepare(
+        `SELECT s.provider, s.status, s.plan_code, p.price_eur_month AS price, COUNT(*) AS n FROM subscriptions s JOIN plans p ON p.code = s.plan_code
+         GROUP BY s.provider, s.status, s.plan_code`,
+      )
+      .all<{ provider: string; status: string; plan_code: string; price: number; n: number }>(),
+    one<{ calls24: number; calls7: number; failed7: number; cache7: number }>(
+      "SELECT SUM(created_at >= ?) AS calls24, COUNT(*) AS calls7, SUM(status = 'failed') AS failed7, SUM(provider = 'cache') AS cache7 FROM ai_invocations WHERE created_at >= ?",
+      day,
+      d7,
+    ),
+    one<{ audits30: number; failed7: number; running: number }>(
+      "SELECT SUM(kind = 'site_analysis' AND created_at >= ?) AS audits30, SUM(state = 'failed' AND created_at >= ?) AS failed7, SUM(state IN ('queued','running')) AS running FROM jobs",
+      d30,
+      d7,
+    ),
+    one<{ n: number }>("SELECT COUNT(*) AS n FROM leads WHERE created_at >= ?", d30),
+    db
+      .prepare(
+        `SELECT a.action, a.entity_type, a.created_at, o.name AS organization FROM audit_logs a LEFT JOIN organizations o ON o.id = a.organization_id
+         ORDER BY a.created_at DESC LIMIT 25`,
+      )
+      .all<{ action: string; entity_type: string; created_at: string; organization: string | null }>(),
+    db.prepare("SELECT substr(created_at, 1, 10) AS day, COUNT(*) AS n FROM users WHERE created_at >= ? GROUP BY day ORDER BY day").bind(d30).all<{ day: string; n: number }>(),
+  ]);
+  const paying = subs.results.filter((s) => s.provider === "stripe" && ["active", "trialing", "past_due"].includes(s.status));
+  const mode = stripeMode(c.env);
+  return c.json({
+    observedAt: nowIso(),
+    measurement: "observed",
+    users,
+    organizations: { ...orgs, byPlan: byPlan.results },
+    subscriptions: {
+      rows: subs.results,
+      paying: paying.reduce((a, s) => a + s.n, 0),
+      // Derived: list price × active Stripe subscriptions. In test mode it is test data, not revenue.
+      mrrEur: paying.reduce((a, s) => a + s.n * (s.price ?? 0), 0),
+      stripeMode: mode ?? "none",
+      billingEnabled: c.env.BILLING_ENABLED === "true",
+      caveat:
+        mode === "live"
+          ? "Precio de lista × suscripciones activas; no descuenta impuestos, cupones ni impagos."
+          : "Stripe está en modo prueba: estas cifras son datos de prueba, no ingresos.",
+    },
+    ai: { ...ai, dailyBudgetUsd: Number(c.env.AI_DAILY_BUDGET_USD ?? "0.10") },
+    jobs,
+    leads30: leads?.n ?? 0,
+    signups: signups.results,
+    recent: recent.results,
+  });
+});
+
+const ListQuery = z.object({ q: z.string().trim().max(120).optional(), plan: z.string().max(20).optional() });
+const likeOf = (q: string | undefined) => (q ? `%${q.replace(/[%_]/g, "")}%` : null);
+
+admin.get("/organizations", async (c) => {
+  const { q, plan } = ListQuery.parse({ q: c.req.query("q") || undefined, plan: c.req.query("plan") || undefined });
+  const { results } = await c.env.DB.prepare(
+    `SELECT o.id, o.name, o.slug, o.plan_code, o.created_at, o.agency_org_id, a.name AS agency_name,
+            (SELECT COUNT(*) FROM memberships m WHERE m.organization_id = o.id AND m.status = 'active') AS members,
+            (SELECT COUNT(*) FROM brands b WHERE b.organization_id = o.id) AS brands,
+            (SELECT COUNT(*) FROM leads l WHERE l.organization_id = o.id) AS leads,
+            (SELECT MAX(created_at) FROM audit_logs al WHERE al.organization_id = o.id) AS last_activity,
+            (SELECT u.email FROM memberships m JOIN users u ON u.id = m.user_id WHERE m.organization_id = o.id AND m.role = 'owner' ORDER BY m.created_at LIMIT 1) AS owner_email,
+            s.provider AS sub_provider, s.status AS sub_status, s.cancel_at_period_end, s.current_period_end
+     FROM organizations o LEFT JOIN organizations a ON a.id = o.agency_org_id LEFT JOIN subscriptions s ON s.organization_id = o.id
+     WHERE (?1 IS NULL OR o.name LIKE ?1 OR o.slug LIKE ?1) AND (?2 IS NULL OR o.plan_code = ?2)
+     ORDER BY o.created_at DESC LIMIT 200`,
+  )
+    .bind(likeOf(q), plan ?? null)
+    .all();
+  return c.json({ items: results, observedAt: nowIso() });
+});
+
+admin.get("/users", async (c) => {
+  const { q } = ListQuery.parse({ q: c.req.query("q") || undefined });
+  const { results } = await c.env.DB.prepare(
+    `SELECT u.id, u.name, u.email, u.email_verified_at IS NOT NULL AS verified, u.is_platform_admin AS admin, u.created_at, u.locked_until,
+            (SELECT COUNT(*) FROM memberships m WHERE m.user_id = u.id AND m.status = 'active') AS orgs,
+            (SELECT MAX(last_seen_at) FROM sessions s WHERE s.user_id = u.id) AS last_seen
+     FROM users u WHERE (?1 IS NULL OR u.email LIKE ?1 OR u.name LIKE ?1) ORDER BY u.created_at DESC LIMIT 200`,
+  )
+    .bind(likeOf(q))
+    .all();
+  return c.json({ items: results, observedAt: nowIso() });
+});
+
+/**
+ * Internal plan (no charge): for the owner's own organisations, partners or support. Refused when the
+ * organisation pays through Stripe, so a manual change can never contradict a real subscription.
+ */
+admin.post("/organizations/:id/plan", async (c) => {
+  const user = c.get("user")!;
+  const orgId = c.req.param("id");
+  const { planCode, reason } = await parseBody(c, z.strictObject({ planCode: z.enum(["free", "starter", "growth", "pro", "agency"]), reason: z.string().trim().min(3).max(200) }));
+  await rateLimit(c.env.DB, `admin-plan:${user.id}`, 30, 3600);
+  const db = c.env.DB;
+  const org = await db.prepare("SELECT id, plan_code FROM organizations WHERE id = ?").bind(orgId).first<{ id: string; plan_code: string }>();
+  if (!org) throw new ApiError(404, "not_found", "Organización no encontrada.");
+  const sub = await db.prepare("SELECT provider, status FROM subscriptions WHERE organization_id = ?").bind(orgId).first<{ provider: string; status: string }>();
+  if (sub?.provider === "stripe" && ["active", "trialing", "past_due", "incomplete"].includes(sub.status))
+    throw new ApiError(409, "stripe_subscription", "Esta organización paga con Stripe: cambia el plan desde su suscripción, no a mano.");
+  if (org.plan_code === planCode) return c.json({ ok: true, planCode, changed: false });
+  await db.batch([
+    db.prepare("UPDATE organizations SET plan_code = ? WHERE id = ?").bind(planCode, orgId),
+    db.prepare("UPDATE subscriptions SET plan_code = ?, updated_at = ? WHERE organization_id = ? AND provider = 'internal'").bind(planCode, nowIso(), orgId),
+    auditStmt(db, {
+      organizationId: orgId,
+      actorUserId: user.id,
+      action: "platform.plan_assign",
+      entityType: "organization",
+      entityId: orgId,
+      before: { plan: org.plan_code },
+      after: { plan: planCode, reason, charge: "none" },
+      requestId: c.get("requestId"),
+    }),
+  ]);
+  return c.json({ ok: true, planCode, changed: true });
+});

@@ -127,7 +127,7 @@ function setup(opts: FakeOpts = {}) {
 
   async function ownerOrg(email = "owner@example.com") {
     const owner = await h.signup(email);
-    const orgId = await h.createOrg(owner, "Org GA4");
+    const orgId = await h.createOrg(owner, "Org GA4", "growth");
     await h.db.prepare("UPDATE organizations SET plan_code = 'agency' WHERE id = ?").bind(orgId).run();
     return { owner, orgId };
   }
@@ -284,7 +284,7 @@ describe("Google Analytics 4 (F3): ingesta de solo lectura", () => {
     await connect(owner, orgId);
     const pid = (await owner.get(`/api/v1/orgs/${orgId}/analytics`)).json.properties[0].id;
     const other = await h.signup("other@example.com");
-    const otherOrg = await h.createOrg(other, "Otra");
+    const otherOrg = await h.createOrg(other, "Otra", "growth");
     expect((await other.get(`/api/v1/orgs/${orgId}/analytics`)).status).toBe(404);
     expect((await other.put(`/api/v1/orgs/${otherOrg}/analytics/property`, { propertyId: pid })).status).toBe(404);
     expect((await other.get(`/api/v1/orgs/${otherOrg}/analytics`)).json).toMatchObject({ connection: null, properties: [], report: null });

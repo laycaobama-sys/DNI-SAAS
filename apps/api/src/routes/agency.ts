@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import { BrandingInput, CreateOrgInput, GEO_PROMPT_LIMITS, LANDING_LIMITS } from "@dni/core";
+import { BrandingInput, CreateOrgInput, GEO_PROMPT_LIMITS, LANDING_LIMITS, planIncludes } from "@dni/core";
 import type { AppEnv } from "../env";
 import { auditStmt } from "../lib/audit";
 import { analysesThisMonth, creditBalance, getPlan, grantStmt, orgPlan } from "../lib/billing";
@@ -35,7 +35,7 @@ agency.get("/entitlements", requireScope("org:read"), async (c) => {
     { key: "automationRules", label: "Reglas de automatización", used: await count("SELECT COUNT(*) AS n FROM automation_rules WHERE organization_id = ?"), limit: L.automationRules ?? 2 },
     { key: "videoProjects", label: "Proyectos de vídeo", used: await count("SELECT COUNT(*) AS n FROM video_projects WHERE organization_id = ? AND status != 'archived'"), limit: L.videoProjects ?? 2 },
     { key: "backlinks", label: "Enlaces seguidos (backlinks)", used: await count("SELECT COUNT(*) AS n FROM backlinks WHERE organization_id = ?"), limit: L.backlinks ?? 50 },
-    { key: "clientOrgs", label: "Organizaciones cliente (agencia)", used: await count("SELECT COUNT(*) AS n FROM organizations WHERE agency_org_id = ?"), limit: org?.agency_org_id ? 0 : (L.clientOrgs ?? 0) },
+    { key: "clientOrgs", label: "Organizaciones cliente (agencia)", used: await count("SELECT COUNT(*) AS n FROM organizations WHERE agency_org_id = ?"), limit: org?.agency_org_id || !planIncludes(plan.code, "agency") ? 0 : (L.clientOrgs ?? 0) },
   ];
   return c.json({ plan: { code: plan.code, name: plan.name, priceEurMonth: plan.priceEurMonth }, ownPlan: org?.plan_code ?? "free", inheritedFromAgency: !!org?.agency_org_id && org.plan_code === "free" && plan.code !== "free", rows, observedAt: nowIso() });
 });
@@ -44,7 +44,7 @@ agency.get("/entitlements", requireScope("org:read"), async (c) => {
 async function agencyContext(db: D1Database, orgId: string) {
   const org = await db.prepare("SELECT agency_org_id FROM organizations WHERE id = ?").bind(orgId).first<{ agency_org_id: string | null }>();
   const plan = await orgPlan(db, orgId);
-  const limit = org?.agency_org_id ? 0 : (plan.limits.clientOrgs ?? 0);
+  const limit = org?.agency_org_id || !planIncludes(plan.code, "agency") ? 0 : (plan.limits.clientOrgs ?? 0);
   const used = (await db.prepare("SELECT COUNT(*) AS n FROM organizations WHERE agency_org_id = ?").bind(orgId).first<{ n: number }>())?.n ?? 0;
   return { isClient: !!org?.agency_org_id, limit, used, plan };
 }
@@ -84,7 +84,7 @@ agency.post("/agency/clients", requireScope("org:update"), async (c) => {
   await rateLimit(db, `agency-client:${t.orgId}`, 20, 86400);
   const ctx = await agencyContext(db, t.orgId);
   if (ctx.isClient) throw forbidden("Una organización cliente no puede crear otros clientes.");
-  if (ctx.used >= ctx.limit) throw new ApiError(402, "plan_limit", ctx.limit ? `Tu plan permite ${ctx.limit} organizaciones cliente.` : "Las organizaciones cliente están incluidas en los planes Pro y Agency.");
+  if (ctx.used >= ctx.limit) throw new ApiError(402, "plan_limit", ctx.limit ? `Tu plan permite ${ctx.limit} organizaciones cliente.` : "Las organizaciones cliente están incluidas en el plan Agency.");
   const { name } = await parseBody(c, CreateOrgInput);
   const id = uuid();
   const slug = `${slugify(name)}-${id.slice(0, 6)}`;
@@ -118,7 +118,7 @@ agency.get("/branding", requireScope("org:read"), async (c) => c.json(await effe
 agency.put("/branding", requireScope("org:update"), async (c) => {
   const t = c.get("tenant");
   const plan = await orgPlan(c.env.DB, t.orgId);
-  if (!["pro", "agency"].includes(plan.code)) throw new ApiError(402, "plan_limit", "La marca blanca está incluida en los planes Pro y Agency.");
+  if (!planIncludes(plan.code, "agency")) throw new ApiError(402, "plan_limit", "La marca blanca está incluida en el plan Agency.");
   const b = await parseBody(c, BrandingInput);
   const now = nowIso();
   await c.env.DB.batch([
