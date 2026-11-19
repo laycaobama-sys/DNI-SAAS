@@ -3,6 +3,16 @@
 Proyecto de Google Cloud: `dni-growth` · Google Auth Platform · app **publicada (producción)**, sin verificar.
 Mientras no esté verificada: aviso «Google no ha verificado esta app» en el consentimiento y tope de **100 usuarios** con permisos sensibles. La verificación no tiene coste.
 
+## Estado (2026-11-19, noche): ENVIADO A REVISIÓN
+
+- **Vídeo de demostración:** https://youtu.be/iCyrb1Xcc1Q (YouTube, visibilidad «Oculto/No listado», 6:04). Grabado con FFmpeg sobre Chrome real. Muestra la portada y el pie con Privacidad, el consentimiento con `client_id` en la barra de direcciones, Search Console (`webmasters.readonly`) con la propiedad `https://dnigrowth.com/`, Analytics (`analytics.readonly`) con la propiedad GA4 **DNI Growth** (ID 565232679, creada para esto), el diálogo «Desconectar» y la sección «Datos de usuario de Google» de la política.
+- Se grabó en una organización aparte, **«Demo verificación Google»** (69d8481f-…, plan interno growth), que queda conectada. Así no se tocaron las conexiones de DNI GYM. En el vídeo se abre el diálogo «Desconectar», pero no se confirma: revocar el permiso de Google retira la autorización entera del usuario y cortaría también las conexiones de DNI GYM. Esto se explica en «Información adicional».
+- En el vídeo aparecen barras de aviso de Chrome (depuración de la extensión). También se explica en «Información adicional».
+- Enlace pegado en «Acceso a los datos → Vínculo de YouTube» y guardado.
+- Cuestionario respondido con «No» en las cuatro preguntas: uso personal, uso interno, solo pruebas y complemento SMTP de WordPress. Se marcaron las dos confirmaciones.
+- **Centro de verificación:** «El acceso a los datos de tu app está en proceso de revisión». Google responde por correo; si pide cambios, ver abajo.
+- Observación: entre los dominios autorizados figura `composio.dev`, que no es nuestro. No se tocó para no reiniciar la verificación de marca. Si Google lo cuestiona, se quita.
+
 ## Estado (2026-11-19)
 
 - **Marca verificada y publicada** (Centro de verificación: «Se verificó la información de tu marca y se muestra a los usuarios»).

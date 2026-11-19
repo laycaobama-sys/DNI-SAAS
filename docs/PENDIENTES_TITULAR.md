@@ -17,7 +17,11 @@ No toques el campo «Clave secreta de la aplicación».
 
 ---
 
-## 2. Vídeo de demostración para Google (15–20 minutos)
+## 2. Vídeo de demostración para Google: HECHO (2026-11-19)
+
+Vídeo grabado y subido como no listado: https://youtu.be/iCyrb1Xcc1Q. El enlace está pegado en Google Auth Platform y la app está **enviada a revisión**. Solo queda esperar el correo de Google; si pide cambios, reenvíamelo. Detalle en [GOOGLE_VERIFICATION.md](GOOGLE_VERIFICATION.md).
+
+Las instrucciones originales quedan debajo por si Google pide repetir el vídeo.
 
 Google lo exige para aprobar que tus clientes conecten **Search Console** y **Analytics** sin el aviso «app no verificada». Dura 2–3 minutos y se sube a YouTube como **No listado** (solo lo ve quien tenga el enlace).
 
