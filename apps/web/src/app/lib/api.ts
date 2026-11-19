@@ -49,6 +49,8 @@ export function timeAgo(iso?: string | null) {
   if (!iso) return "—";
   const s = Math.round((Date.now() - new Date(iso).getTime()) / 1000);
   const rtf = new Intl.RelativeTimeFormat("es", { numeric: "auto" });
+  // Small clock skew between server and browser must not read as "dentro de 1 segundo".
+  if (s > -60 && s < 5) return "ahora";
   if (Math.abs(s) < 60) return rtf.format(-s, "second");
   if (Math.abs(s) < 3600) return rtf.format(-Math.round(s / 60), "minute");
   if (Math.abs(s) < 86400) return rtf.format(-Math.round(s / 3600), "hour");

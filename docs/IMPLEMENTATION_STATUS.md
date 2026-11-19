@@ -195,7 +195,7 @@ Versión `75a82608`, migración 0015 aplicada con copia previa `backups/dni-grow
 | Ads sin gasto: borradores, anuncios, envío, aprobación con separación de funciones, Spend Guardian (interruptor de corte activo por defecto), exportación con UTM | VERIFICADO EN PRODUCCIÓN | sin anuncios → bloqueado; aprobación bloqueada por interruptor y tope; con tope → aprobada; exportación con `utm_source=meta&utm_medium=paid_social&utm_campaign=prueba-e2e-navidad`; archivada y Guardian restablecido |
 | Medios (derechos confirmados, lista blanca MIME + bytes mágicos, 5/15 MB) | VERIFICADO EN PRODUCCIÓN | sin derechos 422, archivo falso 415, PNG 201 servido con `nosniff`; borrado |
 | Estudio de vídeo en el navegador (escenas, subtítulos SRT, render MP4/WebM sin coste de servidor) | VERIFICADO EN PRODUCCIÓN | MP4 720×1280, 10 s, 131.705 bytes; SRT correcto; proyecto archivado |
-| Agencia: organizaciones cliente (Pro 5 / Agency 50), herencia del plan de la agencia, marca blanca (nombre, logo, color, pie de informes) | VERIFICADO EN PRODUCCIÓN (límites por plan) · LOCAL (crear cliente, herencia, marca) | con Pro → `clientOrgs` 5 y marca blanca 200; con Agency → 50; con Free → 0. Dominio propio por cliente: bloqueado por coste |
+| Agencia: organizaciones cliente (Agency 50; Pro 0 desde ADR 0018), herencia del plan de la agencia, marca blanca (nombre, logo, color, pie de informes) | VERIFICADO EN PRODUCCIÓN (límites por plan) · LOCAL (crear cliente, herencia, marca) | con Pro → `clientOrgs` 5 y marca blanca 200; con Agency → 50; con Free → 0. Dominio propio por cliente: bloqueado por coste |
 | Panel: KPIs con fuente o acción siguiente (tráfico orgánico, visibilidad IA, ingresos atribuidos, plan de anuncios) | VERIFICADO EN PRODUCCIÓN | visibilidad IA 29 % observada; resto con acción («Conectar Search Console», «Ver el CRM», «Preparar una campaña») |
 | Menú sin etiquetas «pronto»; rutas antiguas `/m/<módulo>` redirigen | VERIFICADO EN PRODUCCIÓN | capturas de la app |
 
@@ -207,6 +207,17 @@ Versión `75a82608`, migración 0015 aplicada con copia previa `backups/dni-grow
 | Cambiar a Pro 179 € | VERIFICADO EN PRODUCCIÓN (modo test) | `evt_1UdJcy…` → `pro`, 10 asientos, 5 clientes, marca blanca |
 | Cambiar a Agency 349 € | VERIFICADO EN PRODUCCIÓN (modo test) | `evt_1UdJdq…` → `agency`, 25 asientos, 50 clientes |
 | Cancelar | VERIFICADO EN PRODUCCIÓN (modo test) | `evt_1UdJeK…` → `free/canceled`, límites Free |
+
+## Módulos por plan, uso justo de IA y consola de plataforma (nuevo, [ADR 0018](adr/0018-modulos-por-plan.md))
+| Pieza | Estado | Prueba |
+|---|---|---|
+| Matriz plan × módulo aplicada por la API (402 `plan_required`; DELETE nunca bloqueado) | VERIFICADO EN PRODUCCIÓN | `plan-modules.test.ts` (cada plan × módulo); Stripe test 2026-11-19 con «Ver como cliente»: Starter → Backlinks bloqueado «desde Growth», Landings abierto; Pro → Ads abierto, Agencia bloqueada «desde Agency»; Agency → «0 de 50 organizaciones cliente»; cancelada → Free, Landings bloqueado «desde Starter» |
+| Uso justo de IA por plan (10/60/150/300/600 al día, caché no cuenta) | VERIFICADO SOLO EN LOCAL | test «fair use per plan» → 429 `ai_plan_daily_limit` sin cobrar créditos |
+| Consola de plataforma `/app/admin` (resumen, organizaciones, usuarios, facturación, IA, actividad), adaptada a móvil | VERIFICADO EN PRODUCCIÓN | 2 usuarios, 3 organizaciones, 1 suscripción en modo test (MRR 39 € etiquetado «datos de prueba»); 404 para no administradores (test) |
+| Asignación interna de plan auditada (`platform.plan_assign`, 409 si factura Stripe) | VERIFICADO EN PRODUCCIÓN | org «DNI Growth» en Agency interno; tests de auditoría y 409 |
+| URL canónica: 301 de workers.dev, http, `/index.html`, `.html` y barra final a `https://dnigrowth.com` | VERIFICADO EN PRODUCCIÓN | `curl -I` → 301; archivos de verificación de Google/Bing y `/api` siguen respondiendo |
+| Favicon en buscadores (`/favicon.ico` 48×48, SVG, PNG 192) en todas las páginas | VERIFICADO EN PRODUCCIÓN | 200 en los tres; `<link rel="icon">` en landing, app y legales |
+| Agencia en Pro | SUSTITUIDO | ahora solo Agency (migración 0016: `clientOrgs` de Pro = 0) |
 
 ## Marca DNI Growth (producción)
 | Elemento | Estado | Prueba |
