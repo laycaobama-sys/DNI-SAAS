@@ -42,6 +42,26 @@
     window.addEventListener("scroll", onScroll, { passive: true });
   });
 
+  // Module badges come from the same registry the app uses (/api/v1/public/features), so the site
+  // never claims «Disponible» for something that is not built. The HTML keeps a safe default.
+  safe("featureStatus", () => {
+    const badges = Array.from(document.querySelectorAll<HTMLElement>("[data-feature]"));
+    if (!badges.length || !("fetch" in window)) return;
+    fetch("/api/v1/public/features")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d: { items?: Array<{ key: string; status: string; statusLabel: string; limit?: string }> } | null) => {
+        for (const f of d?.items ?? []) {
+          const el = badges.find((b) => b.dataset.feature === f.key);
+          if (!el) continue;
+          el.textContent = f.statusLabel;
+          el.classList.toggle("badge-live", f.status !== "building");
+          if (f.limit) el.title = f.limit;
+          else el.removeAttribute("title");
+        }
+      })
+      .catch(() => undefined);
+  });
+
   safe("reveal", () => {
     const items = Array.from(document.querySelectorAll<HTMLElement>(".reveal"));
     const show = (el: Element) => el.classList.add("is-in");

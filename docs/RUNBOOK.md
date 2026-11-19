@@ -123,3 +123,11 @@ Copias exportadas antes de cada migración en `backups/` (fuera de git).
 - Copia de D1 previa a 0005: `backups/dni-growth-db-pre-0005-20261118-0019.sql` (fuera de git).
 - Detener OpenRouter al instante: Centro de IA → «Detener OpenRouter (global)» (o `POST /api/v1/admin/ai/openrouter/kill-switch {"enabled":false}`). Tras una parada automática por cobro, revisar la cuenta de OpenRouter antes de «Quitar bloqueo de seguridad».
 - Redirección www → apex: regla «Redirigir de WWW a raíz» en Reglas de redireccionamiento de la zona dnigrowth.com.
+
+## Despliegue 2026-11-19 (módulos de crecimiento, versión `75a82608`)
+- Copia previa: `backups/dni-growth-db-pre-0015-20261119.sql`; migración `0015_growth_modules.sql` aplicada (aditiva).
+- Cron de cada minuto: además de lo anterior, `scanOverdueTasks` (tareas vencidas → reglas) y `deliverWebhooks` (reintentos 1 min, 5 min, 30 min, 2 h, 12 h y después cola muerta). Reintentar una entrega muerta: botón «Reintentar» en Automatizaciones (`POST /orgs/:id/automations/deliveries/:id/retry`).
+- Webhooks de reglas: el secreto se muestra una sola vez; si se pierde, «Rotar secreto». El receptor valida `x-dni-signature`.
+- Comprobación de backlinks a páginas de dnigrowth.com: devuelve «error» (HTTP 522, el Worker no puede leer su propia zona). Comprobar con páginas de otros dominios.
+- Spend Guardian: tras pruebas dejar topes 0/0 e interruptor de corte activado.
+- Probar planes en Stripe (modo prueba, sin tarjeta): Panel de Stripe → Suscripciones → «Crear suscripción de prueba», cliente de prueba, cobro por factura, metadatos `organization_id` y `plan_code`; cambiar de precio con «Actualizar suscripción → Inmediatamente»; cancelar al terminar. Cada evento queda en la auditoría como `billing.subscription_sync` / `billing.subscription_canceled`.

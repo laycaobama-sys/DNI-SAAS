@@ -1,10 +1,11 @@
 import { useState, type FormEvent } from "react";
-import { Link, useParams, useSearchParams } from "react-router";
+import { Link, Navigate, useParams, useSearchParams } from "react-router";
 import { Lock, Mail, UserMinus } from "lucide-react";
 import { ApiError, del, fmtDate, patch, post, timeAgo } from "../lib/api";
 import { useAuth } from "../lib/auth";
 import { useApi } from "../lib/hooks";
 import { MODULES } from "../shell";
+import { Entitlements } from "./agency";
 import { Badge, Button, Card, EmptyState, ErrorState, Notice, PageHeader, Select, Spinner, TextField } from "../ui";
 
 export const ROLE_LABELS: Record<string, string> = {
@@ -354,6 +355,11 @@ export function BillingPage() {
                 <li>
                   {l.brands} marca(s) · {l.seats} usuario(s)
                 </li>
+                {l.landingPages !== undefined && <li>{l.landingPages} landings · {l.leadForms ?? 1} formularios</li>}
+                {l.automationRules !== undefined && <li>{l.automationRules} reglas de automatización</li>}
+                {l.videoProjects !== undefined && <li>{l.videoProjects} proyectos de vídeo</li>}
+                {l.trackedPrompts !== undefined && <li>{l.trackedPrompts} preguntas GEO</li>}
+                {l.clientOrgs ? <li>{l.clientOrgs} clientes (agencia) y marca blanca</li> : null}
               </ul>
               {!current && p.price_eur_month > 0 && !stripeSub && (
                 <Button className="mt-4" disabled={!canPay || !p.purchasable} loading={busyPlan === p.code} onClick={() => checkout(p.code)}>
@@ -364,6 +370,8 @@ export function BillingPage() {
           );
         })}
       </div>
+
+      <div className="mb-6"><Entitlements orgId={orgId!} /></div>
 
       {me?.user?.isPlatformAdmin && <StripeAdminPanel onSynced={reload} />}
 
@@ -521,6 +529,8 @@ export function AuditLogPage() {
 export function ModulePage() {
   const { orgId, moduleKey = "" } = useParams();
   const m = MODULES[moduleKey];
+  const live: Record<string, string> = { "seo-tecnico": "seo-tecnico", keywords: "keywords", authority: "authority", video: "video", ads: "ads", automations: "automations", agency: "agency", landings: "landings", experiments: "landings", crm: "crm", analytics: "analytics", agents: "jobs", content: "content", creative: "creative", "ai-visibility": "ai-visibility" };
+  if (live[moduleKey]) return <Navigate to={`/o/${orgId}/${live[moduleKey]}`} replace />;
   if (!m) return <NotFoundPage />;
   return (
     <>

@@ -92,7 +92,7 @@ export function mailMode(env: Env): "enabled" | "dev_mailbox" | "not_configured"
   return !p ? "not_configured" : p.name === "dev_mailbox" ? "dev_mailbox" : "enabled";
 }
 
-function encKey(env: Env): string | null {
+export function encKey(env: Env): string | null {
   if (env.DATA_ENC_KEY) return env.DATA_ENC_KEY;
   return isDevLike(env) ? DEV_KEY : null;
 }

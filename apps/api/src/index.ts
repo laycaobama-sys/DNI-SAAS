@@ -7,6 +7,7 @@ import { scheduleGa4Syncs } from "./lib/ga4";
 import { scheduleGscSyncs } from "./lib/gsc";
 import { drainEmailOutbox } from "./lib/mail";
 import { maybeSyncCatalog } from "./lib/openrouter";
+import { deliverWebhooks, scanOverdueTasks } from "./lib/rules";
 import { log } from "./lib/util";
 
 const deps: Deps = {
@@ -41,6 +42,8 @@ export default {
     await scheduleGa4Syncs(env).catch((e) => log("error", "ga4.schedule_failed", { error: String(e).slice(0, 120) }));
     await dispatchOutbox(env, deps, (p) => ctx.waitUntil(p));
     await drainEmailOutbox(env).catch((e) => log("error", "mail.drain_failed", { error: String(e) }));
+    await scanOverdueTasks(env).catch((e) => log("error", "rules.overdue_failed", { error: String(e).slice(0, 120) }));
+    await deliverWebhooks(env, deps).catch((e) => log("error", "webhooks.deliver_failed", { error: String(e).slice(0, 120) }));
     await env.DB.prepare("DELETE FROM rate_limits WHERE window_start < ?").bind(Math.floor(Date.now() / 1000) - 86400).run();
     await maybeSyncCatalog(env, deps).catch((e) => log("error", "openrouter.cron_failed", { error: String(e).slice(0, 120) }));
     await env.DB.prepare("DELETE FROM ai_quota_counters WHERE updated_at < ?").bind(new Date(Date.now() - 3 * 86400_000).toISOString()).run();

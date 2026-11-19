@@ -87,10 +87,27 @@ export function DashboardPage() {
             ))}
           </div>
           <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-            {data.unavailable.map((u: any) => (
-              <UnavailableCard key={u.key} label={u.label} reason={u.reason} />
-            ))}
+            {(data.kpis ?? []).map((k: any) =>
+              k.metric ? (
+                <MetricCard key={k.key} m={k.metric} />
+              ) : (
+                <div key={k.key} className="flex flex-col rounded-2xl border border-dashed border-line p-4">
+                  <p className="text-sm text-mute">{k.label}</p>
+                  <p className="mt-2 flex-1 text-sm">{k.reason}</p>
+                  <Link to={`/o/${orgId}/${k.cta.to}`} className="mt-3 inline-flex items-center gap-1 text-sm font-semibold text-accent-text hover:underline">
+                    {k.cta.label} <ArrowRight className="size-4" />
+                  </Link>
+                </div>
+              ),
+            )}
           </div>
+          {data.unavailable.length > 0 && (
+            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+              {data.unavailable.map((u: any) => (
+                <UnavailableCard key={u.key} label={u.label} reason={u.reason} />
+              ))}
+            </div>
+          )}
           <div className="grid gap-6 xl:grid-cols-3">
             <Card className="xl:col-span-2" title="Última auditoría" subtitle={data.latestAudit ? `${data.latestAudit.origin} · ${timeAgo(data.latestAudit.completed_at)}` : undefined}>
               {data.latestAudit ? (
@@ -135,7 +152,7 @@ export function DashboardPage() {
               )}
             </Card>
           </div>
-          <Notice>Las métricas de tráfico, visibilidad en IA, gasto e ingresos aparecerán cuando conectes las integraciones correspondientes. No estimamos esos datos sin fuente.</Notice>
+          <Notice>Cada cifra indica su fuente y método. Lo que no está conectado muestra el siguiente paso, nunca cifras de ejemplo.</Notice>
         </div>
       )}
     </>

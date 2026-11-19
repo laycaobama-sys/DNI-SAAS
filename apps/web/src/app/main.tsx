@@ -17,6 +17,10 @@ import { AiHubPage } from "./pages/aihub";
 import { ReportsPage } from "./pages/reports";
 import { CrmPage } from "./pages/crm";
 import { LandingsPage } from "./pages/landings";
+import { AuthorityPage, KeywordsPage, SeoTecnicoPage } from "./pages/organic";
+import { AttributionPage, AutomationsPage } from "./pages/automation";
+import { AdsPage, VideoPage } from "./pages/studio";
+import { AgencyPage } from "./pages/agency";
 import { ContentDetailPage, ContentListPage } from "./pages/content";
 import { AuditDetailPage, AuditsPage, BrandPage, BrandsPage, PlanPage } from "./pages/insights";
 import { AuditLogPage, BillingPage, IntegrationsPage, ModulePage, NotFoundPage, TeamPage } from "./pages/org";
@@ -88,6 +92,14 @@ function App() {
           <Route path="reports" element={<ReportsPage />} />
           <Route path="crm" element={<CrmPage />} />
           <Route path="landings" element={<LandingsPage />} />
+          <Route path="seo-tecnico" element={<SeoTecnicoPage />} />
+          <Route path="keywords" element={<KeywordsPage />} />
+          <Route path="authority" element={<AuthorityPage />} />
+          <Route path="automations" element={<AutomationsPage />} />
+          <Route path="attribution" element={<AttributionPage />} />
+          <Route path="ads" element={<AdsPage />} />
+          <Route path="video" element={<VideoPage />} />
+          <Route path="agency" element={<AgencyPage />} />
           <Route path="audit-log" element={<AuditLogPage />} />
           <Route path="m/:moduleKey" element={<ModulePage />} />
           <Route path="*" element={<NotFoundPage />} />

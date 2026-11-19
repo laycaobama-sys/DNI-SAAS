@@ -36,7 +36,7 @@ import {
 } from "lucide-react";
 import { post } from "./lib/api";
 import { useAuth } from "./lib/auth";
-import { useTheme } from "./lib/hooks";
+import { useApi, useTheme } from "./lib/hooks";
 import { cx, LegalLinks } from "./ui";
 
 export const MODULES: Record<string, { label: string; phase: string; description: string }> = {
@@ -61,14 +61,27 @@ type NavItem = { to: string; label: string; icon: typeof Gauge; live?: boolean; 
 
 function navFor(orgId: string): Array<{ section: string; items: NavItem[] }> {
   const o = `/o/${orgId}`;
-  const m = (k: string, icon: typeof Gauge): NavItem => ({ to: `${o}/m/${k}`, label: MODULES[k]!.label, icon });
+  const i = (path: string, label: string, icon: typeof Gauge, end?: boolean): NavItem => ({ to: path ? `${o}/${path}` : o, label, icon, live: true, end });
   return [
-    { section: "Crecimiento", items: [{ to: o, label: "Command Center", icon: LayoutDashboard, live: true, end: true }, { to: `${o}/analyze`, label: "Nueva auditoría", icon: Sparkles, live: true }, { to: `${o}/advisor`, label: "Asesor IA", icon: MessageSquareText, live: true }, { to: `${o}/ai-hub`, label: "Centro de IA", icon: Cpu, live: true }, { to: `${o}/audits`, label: "Auditoría web", icon: FileSearch, live: true }, { to: `${o}/brands`, label: "Proyectos y marcas", icon: Building2, live: true }] },
-    { section: "Orgánico", items: [m("seo-tecnico", Gauge), { to: `${o}/search-console`, label: "Search Console", icon: TrendingUp, live: true }, m("keywords", Search), { to: `${o}/ai-visibility`, label: "AI Visibility (GEO)", icon: Bot, live: true }, { to: `${o}/content`, label: "Content Studio", icon: FileText, live: true }, m("authority", Link2)] },
-    { section: "Creatividad y pago", items: [{ to: `${o}/creative`, label: "Creative Studio", icon: Palette, live: true }, m("video", Film), m("ads", Megaphone), { to: `${o}/landings`, label: "Landing Pages", icon: LayoutTemplate, live: true }, { to: `${o}/landings`, label: "Tests A/B (en landings)", icon: FlaskConical, live: true }] },
-    { section: "Ventas y datos", items: [{ to: `${o}/crm`, label: "CRM / Leads", icon: Target, live: true }, { to: `${o}/analytics`, label: "Analytics (GA4)", icon: BarChart3, live: true }, { to: `${o}/reports`, label: "Informes", icon: FileBarChart, live: true }, { to: `${o}/jobs`, label: "AI Agent Center", icon: Bot, live: true }, m("automations", Workflow)] },
-    { section: "Organización", items: [{ to: `${o}/integrations`, label: "Integraciones", icon: Plug, live: true }, { to: `${o}/team`, label: "Equipo y accesos", icon: Users, live: true }, { to: `${o}/billing`, label: "Facturación y créditos", icon: CreditCard, live: true }, m("agency", KeyRound), { to: `${o}/audit-log`, label: "Logs de auditoría", icon: ScrollText, live: true }] },
+    { section: "Crecimiento", items: [i("", "Command Center", LayoutDashboard, true), i("analyze", "Nueva auditoría", Sparkles), i("advisor", "Asesor IA", MessageSquareText), i("ai-hub", "Centro de IA", Cpu), i("audits", "Auditoría web", FileSearch), i("brands", "Proyectos y marcas", Building2)] },
+    { section: "Orgánico", items: [i("seo-tecnico", "SEO técnico", Gauge), i("search-console", "Search Console", TrendingUp), i("keywords", "Keywords y competencia", Search), i("ai-visibility", "AI Visibility (GEO)", Bot), i("content", "Content Studio", FileText), i("authority", "Backlinks / Authority", Link2)] },
+    { section: "Creatividad y pago", items: [i("creative", "Creative Studio", Palette), i("video", "Video Studio", Film), i("ads", "Ads Manager", Megaphone), i("landings", "Landing Pages y tests A/B", LayoutTemplate)] },
+    { section: "Ventas y datos", items: [i("crm", "CRM / Leads", Target), i("automations", "Automatizaciones", Workflow), i("attribution", "Atribución", FlaskConical), i("analytics", "Analytics (GA4)", BarChart3), i("reports", "Informes", FileBarChart), i("jobs", "AI Agent Center", Bot)] },
+    { section: "Organización", items: [i("integrations", "Integraciones", Plug), i("team", "Equipo y accesos", Users), i("billing", "Plan, límites y créditos", CreditCard), i("agency", "Agencia y marca blanca", KeyRound), i("audit-log", "Logs de auditoría", ScrollText)] },
   ];
+}
+
+const norm = (s: string) =>
+  s
+    .normalize("NFD")
+    .replace(new RegExp("[\u0300-\u036f]", "g"), "")
+    .toLowerCase();
+
+/** Black or white text for a custom accent, whichever contrasts more (WCAG relative luminance). */
+function inkFor(hex: string) {
+  const c = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16) / 255).map((v) => (v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4));
+  const l = 0.2126 * c[0]! + 0.7152 * c[1]! + 0.0722 * c[2]!;
+  return l > 0.179 ? "#0b0b0c" : "#ffffff";
 }
 
 export function Logo({ className }: { className?: string }) {
@@ -86,10 +99,21 @@ export function AppShell() {
   const { theme, toggle } = useTheme();
   const [open, setOpen] = useState(false);
   const [switcher, setSwitcher] = useState(false);
+  const [filter, setFilter] = useState("");
   const loc = useLocation();
   const nav = useNavigate();
   useEffect(() => setOpen(false), [loc.pathname]);
   const current = me?.memberships.find((m) => m.id === orgId);
+  const { data: brand } = useApi<{ displayName: string | null; logoUrl: string | null; accent: string | null }>(orgId ? `/orgs/${orgId}/branding` : null);
+  const accentStyle = brand?.accent ? ({ "--accent": brand.accent, "--accent-ink": inkFor(brand.accent) } as React.CSSProperties) : undefined;
+  const brandMark = brand?.displayName || brand?.logoUrl ? (
+    <span className="inline-flex min-w-0 items-center gap-2 font-semibold">
+      {brand.logoUrl && <img src={brand.logoUrl} alt="" className="h-7 max-w-[120px] object-contain" referrerPolicy="no-referrer" />}
+      {brand.displayName && <span className="truncate">{brand.displayName}</span>}
+    </span>
+  ) : (
+    <Logo />
+  );
 
   async function logout() {
     await post("/auth/logout").catch(() => null);
@@ -100,8 +124,8 @@ export function AppShell() {
   const sidebar = (
     <div className="flex h-full flex-col">
       <div className="flex items-center justify-between px-4 py-4">
-        <Link to={`/o/${orgId}`} aria-label="DNI Growth, Command Center">
-          <Logo />
+        <Link to={`/o/${orgId}`} aria-label={`${brand?.displayName ?? "DNI Growth"}, Command Center`} className="min-w-0">
+          {brandMark}
         </Link>
         <button className="rounded-lg p-1.5 text-mute hover:bg-surface-2 lg:hidden" onClick={() => setOpen(false)} aria-label="Cerrar menú">
           <X className="size-5" />
@@ -130,21 +154,38 @@ export function AppShell() {
           </div>
         )}
       </div>
+      <div className="px-3 pb-2">
+        <label className="relative block">
+          <span className="sr-only">Buscar módulo</span>
+          <Search className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-mute" aria-hidden />
+          <input
+            type="search"
+            value={filter}
+            onChange={(e) => setFilter(e.target.value)}
+            placeholder="Buscar módulo…"
+            className="h-9 w-full rounded-lg border border-line bg-surface pl-8 pr-2 text-sm placeholder:text-mute focus:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+          />
+        </label>
+      </div>
       <nav className="flex-1 overflow-y-auto px-3 pb-4" aria-label="Módulos">
-        {navFor(orgId).map((g) => (
+        {navFor(orgId)
+          .map((g) => ({ ...g, items: g.items.filter((it) => !filter.trim() || norm(it.label + " " + g.section).includes(norm(filter.trim()))) }))
+          .filter((g) => g.items.length)
+          .map((g) => (
           <div key={g.section} className="mb-4">
             <p className="px-3 pb-1 text-[11px] font-semibold uppercase tracking-[0.12em] text-mute">{g.section}</p>
             <ul>
               {g.items.map((it) => (
-                <li key={it.to}>
+                <li key={it.label}>
                   <NavLink
                     to={it.to}
                     end={it.end}
-                    className={({ isActive }) => cx("group flex items-center gap-2.5 rounded-lg px-3 py-1.5 text-sm transition", isActive ? "bg-surface-2 font-medium text-ink" : "text-mute hover:bg-surface-2 hover:text-ink")}
+                    title={it.label}
+                    className={({ isActive }) => cx("group flex items-center gap-2.5 rounded-lg px-3 py-1.5 text-sm leading-snug transition", isActive ? "bg-surface-2 font-medium text-ink" : "text-mute hover:bg-surface-2 hover:text-ink")}
                   >
                     <it.icon className="size-4 shrink-0" aria-hidden />
-                    <span className="flex-1 truncate">{it.label}</span>
-                    {!it.live && <span className="rounded border border-line px-1 text-[10px] text-mute">pronto</span>}
+                    <span className="min-w-0 flex-1 break-words">{it.label}</span>
+                    {!it.live && <span className="shrink-0 rounded border border-line px-1 text-[10px] text-mute">pronto</span>}
                   </NavLink>
                 </li>
               ))}
@@ -172,7 +213,7 @@ export function AppShell() {
   );
 
   return (
-    <div className="min-h-full lg:grid lg:grid-cols-[272px_1fr] print:block">
+    <div className="min-h-full lg:grid lg:grid-cols-[272px_1fr] print:block" style={accentStyle}>
       <aside className="sticky top-0 hidden h-screen border-r border-line bg-bg lg:block print:hidden">{sidebar}</aside>
       {open && (
         <div className="fixed inset-0 z-40 lg:hidden">
@@ -185,7 +226,7 @@ export function AppShell() {
           <button onClick={() => setOpen(true)} className="rounded-lg p-1.5 hover:bg-surface-2" aria-label="Abrir menú">
             <Menu className="size-5" />
           </button>
-          <Logo />
+          {brandMark}
           <span className="w-8" />
         </header>
         <main id="main" className="mx-auto w-full max-w-7xl px-4 py-6 sm:px-6 lg:px-10 lg:py-10 print:max-w-none print:p-0">

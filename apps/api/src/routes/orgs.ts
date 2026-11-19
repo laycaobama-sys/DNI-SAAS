@@ -109,14 +109,45 @@ org.get("/dashboard", requireScope("org:read"), async (c) => {
     latestAudit: latest ?? null,
     recentJobs: jobs.results,
     tasksByStatus: tasks.results,
+    kpis: await growthKpis(db, t.orgId, observedAt),
     unavailable: [
-      { key: "organic_traffic", label: "Tráfico orgánico", reason: "Google Search Console no conectado (fase F3)." },
-      { key: "ai_visibility", label: "Visibilidad en IA", reason: "Monitor GEO no disponible (fase F3)." },
-      { key: "ad_spend", label: "Gasto publicitario", reason: "Meta Ads no conectado (fase F6)." },
-      { key: "attributed_revenue", label: "Ingresos atribuidos", reason: "CRM y atribución no disponibles (fases F5–F7)." },
+      { key: "ad_spend", label: "Gasto publicitario real", reason: "Requiere la conexión aprobada por Meta o Google Ads (bloqueo externo). Las campañas aquí son borradores con presupuesto propuesto." },
     ],
   });
 });
+
+/** Growth KPIs with source, or an actionable next step when the source is not connected yet. */
+async function growthKpis(db: D1Database, orgId: string, observedAt: string) {
+  const since28 = new Date(Date.now() - 28 * 86400_000).toISOString().slice(0, 10);
+  const since30 = new Date(Date.now() - 30 * 86400_000).toISOString();
+  const [gscProp, geo, leads, ads, forms] = await Promise.all([
+    db.prepare("SELECT id, site_url FROM gsc_properties WHERE organization_id = ? AND selected = 1 LIMIT 1").bind(orgId).first<{ id: string; site_url: string }>(),
+    db.prepare("SELECT COUNT(*) AS n, SUM(CASE WHEN brand_mentioned = 1 THEN 1 ELSE 0 END) AS m FROM ai_response_samples WHERE organization_id = ? AND status = 'ok' AND sampled_at >= ?").bind(orgId, since30).first<{ n: number; m: number | null }>(),
+    db.prepare("SELECT COUNT(*) AS n, SUM(CASE WHEN stage = 'won' THEN 1 ELSE 0 END) AS won, COALESCE(SUM(CASE WHEN stage = 'won' THEN value_cents ELSE 0 END), 0) AS won_cents FROM leads WHERE organization_id = ? AND is_test = 0 AND created_at >= ?").bind(orgId, since30).first<{ n: number; won: number | null; won_cents: number }>(),
+    db.prepare("SELECT COUNT(*) AS n, COALESCE(SUM(CASE WHEN status = 'approved' THEN daily_budget_cents ELSE 0 END), 0) AS approved FROM ad_campaigns WHERE organization_id = ? AND status != 'archived'").bind(orgId).first<{ n: number; approved: number }>(),
+    db.prepare("SELECT COUNT(*) AS n FROM lead_forms WHERE organization_id = ? AND status = 'active'").bind(orgId).first<{ n: number }>(),
+  ]);
+  const gsc = gscProp
+    ? await db.prepare("SELECT COALESCE(SUM(clicks), 0) AS clicks, COALESCE(SUM(impressions), 0) AS impressions, COUNT(*) AS days, MAX(date) AS last FROM gsc_daily_metrics WHERE organization_id = ? AND property_id = ? AND date >= ?").bind(orgId, gscProp.id, since28).first<{ clicks: number; impressions: number; days: number; last: string | null }>()
+    : null;
+  const m = (metric: string, label: string, value: number | null, unit: string, measurement: "observed" | "derived", source: string, limitations: string[] = []) => ({ metric, label, value, unit, measurement, source, observedAt, limitations });
+  return [
+    gsc && gsc.days
+      ? { key: "organic_traffic", metric: m("organic_clicks", "Clics orgánicos (28 días)", gsc.clicks, "clics", "observed", `Google Search Console · ${gscProp!.site_url}`, [`${gsc.impressions.toLocaleString("es-ES")} impresiones · último día con datos ${gsc.last}`, "Search Console publica los datos con 2–3 días de retraso."]) }
+      : { key: "organic_traffic", label: "Tráfico orgánico", cta: { label: gscProp ? "Sincronizar Search Console" : "Conectar Search Console", to: "search-console" }, reason: gscProp ? "Propiedad conectada; aún sin datos sincronizados." : "Conecta tu propiedad de Google Search Console para ver clics e impresiones reales." },
+    geo && geo.n
+      ? { key: "ai_visibility", metric: m("ai_mentions", "Menciones en respuestas de IA (30 días)", Math.round(((geo.m ?? 0) / geo.n) * 100), `% de ${geo.n} muestras`, "observed", "Monitor GEO de DNI Growth", ["Muestreo de preguntas configuradas; no representa todas las búsquedas reales."]) }
+      : { key: "ai_visibility", label: "Visibilidad en IA", cta: { label: "Configurar el monitor GEO", to: "ai-visibility" }, reason: "Añade preguntas a seguir y lanza un muestreo para medir si la IA menciona tu marca." },
+    leads && leads.n
+      ? { key: "attributed_revenue", metric: m("won_value", "Valor ganado en el CRM (30 días)", leads.won_cents / 100, `€ · ${leads.n} contactos, ${leads.won ?? 0} ganados`, "derived", "CRM de DNI Growth (valor declarado por tu equipo)", ["No es un cobro verificado.", "Excluye contactos de prueba."]) }
+      : forms?.n
+        ? { key: "attributed_revenue", label: "Contactos e ingresos atribuidos", cta: { label: "Ver el CRM", to: "crm" }, reason: "Tu formulario está activo; aún no hay contactos reales en los últimos 30 días. Cada contacto guardará su origen (UTM)." }
+        : { key: "attributed_revenue", label: "Contactos e ingresos atribuidos", cta: { label: "Crear un formulario de captación", to: "crm" }, reason: "Publica un formulario o una landing: cada contacto guarda su origen (UTM) para la atribución." },
+    ads && ads.n
+      ? { key: "ads_plan", metric: m("ads_proposed_budget", "Presupuesto diario propuesto aprobado", ads.approved / 100, `€/día · ${ads.n} campañas en borrador o revisión`, "derived", "Ads Manager de DNI Growth (propuestas)", ["Presupuesto PROPUESTO, no gastado: DNI Growth no publica anuncios."]) }
+      : { key: "ads_plan", label: "Plan de anuncios", cta: { label: "Preparar una campaña", to: "ads" }, reason: "Crea borradores de campaña con presupuesto propuesto, anuncios y aprobación del equipo." },
+  ];
+}
 
 org.get("/members", requireScope("members:read"), async (c) => {
   const t = c.get("tenant");

@@ -14,8 +14,14 @@ export async function getPlan(db: D1Database, code: string): Promise<PlanDef> {
 }
 
 export async function orgPlan(db: D1Database, orgId: string): Promise<PlanDef> {
-  const row = await db.prepare("SELECT plan_code FROM organizations WHERE id = ?").bind(orgId).first<{ plan_code: string }>();
-  return getPlan(db, row?.plan_code ?? "free");
+  // A client organisation managed by an agency (agency_org_id) uses the agency's plan limits
+  // unless it has its own paid plan. Client orgs cannot create further clients (see agency routes).
+  const row = await db
+    .prepare("SELECT o.plan_code, a.plan_code AS agency_plan FROM organizations o LEFT JOIN organizations a ON a.id = o.agency_org_id WHERE o.id = ?")
+    .bind(orgId)
+    .first<{ plan_code: string; agency_plan: string | null }>();
+  const own = row?.plan_code ?? "free";
+  return getPlan(db, own === "free" && row?.agency_plan ? row.agency_plan : own);
 }
 
 export function grantStmt(db: D1Database, orgId: string, amount: number, sourceEventId: string, category = "monthly_allowance", provider = "internal") {

@@ -1,6 +1,6 @@
 # Estado de implementación — DNI Growth
 
-Última actualización: 2026-11-19 · Producción: **https://dnigrowth.com** (Worker `dni-growth`, versión `3457ae89-ae3b-4207-b43f-1440bcbf5ead`; workers.dev redirige con 301 a dnigrowth.com) · Workers Paid, sin servicios de pago adicionales ([verificación de la cuenta](CLOUDFLARE_ACCOUNT_VERIFICATION.md)).
+Última actualización: 2026-11-19 · Producción: **https://dnigrowth.com** (Worker `dni-growth`, versión `75a82608-7dfc-46a9-a0c2-ef4c8c2af3fa`; workers.dev redirige con 301 a dnigrowth.com) · Workers Paid, sin servicios de pago adicionales ([verificación de la cuenta](CLOUDFLARE_ACCOUNT_VERIFICATION.md)).
 
 Leyenda:
 - **VERIFICADO EN PRODUCCIÓN**: probado contra la URL pública con una respuesta comprobable.
@@ -8,7 +8,7 @@ Leyenda:
 - **BLOQUEADO POR PERMISOS**: necesita una acción, clave o aceptación del titular.
 - **NO IMPLEMENTADO**.
 
-Pruebas automáticas: lint, typecheck, **347 tests** (23 ficheros, core + API), build y escaneo de secretos en verde el 2026-11-18 (`pnpm -s verify`, código de salida 0).
+Pruebas automáticas: lint, typecheck, **375 tests** (26 ficheros, core + API), build y escaneo de secretos en verde el 2026-11-19 (`pnpm -s verify`, código de salida 0).
 
 Pruebas E2E en producción del 2026-11-18 con la cuenta verificada de la titular (organización propia, plan Free), ejecutadas desde el navegador contra https://dnigrowth.com; cada fila indica la respuesta observada.
 
@@ -179,6 +179,33 @@ Pruebas E2E en producción del 2026-11-18 con la cuenta verificada de la titular
 | Roles y aislamiento | VERIFICADO SOLO EN LOCAL | editor edita pero no publica (403); analista solo lee; otra organización 404; límite de plan 402; automatizaciones solo con `forms:manage` |
 | Limpieza de la prueba en producción | HECHO | test detenido, landing despublicada (404) y archivada (0 de 1 usadas), automatizaciones desactivadas y contacto de prueba borrado |
 
+## Módulos de crecimiento sin coste (nuevo, [ADR 0017](adr/0017-modulos-crecimiento-sin-coste.md))
+Versión `75a82608`, migración 0015 aplicada con copia previa `backups/dni-growth-db-pre-0015-20261119.sql` (aditiva, 42 sentencias; tablas nuevas en la guarda estática multitenant). Pruebas E2E del 2026-11-19 en la organización «DNI Growth»; los datos de prueba se borraron después.
+
+| Elemento | Estado | Prueba |
+|---|---|---|
+| SEO técnico: comparación entre auditorías (nuevos, resueltos, persistentes, delta de salud), estado por incidencia, CSV | VERIFICADO EN PRODUCCIÓN | `/seo/overview` y `/seo/compare` → 200 con la auditoría real de dnigrowth.com; `growth.test.ts` |
+| Keywords: consultas reales de Search Console con intención y oportunidades, términos del sitio, lista guardada, CSV; **sin volumen, CPC ni dificultad inventados** (marcados «no disponible») | VERIFICADO EN PRODUCCIÓN | `/keywords/overview` → 200; palabra clave de prueba creada y borrada |
+| Competencia: lectura educada (robots.txt, 30/día, anti-SSRF) y huecos de términos | VERIFICADO EN PRODUCCIÓN | `example.com` → 201; `127.0.0.1` → 422 `unsafe_url` |
+| Autoridad / backlinks: registro manual o CSV, comprobación de enlace vivo/perdido/bloqueado, límite por plan | VERIFICADO EN PRODUCCIÓN | página de ayuda de iana.org → enlace a `/domains` **vivo**, ancla «Domains». Limitación: un Worker no puede leer páginas de su propia zona (dnigrowth.com → HTTP 522), así que esas comprobaciones muestran «error» |
+| Automatizaciones (contacto nuevo, cambio de etapa, tarea vencida → crear tarea, mover etapa, asignar, avisar al equipo sin datos personales, webhook firmado con reintentos y cola muerta) y simulación | VERIFICADO EN PRODUCCIÓN (reglas, tarea, simulación, límite 402) · LOCAL (firma, reintentos, cola muerta) | regla creó la tarea «[PRUEBA E2E] Llamar en 1 h»; tercera regla en Free → 402; la simulación solo coincidió tras «Ganado» con valor 1.500 |
+| Atribución primer contacto por origen, campaña, landing o formulario (CSV) | VERIFICADO EN PRODUCCIÓN | contacto de prueba excluido; avisos «valor declarado, no cobro verificado», sin ROAS |
+| Ads sin gasto: borradores, anuncios, envío, aprobación con separación de funciones, Spend Guardian (interruptor de corte activo por defecto), exportación con UTM | VERIFICADO EN PRODUCCIÓN | sin anuncios → bloqueado; aprobación bloqueada por interruptor y tope; con tope → aprobada; exportación con `utm_source=meta&utm_medium=paid_social&utm_campaign=prueba-e2e-navidad`; archivada y Guardian restablecido |
+| Medios (derechos confirmados, lista blanca MIME + bytes mágicos, 5/15 MB) | VERIFICADO EN PRODUCCIÓN | sin derechos 422, archivo falso 415, PNG 201 servido con `nosniff`; borrado |
+| Estudio de vídeo en el navegador (escenas, subtítulos SRT, render MP4/WebM sin coste de servidor) | VERIFICADO EN PRODUCCIÓN | MP4 720×1280, 10 s, 131.705 bytes; SRT correcto; proyecto archivado |
+| Agencia: organizaciones cliente (Pro 5 / Agency 50), herencia del plan de la agencia, marca blanca (nombre, logo, color, pie de informes) | VERIFICADO EN PRODUCCIÓN (límites por plan) · LOCAL (crear cliente, herencia, marca) | con Pro → `clientOrgs` 5 y marca blanca 200; con Agency → 50; con Free → 0. Dominio propio por cliente: bloqueado por coste |
+| Panel: KPIs con fuente o acción siguiente (tráfico orgánico, visibilidad IA, ingresos atribuidos, plan de anuncios) | VERIFICADO EN PRODUCCIÓN | visibilidad IA 29 % observada; resto con acción («Conectar Search Console», «Ver el CRM», «Preparar una campaña») |
+| Menú sin etiquetas «pronto»; rutas antiguas `/m/<módulo>` redirigen | VERIFICADO EN PRODUCCIÓN | capturas de la app |
+
+## Stripe en modo prueba: planes que se activan de verdad
+| Paso (2026-11-19, organización «PRUEBA Stripe planes (modo test)», cliente de prueba sin datos personales, cobro por factura sin tarjeta) | Estado | Prueba |
+|---|---|---|
+| Crear suscripción Starter 39 € | VERIFICADO EN PRODUCCIÓN (modo test) | webhook `evt_1UdJZT…` → plan `starter`, landings 5, reglas 10 |
+| Cambiar a Growth 89 € | VERIFICADO EN PRODUCCIÓN (modo test) | `evt_1UdJbu…` → `growth`, 3 asientos, landings 20, reglas 30 |
+| Cambiar a Pro 179 € | VERIFICADO EN PRODUCCIÓN (modo test) | `evt_1UdJcy…` → `pro`, 10 asientos, 5 clientes, marca blanca |
+| Cambiar a Agency 349 € | VERIFICADO EN PRODUCCIÓN (modo test) | `evt_1UdJdq…` → `agency`, 25 asientos, 50 clientes |
+| Cancelar | VERIFICADO EN PRODUCCIÓN (modo test) | `evt_1UdJeK…` → `free/canceled`, límites Free |
+
 ## Marca DNI Growth (producción)
 | Elemento | Estado | Prueba |
 |---|---|---|
@@ -186,13 +213,13 @@ Pruebas E2E en producción del 2026-11-18 con la cuenta verificada de la titular
 | Perfil de marca revisado y confirmado | VERIFICADO EN PRODUCCIÓN | versión 2 confirmada: rechazados la variante de nombre con eslogan, 5 titulares H2 que no eran servicios y el teléfono; público, tono, objetivo «Leads / contactos» y afirmación prohibida «Garantizar posiciones en Google o menciones en motores de IA»; sin competidores inventados |
 | Avisos del perfil que ya se resolvieron | VERIFICADO SOLO EN LOCAL | el aviso «varias variantes del nombre» y «Información no encontrada» se ocultan cuando ya están resueltos (antes seguían visibles tras rechazar/rellenar) |
 
-## NO IMPLEMENTADO (fases siguientes)
-Keywords con proveedor licenciado (F2), Video Studio (F4), dominio propio para landings y WhatsApp (F5), Meta Ads con Spend Guardian (F6), experimentos fuera de las landings (F7), agencia/white label, 2FA y SSO (F8), cobros con Stripe ([plan](STRIPE_PLAN.md)).
+## BLOQUEADO EXTERNO (no depende del código)
+Cobros reales con Stripe (verificación KYC de la titular), conexión de clientes a Search Console/Analytics (vídeo de verificación de Google), publicación y gasto real en Meta/Google Ads (aprobación de sus API), volúmenes y CPC de keywords (proveedor de pago), dominio propio por cliente (Cloudflare for SaaS, coste), avisos por WhatsApp (verificación de empresa en Meta y conversaciones de pago), 2FA/SSO (fase F8).
 
 ## Bloqueos que requieren al titular
 | Bloqueo | Acción mínima |
 |---|---|
 | Search Console y Analytics para clientes | App publicada; permisos y justificación declarados; marca enviada a verificación. Falta: **vídeo de demostración en YouTube** (guion en [GOOGLE_VERIFICATION.md](GOOGLE_VERIFICATION.md)) y «Enviar a revisión» |
 | GA4 de la propia web de DNI Growth | La cuenta de Google conectada solo ve la propiedad de DNI GYM. Para tener datos de dnigrowth.com hay que crear una propiedad de GA4 (acepta las condiciones de Google Analytics la titular) e instalar la etiqueta con banner de consentimiento de cookies; hoy la web no usa cookies de analítica |
-| Stripe (cobros reales) | Modo prueba listo y verificado. Para cobrar: activar la cuenta «DNI Growth» (KYC), textos legales con datos fiscales, decidir IVA, guardar la clave `sk_live_…` con `wrangler secret put`, «Sincronizar» y `BILLING_ENABLED="true"` ([pasos](STRIPE_PLAN.md#3-antes-de-cobrar-dinero-real-decisión-de-la-titular)). La suscripción de prueba Starter queda con cancelación programada (sin dinero real) |
+| Stripe (cobros reales) | Modo prueba listo y verificado. Para cobrar: activar la cuenta «DNI Growth» (KYC), textos legales con datos fiscales, decidir IVA, guardar la clave `sk_live_…` con `wrangler secret put`, «Sincronizar» y `BILLING_ENABLED="true"` ([pasos](STRIPE_PLAN.md#3-antes-de-cobrar-dinero-real-decisión-de-la-titular)). Ciclo completo de planes probado en modo test el 2026-11-19 (Starter → Growth → Pro → Agency → cancelada) |
 | Textos legales definitivos | Revisión jurídica de Aviso legal, Privacidad y Condiciones; condiciones de contratación (precio con impuestos, renovación, desistimiento) antes de activar cobros; baja de cuenta autoservicio (hoy por correo) |

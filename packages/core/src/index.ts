@@ -18,3 +18,5 @@ export * from "./geo";
 export * from "./geo-recs";
 export * from "./crm";
 export * from "./landing";
+export * from "./features";
+export * from "./growth";

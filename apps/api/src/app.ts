@@ -1,4 +1,5 @@
 import { Hono } from "hono";
+import { FEATURE_STATUS_LABEL, FEATURES } from "@dni/core";
 import { bodyLimit } from "hono/body-limit";
 import type { AppEnv, Deps } from "./env";
 import { ApiError, problem } from "./lib/http";
@@ -10,6 +11,10 @@ import { aihub } from "./routes/aihub";
 import { content } from "./routes/content";
 import { crm, crmPublic } from "./routes/crm";
 import { landings, servePublicLanding } from "./routes/landings";
+import { organic } from "./routes/organic";
+import { automation } from "./routes/automation";
+import { studio } from "./routes/studio";
+import { agency } from "./routes/agency";
 import { auth } from "./routes/auth";
 import { billing, providerManifest, webhooks } from "./routes/billing";
 import { insights } from "./routes/insights";
@@ -48,6 +53,9 @@ export function createApp(deps: Deps) {
   app.route("/api/v1/auth", oauth);
   app.route("/api/v1/webhooks", webhooks);
   app.route("/api/v1", orgsPublic);
+  app.get("/api/v1/public/features", (c) =>
+    c.json({ items: FEATURES.map((f) => ({ ...f, statusLabel: FEATURE_STATUS_LABEL[f.status] })) }, 200, { "cache-control": "public, max-age=300" }),
+  );
   app.route("/api/v1/public", crmPublic);
 
   // Every tenant route: authenticated user + active membership resolved from the path.
@@ -66,6 +74,10 @@ export function createApp(deps: Deps) {
   tenant.route("/", reports);
   tenant.route("/", crm);
   tenant.route("/", landings);
+  tenant.route("/", organic);
+  tenant.route("/", automation);
+  tenant.route("/", studio);
+  tenant.route("/", agency);
   tenant.get("/integrations", requireScope("integrations:read"), async (c) => {
     // Per-organization connection state overrides the platform-level availability.
     const { results } = await c.env.DB.prepare("SELECT provider, status, last_sync_at FROM integrations WHERE organization_id = ?")

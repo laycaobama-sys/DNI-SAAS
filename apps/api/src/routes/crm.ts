@@ -29,6 +29,7 @@ import { rateLimit } from "../lib/ratelimit";
 import { hashIp, log, nowIso, parseJson, toCsv, uuid } from "../lib/util";
 import { requireScope } from "../middleware";
 import { AutoReplyConfig, FollowUpConfig, runLeadAutomations } from "../lib/automations";
+import { runRules } from "../lib/rules";
 import { recordLandingConversion } from "./landings";
 
 /**
@@ -206,6 +207,7 @@ async function handleSubmission(c: Context<AppEnv>, form: FormRow | null) {
       }
       const org = await c.env.DB.prepare("SELECT name FROM organizations WHERE id = ?").bind(form.organization_id).first<{ name: string }>();
       await runLeadAutomations(c.env, { orgId: form.organization_id, orgName: org?.name ?? "", formId: form.id, leadId: row.id, isNew, name: s.name, email: s.email });
+      if (isNew) await runRules(c.env, { orgId: form.organization_id, trigger: "lead_created", leadId: row.id, triggerRef: `lead:${row.id}` });
     })();
     try {
       c.executionCtx.waitUntil(p);
@@ -347,6 +349,7 @@ crm.post("/crm/leads", requireScope("crm:write"), async (c) => {
     event(c.env.DB, t.orgId, id, "created_manually", user.id, { isTest: !!b.isTest }),
     auditStmt(c.env.DB, { organizationId: t.orgId, actorUserId: user.id, action: "lead.create", entityType: "lead", entityId: id, after: { source: "manual", isTest: !!b.isTest }, requestId: c.get("requestId") }),
   ]);
+  await runRules(c.env, { orgId: t.orgId, trigger: "lead_created", leadId: id, triggerRef: `lead:${id}` });
   return c.json({ id }, 201);
 });
 
@@ -397,6 +400,7 @@ crm.patch("/crm/leads/:leadId", requireScope("crm:write"), async (c) => {
     ),
     auditStmt(c.env.DB, { organizationId: t.orgId, actorUserId: user.id, action: "lead.update", entityType: "lead", entityId: lead.id, after: auditAfter, requestId: c.get("requestId") }),
   ]);
+  if (changes.stage) await runRules(c.env, { orgId: t.orgId, trigger: "stage_changed", leadId: lead.id, triggerRef: `stage:${lead.id}:${String(changes.stage.to)}:${nowIso()}` });
   return c.json({ lead: shapeLead(await loadLead(c, t.orgId)), changed: true });
 });
 
