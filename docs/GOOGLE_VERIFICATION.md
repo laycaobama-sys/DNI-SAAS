@@ -3,6 +3,12 @@
 Proyecto de Google Cloud: `dni-growth` · Google Auth Platform · app **publicada (producción)**, sin verificar.
 Mientras no esté verificada: aviso «Google no ha verificado esta app» en el consentimiento y tope de **100 usuarios** con permisos sensibles. La verificación no tiene coste.
 
+## Estado (2026-11-19)
+
+- **Marca verificada y publicada** (Centro de verificación: «Se verificó la información de tu marca y se muestra a los usuarios»).
+- En «Acceso a los datos» Google clasifica ahora `webmasters.readonly` como no sensible; el único permiso sensible es `analytics.readonly`. El vídeo sigue siendo obligatorio para él.
+- El enlace de «Condiciones del Servicio» apunta a `/legal/aviso-legal`; se deja así para no reiniciar la verificación de marca (las condiciones están enlazadas desde ahí).
+
 ## Estado (2026-11-18)
 
 | Paso | Estado |

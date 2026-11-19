@@ -26,6 +26,9 @@ import { searchConsole } from "./routes/searchConsole";
 import { org, orgsPublic } from "./routes/orgs";
 import { work } from "./routes/work";
 
+/** IndexNow key for dnigrowth.com (public; see https://www.indexnow.org/documentation). */
+export const INDEXNOW_KEY = "c2d713b310de907a6ead8590e603ff8c";
+
 export function createApp(deps: Deps) {
   const app = new Hono<AppEnv>();
 
@@ -123,6 +126,11 @@ export function createApp(deps: Deps) {
   app.get("/l/:orgSlug/:slug", (c) => servePublicLanding(c));
 
   app.get("/google07bca8a276fd14a6.html", (c) => c.text("google-site-verification: google07bca8a276fd14a6.html", 200, { "content-type": "text/html; charset=utf-8" }));
+  // Bing Webmaster Tools ownership token (public by design, not a credential).
+  const BING_SITE_AUTH = ['<?xml version="1.0"?>', "<users>", "  <user>5CF73C5654422132BD89BBBD0FBE51A1</user>", "</users>", ""].join("\n");
+  app.get("/BingSiteAuth.xml", (c) => c.body(BING_SITE_AUTH, 200, { "content-type": "application/xml; charset=utf-8" }));
+  // IndexNow key file (public by design: it only proves the site owns the key used to ping search engines).
+  app.get(`/${INDEXNOW_KEY}.txt`, (c) => c.text(INDEXNOW_KEY));
 
   // Non-API routes: static landing + SPA shell served from Workers Static Assets.
   app.get("*", async (c) => {

@@ -1,6 +1,6 @@
 # Estado de implementación — DNI Growth
 
-Última actualización: 2026-11-19 · Producción: **https://dnigrowth.com** (Worker `dni-growth`, versión `762e157f-ddbe-4fd6-8476-97ba16229ea1`; workers.dev redirige con 301 a dnigrowth.com) · Workers Paid, sin servicios de pago adicionales ([verificación de la cuenta](CLOUDFLARE_ACCOUNT_VERIFICATION.md)).
+Última actualización: 2026-11-19 · Producción: **https://dnigrowth.com** (Worker `dni-growth`, versión `c46543cd-a4c2-417e-bb53-7564c744ac0e`; workers.dev redirige con 301 a dnigrowth.com) · Workers Paid, sin servicios de pago adicionales ([verificación de la cuenta](CLOUDFLARE_ACCOUNT_VERIFICATION.md)).
 
 Leyenda:
 - **VERIFICADO EN PRODUCCIÓN**: probado contra la URL pública con una respuesta comprobable.
@@ -23,6 +23,8 @@ Pruebas E2E en producción del 2026-11-18 con la cuenta verificada de la titular
 | Email Routing hola@/soporte@/privacidad@/facturacion@ → buzón del titular | VERIFICADO EN PRODUCCIÓN | reglas activas en el panel de Cloudflare |
 | Tope mensual de emails (`EMAIL_MONTHLY_CAP=2500` < 3.000 incluidos) | VERIFICADO SOLO EN LOCAL | `mail.ts` devuelve `monthly_cap_reached` sin enviar |
 | Search Console `https://dnigrowth.com/` | VERIFICADO EN PRODUCCIÓN | propiedad verificada; `/sitemap.xml` en estado **«Correcto»**, 3 páginas descubiertas (leído el 2026-11-18) |
+| Bing Webmaster Tools `https://dnigrowth.com/` | VERIFICADO EN PRODUCCIÓN | 2026-11-19: propiedad verificada con `/BingSiteAuth.xml` (y etiqueta `msvalidate.01`); `sitemap.xml` enviado → «Correcto», 1 sitemap conocido, 0 errores |
+| IndexNow (Bing, Yandex, Seznam…) | VERIFICADO EN PRODUCCIÓN | clave pública en `/c2d713b310de907a6ead8590e603ff8c.txt`; envío de las 5 URLs del sitemap a `api.indexnow.org` → HTTP 202 |
 | Migración D1 0005 (aditiva) con copia previa | VERIFICADO EN PRODUCCIÓN | `backups/dni-growth-db-pre-0005-20261118-0019.sql`; `wrangler d1 migrations apply --remote` ✅ |
 
 | Worker: errores y CPU | VERIFICADO EN PRODUCCIÓN | `wrangler tail`: peticiones `ok`, 0–1 ms de CPU, 0 excepciones; cron de cada minuto 7 ms de CPU |
@@ -221,7 +223,7 @@ Guía paso a paso de Google y Meta: [GUIA_APROBACIONES_GOOGLE_META.md](GUIA_APRO
 
 | Bloqueo | Acción mínima |
 |---|---|
-| Search Console y Analytics para clientes | App publicada; permisos y justificación declarados; marca enviada a verificación. Falta: **vídeo de demostración en YouTube** (guion en [GOOGLE_VERIFICATION.md](GOOGLE_VERIFICATION.md)) y «Enviar a revisión» |
+| Search Console y Analytics para clientes | 2026-11-19: **marca verificada y publicada** por Google; `webmasters.readonly` figura ya como no sensible y solo `analytics.readonly` requiere aprobación. Falta: **vídeo de demostración en YouTube** (guion en [GOOGLE_VERIFICATION.md](GOOGLE_VERIFICATION.md)) y «Enviar a revisión» |
 | GA4 de la propia web de DNI Growth | La cuenta de Google conectada solo ve la propiedad de DNI GYM. Para tener datos de dnigrowth.com hay que crear una propiedad de GA4 (acepta las condiciones de Google Analytics la titular) e instalar la etiqueta con banner de consentimiento de cookies; hoy la web no usa cookies de analítica |
 | Stripe (cobros reales) | Modo prueba listo y verificado. Para cobrar: activar la cuenta «DNI Growth» (KYC), textos legales con datos fiscales, decidir IVA, guardar la clave `sk_live_…` con `wrangler secret put`, «Sincronizar» y `BILLING_ENABLED="true"` ([pasos](STRIPE_PLAN.md#3-antes-de-cobrar-dinero-real-decisión-de-la-titular)). Ciclo completo de planes probado en modo test el 2026-11-19 (Starter → Growth → Pro → Agency → cancelada) |
 | Textos legales definitivos | Revisión jurídica de Aviso legal, Privacidad y Condiciones; condiciones de contratación (precio con impuestos, renovación, desistimiento) antes de activar cobros; baja de cuenta autoservicio (hoy por correo) |
