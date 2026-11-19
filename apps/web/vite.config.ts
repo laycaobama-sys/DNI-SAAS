@@ -41,7 +41,7 @@ function seoFiles(): Plugin {
     name: "dni-seo-files",
     transformIndexHtml: (html) => fillLegal(html.replaceAll("__SITE_URL__", SITE_URL).replaceAll("__BUILD_DATE__", BUILD_DATE)),
     generateBundle() {
-      const pages = ["/", "/legal/privacidad", "/legal/aviso-legal", "/legal/condiciones"];
+      const pages = ["/", "/legal/privacidad", "/legal/aviso-legal", "/legal/condiciones", "/legal/eliminacion-datos"];
       this.emitFile({
         type: "asset",
         fileName: "sitemap.xml",
@@ -75,6 +75,7 @@ export default defineConfig({
         privacidad: resolve(import.meta.dirname, "legal/privacidad.html"),
         avisoLegal: resolve(import.meta.dirname, "legal/aviso-legal.html"),
         condiciones: resolve(import.meta.dirname, "legal/condiciones.html"),
+        eliminacionDatos: resolve(import.meta.dirname, "legal/eliminacion-datos.html"),
       },
     },
   },

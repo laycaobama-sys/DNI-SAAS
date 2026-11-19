@@ -1,6 +1,6 @@
 # Estado de implementación — DNI Growth
 
-Última actualización: 2026-11-19 · Producción: **https://dnigrowth.com** (Worker `dni-growth`, versión `75a82608-7dfc-46a9-a0c2-ef4c8c2af3fa`; workers.dev redirige con 301 a dnigrowth.com) · Workers Paid, sin servicios de pago adicionales ([verificación de la cuenta](CLOUDFLARE_ACCOUNT_VERIFICATION.md)).
+Última actualización: 2026-11-19 · Producción: **https://dnigrowth.com** (Worker `dni-growth`, versión `762e157f-ddbe-4fd6-8476-97ba16229ea1`; workers.dev redirige con 301 a dnigrowth.com) · Workers Paid, sin servicios de pago adicionales ([verificación de la cuenta](CLOUDFLARE_ACCOUNT_VERIFICATION.md)).
 
 Leyenda:
 - **VERIFICADO EN PRODUCCIÓN**: probado contra la URL pública con una respuesta comprobable.
@@ -217,6 +217,8 @@ Versión `75a82608`, migración 0015 aplicada con copia previa `backups/dni-grow
 Cobros reales con Stripe (verificación KYC de la titular), conexión de clientes a Search Console/Analytics (vídeo de verificación de Google), publicación y gasto real en Meta/Google Ads (aprobación de sus API), volúmenes y CPC de keywords (proveedor de pago), dominio propio por cliente (Cloudflare for SaaS, coste), avisos por WhatsApp (verificación de empresa en Meta y conversaciones de pago), 2FA/SSO (fase F8).
 
 ## Bloqueos que requieren al titular
+Guía paso a paso de Google y Meta: [GUIA_APROBACIONES_GOOGLE_META.md](GUIA_APROBACIONES_GOOGLE_META.md). Ya publicados para las revisiones: `/legal/eliminacion-datos` y los iconos `/icon-1024.png` y `/icon-120.png` (versión `762e157f`).
+
 | Bloqueo | Acción mínima |
 |---|---|
 | Search Console y Analytics para clientes | App publicada; permisos y justificación declarados; marca enviada a verificación. Falta: **vídeo de demostración en YouTube** (guion en [GOOGLE_VERIFICATION.md](GOOGLE_VERIFICATION.md)) y «Enviar a revisión» |
