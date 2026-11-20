@@ -9,10 +9,17 @@ export interface Membership {
   /** Plan whose modules apply (client organisations inherit their agency's plan). */
   effective_plan?: string;
   role: string;
+  /** active | suspended (suspended organisations show a notice instead of the modules). */
+  status?: string;
 }
 export interface Me {
   user: { id: string; email: string; name: string; emailVerified: boolean; isPlatformAdmin?: boolean } | null;
   memberships: Membership[];
+  /** Organisations this user deleted as owner and can still restore (30 days). */
+  deletedOrganizations?: Array<{ id: string; name: string; deleted_at: string; purge_after: string }>;
+  /** Only present for platform staff. */
+  platform?: { member: boolean; unlocked: boolean; role: string | null; claimed: boolean; legacy: boolean };
+  supportAccess?: Array<{ id: string; name: string; expires_at: string; grant_id: string }>;
 }
 
 const Ctx = createContext<{ me: Me | null; loading: boolean; refresh: () => Promise<Me | null> }>({ me: null, loading: true, refresh: async () => null });

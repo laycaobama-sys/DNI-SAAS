@@ -5,6 +5,7 @@ import { ApiError, patch, post, fmtDate, timeAgo } from "../lib/api";
 import { useApi } from "../lib/hooks";
 import { useAuth } from "../lib/auth";
 import { Badge, Button, Card, EmptyState, ErrorState, Notice, PageHeader, Select, Skeleton, cx } from "../ui";
+import { UsageMeters, useUsage } from "../usage";
 
 type Model = {
   id: string;
@@ -530,7 +531,60 @@ function UsageTable({ orgId }: { orgId: string }) {
   );
 }
 
+/** Customers see «IA DNI Growth»: what their plan includes and how much is used. Staff see the engine. */
 export function AiHubPage() {
+  const { me } = useAuth();
+  return me?.user?.isPlatformAdmin ? <EngineHubPage /> : <CustomerAiPage />;
+}
+
+type CustomerUsage = {
+  totals: { calls: number; ok: number } | null;
+  recent: Array<{ task: string; status: string; latency_ms: number | null; created_at: string }>;
+  quotaToday: { organization: { used: number; limit: number }; user: { used: number; limit: number } };
+  observedAt: string;
+  source: string;
+};
+const TASK_LABEL: Record<string, string> = { advisor_chat: "Asesor IA", content_draft: "Borrador de contenido", content_review: "Revisión de contenido", image: "Imagen", geo_sample: "Muestra GEO", brief: "Brief" };
+
+function CustomerAiPage() {
+  const { orgId = "" } = useParams();
+  const usage = useUsage(orgId);
+  const activity = useApi<CustomerUsage>(`/orgs/${orgId}/ai/usage`);
+  const ai = usage.data?.items.filter((i) => i.key.startsWith("ai_") || i.key === "credits_month") ?? [];
+  return (
+    <div className="space-y-6">
+      <PageHeader
+        eyebrow="IA DNI Growth"
+        title="Tu IA"
+        subtitle="La IA de DNI Growth trabaja con tus datos observados, nunca inventa métricas y no publica nada sin tu aprobación. Aquí ves lo que incluye tu plan y cuánto llevas usado."
+      />
+      {usage.error && <ErrorState error={usage.error} onRetry={usage.reload} />}
+      {usage.data ? <UsageMeters orgId={orgId} usage={{ ...usage.data, items: ai }} /> : <Skeleton className="h-40" />}
+      <Card title="Actividad reciente" subtitle={activity.data ? `${activity.data.totals?.ok ?? 0} respuestas en los últimos 30 días` : undefined}>
+        {activity.error ? (
+          <ErrorState error={activity.error} onRetry={activity.reload} />
+        ) : !activity.data ? (
+          <Skeleton className="h-24" />
+        ) : activity.data.recent.length === 0 ? (
+          <p className="text-sm text-mute">Todavía no has usado la IA. Prueba el Asesor IA o crea un borrador en Content Studio.</p>
+        ) : (
+          <ul className="divide-y divide-line text-sm">
+            {activity.data.recent.slice(0, 20).map((r, i) => (
+              <li key={i} className="flex items-center justify-between gap-3 py-2">
+                <span className="min-w-0 truncate">{TASK_LABEL[r.task] ?? r.task}</span>
+                <span className="shrink-0 text-xs text-mute">
+                  {r.status === "ok" ? "Respondida" : "Sin respuesta (no se cobró)"} · {timeAgo(r.created_at)}
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </Card>
+    </div>
+  );
+}
+
+function EngineHubPage() {
   const { orgId = "" } = useParams();
   const { me } = useAuth();
   const role = me?.memberships.find((m) => m.id === orgId)?.role ?? "";

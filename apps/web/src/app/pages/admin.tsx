@@ -1,6 +1,6 @@
 import { useState, type ReactNode } from "react";
 import { Link, Navigate, useSearchParams } from "react-router";
-import { Activity, ArrowLeft, Bot, Building2, CreditCard, Gauge, Moon, Search, ShieldCheck, Sun, Users } from "lucide-react";
+import { Activity, ArrowLeft, Bot, Building2, CreditCard, Gauge, Moon, ScrollText, Search, Server, ShieldCheck, Sun, Users } from "lucide-react";
 import { PLAN_LABEL, PLAN_ORDER, isPlanCode } from "@dni/core/plan-access";
 import { ApiError, fmtDate, post, timeAgo } from "../lib/api";
 import { useAuth } from "../lib/auth";
@@ -9,6 +9,7 @@ import { Logo } from "../shell";
 import { Badge, Button, Card, EmptyState, ErrorState, Input, Notice, Select, Skeleton, cx } from "../ui";
 import { AdminPanel, ProviderTests } from "./aihub";
 import { StripeAdminPanel } from "./org";
+import { AiCentre, AuditTab, OpsTab, OrgDrawer, PlatformGate, SecurityTab, StepUpProvider, useStepUp } from "./platform";
 
 /**
  * Platform console for the owner (Platform SuperAdmin). Every figure is read from D1 and labelled
@@ -21,7 +22,10 @@ const TABS = [
   { key: "users", label: "Usuarios", icon: Users },
   { key: "billing", label: "Facturación", icon: CreditCard },
   { key: "ai", label: "IA", icon: Bot },
+  { key: "ops", label: "Operaciones", icon: Server },
+  { key: "audit", label: "Auditoría", icon: ScrollText },
   { key: "activity", label: "Actividad", icon: Activity },
+  { key: "security", label: "Seguridad", icon: ShieldCheck },
 ] as const;
 type Tab = (typeof TABS)[number]["key"];
 
@@ -35,19 +39,21 @@ export function AdminConsolePage() {
   const { theme, toggle } = useTheme();
   const [params, setParams] = useSearchParams();
   const tab = (TABS.some((t) => t.key === params.get("tab")) ? params.get("tab") : "overview") as Tab;
-  if (me && !me.user?.isPlatformAdmin) return <Navigate to="/" replace />;
+  // Not platform staff at all: the console does not exist for them (the API answers 404 too).
+  if (me && !me.platform?.member) return <Navigate to="/" replace />;
   const back = me?.memberships[0] ? `/o/${me.memberships[0].id}` : "/";
+  const locked = !!me && !me.user?.isPlatformAdmin;
 
   return (
     <div className="min-h-full bg-bg">
-      <header className="sticky top-0 z-30 border-b border-line bg-bg/85 backdrop-blur">
+      <header className="sticky top-0 z-30 border-b border-line bg-bg pt-[env(safe-area-inset-top)]">
         <div className="mx-auto flex max-w-7xl items-center gap-3 px-4 py-3 sm:px-6 lg:px-10">
           <Link to={back} className="rounded-lg p-1.5 text-mute hover:bg-surface-2 hover:text-ink" aria-label="Volver a la aplicación">
             <ArrowLeft className="size-5" />
           </Link>
           <Logo />
           <span className="hidden items-center gap-1 rounded-full border border-line px-2.5 py-0.5 text-xs font-medium text-mute sm:inline-flex">
-            <ShieldCheck className="size-3.5 text-accent-text" aria-hidden /> Consola de plataforma
+            <ShieldCheck className="size-3.5 text-accent-text" aria-hidden /> Control Center
           </span>
           <span className="flex-1" />
           <span className="hidden truncate text-xs text-mute md:block">{me?.user?.email}</span>
@@ -73,12 +79,39 @@ export function AdminConsolePage() {
         </nav>
       </header>
       <main id="main" className="mx-auto w-full max-w-7xl px-4 py-6 sm:px-6 lg:px-10 lg:py-10">
+        {locked ? <PlatformGate /> : <StepUpProvider>
+        {me?.platform?.legacy && tab !== "security" && (
+          <div className="mb-5">
+            <Notice tone="warn" title="Acceso provisional">
+              Entras por la lista de administradores. Vincula tu cuenta con segundo factor en <button className="font-semibold text-accent-text underline" onClick={() => setParams({ tab: "security" })}>Seguridad</button> para poder suspender, borrar o cambiar planes y límites.
+            </Notice>
+          </div>
+        )}
         {tab === "overview" && <Overview onOpen={(t) => setParams({ tab: t })} />}
         {tab === "orgs" && <Organizations />}
         {tab === "users" && <UsersList />}
         {tab === "billing" && <BillingTab />}
         {tab === "ai" && <AiTab />}
+        {tab === "ops" && (
+          <>
+            <Title title="Operaciones" subtitle="Trabajos, correos y webhooks: solo estados y recuentos, nunca el contenido de los clientes." />
+            <OpsTab />
+          </>
+        )}
+        {tab === "audit" && (
+          <>
+            <Title title="Auditoría" subtitle="Quién hizo qué y cuándo. Los correos aparecen enmascarados." />
+            <AuditTab />
+          </>
+        )}
         {tab === "activity" && <ActivityTab />}
+        {tab === "security" && (
+          <>
+            <Title title="Seguridad" subtitle="Tu vinculación como propietaria y el segundo factor." />
+            <SecurityTab />
+          </>
+        )}
+        </StepUpProvider>}
       </main>
     </div>
   );
@@ -191,6 +224,7 @@ function Organizations() {
   const [query, setQuery] = useState("");
   const { data, error, reload } = useApi<any>(`/admin/organizations${query}`);
   const [editing, setEditing] = useState<string | null>(null);
+  const [managing, setManaging] = useState<string | null>(null);
   const search = (e: React.FormEvent) => {
     e.preventDefault();
     const p = new URLSearchParams();
@@ -236,6 +270,7 @@ function Organizations() {
                     {o.agency_name ? ` · cliente de ${o.agency_name}` : ""}
                   </p>
                 </div>
+                {o.deleted_at ? <Badge tone="danger">Eliminada</Badge> : o.status === "suspended" ? <Badge tone="warn">Suspendida</Badge> : null}
                 <Badge tone={o.plan_code === "free" ? "neutral" : "accent"}>{planName(o.plan_code)}</Badge>
                 {o.sub_provider && (
                   <Badge tone={o.sub_status === "active" ? "ok" : "warn"}>
@@ -251,6 +286,9 @@ function Organizations() {
                 <Stat k="Última actividad" v={o.last_activity ? timeAgo(o.last_activity) : "—"} />
               </dl>
               <div className="mt-3 flex flex-wrap gap-2">
+                <Button variant="primary" onClick={() => setManaging(o.id)}>
+                  Gestionar
+                </Button>
                 <Button onClick={() => setEditing(editing === o.id ? null : o.id)} disabled={o.sub_provider === "stripe" && ["active", "trialing", "past_due"].includes(o.sub_status)}>
                   {o.sub_provider === "stripe" && ["active", "trialing", "past_due"].includes(o.sub_status) ? "Plan gestionado por Stripe" : "Asignar plan interno"}
                 </Button>
@@ -269,6 +307,7 @@ function Organizations() {
         </ul>
       )}
       <Source observedAt={data?.observedAt} />
+      {managing && <OrgDrawer orgId={managing} onClose={() => setManaging(null)} onChanged={reload} />}
     </>
   );
 }
@@ -287,14 +326,16 @@ function AssignPlan({ org, onDone }: { org: any; onDone: () => void }) {
   const [reason, setReason] = useState("");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<ApiError | null>(null);
+  const stepUp = useStepUp();
   const save = async (e: React.FormEvent) => {
     e.preventDefault();
     setBusy(true);
     setErr(null);
     try {
-      await post(`/admin/organizations/${org.id}/plan`, { planCode: plan, reason });
+      await stepUp(() => post(`/admin/organizations/${org.id}/plan`, { planCode: plan, reason }));
       onDone();
     } catch (x) {
+      if (x instanceof ApiError && x.code === "step_up_cancelled") return;
       setErr(x instanceof ApiError ? x : new ApiError(0, "error", "No se pudo cambiar el plan."));
     } finally {
       setBusy(false);
@@ -413,6 +454,9 @@ function AiTab() {
     <>
       <Title title="Inteligencia artificial" subtitle="Proveedores gratuitos, topes diarios, interruptor de emergencia y uso por organización (últimos 7 días)." />
       <ErrorState error={error} onRetry={reload} />
+      <div className="mb-4">
+        <AiCentre />
+      </div>
       {!data ? (
         <Skeleton className="h-64 rounded-2xl" />
       ) : (

@@ -40,6 +40,8 @@ import { useApi, useTheme } from "./lib/hooks";
 import { cx, LegalLinks } from "./ui";
 import { MODULE_MIN_PLAN, PLAN_LABEL, menuShowsModule, requiredPlan } from "@dni/core/plan-access";
 import { AdminBypassNotice, PlanLockedPanel, usePlanAccess } from "./planaccess";
+import { UsageBanner } from "./usage";
+import { ShieldAlert, ShieldCheck } from "lucide-react";
 
 export const MODULES: Record<string, { label: string; phase: string; description: string }> = {
   "seo-tecnico": { label: "SEO técnico", phase: "F2", description: "Rastreos programados, histórico, hreflang, enlaces rotos y Core Web Vitals con datos de campo." },
@@ -65,7 +67,7 @@ function navFor(orgId: string): Array<{ section: string; items: NavItem[] }> {
   const o = `/o/${orgId}`;
   const i = (path: string, label: string, icon: typeof Gauge, end?: boolean): NavItem => ({ to: path ? `${o}/${path}` : o, label, icon, live: true, end, module: path });
   return [
-    { section: "Crecimiento", items: [i("", "Command Center", LayoutDashboard, true), i("analyze", "Nueva auditoría", Sparkles), i("advisor", "Asesor IA", MessageSquareText), i("ai-hub", "Centro de IA", Cpu), i("audits", "Auditoría web", FileSearch), i("brands", "Proyectos y marcas", Building2)] },
+    { section: "Crecimiento", items: [i("", "Command Center", LayoutDashboard, true), i("analyze", "Nueva auditoría", Sparkles), i("advisor", "Asesor IA", MessageSquareText), i("ai-hub", "Tu IA y consumo", Cpu), i("audits", "Auditoría web", FileSearch), i("brands", "Proyectos y marcas", Building2)] },
     { section: "Orgánico", items: [i("seo-tecnico", "SEO técnico", Gauge), i("search-console", "Search Console", TrendingUp), i("keywords", "Keywords y competencia", Search), i("ai-visibility", "AI Visibility (GEO)", Bot), i("content", "Content Studio", FileText), i("authority", "Backlinks / Authority", Link2)] },
     { section: "Creatividad y pago", items: [i("creative", "Creative Studio", Palette), i("video", "Video Studio", Film), i("ads", "Ads Manager", Megaphone), i("landings", "Landing Pages y tests A/B", LayoutTemplate)] },
     { section: "Ventas y datos", items: [i("crm", "CRM / Leads", Target), i("automations", "Automatizaciones", Workflow), i("attribution", "Atribución", FlaskConical), i("analytics", "Analytics (GA4)", BarChart3), i("reports", "Informes", FileBarChart), i("jobs", "AI Agent Center", Bot)] },
@@ -105,7 +107,21 @@ export function AppShell() {
   const loc = useLocation();
   const nav = useNavigate();
   useEffect(() => setOpen(false), [loc.pathname]);
+  // Mobile drawer: the page behind must not scroll or jump while it is open; Escape closes it.
+  useEffect(() => {
+    if (!open) return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && setOpen(false);
+    window.addEventListener("keydown", onKey);
+    return () => {
+      document.body.style.overflow = prev;
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
   const current = me?.memberships.find((m) => m.id === orgId);
+  const support = !current ? me?.supportAccess?.find((s) => s.id === orgId) : undefined;
+  const suspended = current?.status === "suspended";
   const access = usePlanAccess(orgId);
   // Module of the current page (first path segment after /o/:orgId) and whether this viewer may open it.
   const pageModule = loc.pathname.split("/")[3] ?? "";
@@ -133,7 +149,7 @@ export function AppShell() {
         <Link to={`/o/${orgId}`} aria-label={`${brand?.displayName ?? "DNI Growth"}, Command Center`} className="min-w-0">
           {brandMark}
         </Link>
-        <button className="rounded-lg p-1.5 text-mute hover:bg-surface-2 lg:hidden" onClick={() => setOpen(false)} aria-label="Cerrar menú">
+        <button className="-m-1.5 grid size-11 place-items-center rounded-lg text-mute hover:bg-surface-2 lg:hidden" onClick={() => setOpen(false)} aria-label="Cerrar menú">
           <X className="size-5" />
         </button>
       </div>
@@ -225,15 +241,15 @@ export function AppShell() {
             <LogOut className="size-4" />
           </button>
         </div>
-        {access.isAdmin && (
+        {(access.isAdmin || me?.platform?.member) && (
           <div className="mt-2 flex flex-col gap-1.5 rounded-lg border border-line px-2.5 py-2 text-xs">
             <Link to="/admin" className="font-medium text-accent-text hover:underline">
-              Panel de administración
+              Control Center del propietario
             </Link>
-            <label className="flex cursor-pointer items-center justify-between gap-2 text-mute">
+            {access.isAdmin && <label className="flex cursor-pointer items-center justify-between gap-2 text-mute">
               Ver como cliente
               <input type="checkbox" className="size-4 accent-[var(--accent)]" checked={access.viewAsClient} onChange={(e) => access.setViewAsClient(e.target.checked)} />
-            </label>
+            </label>}
           </div>
         )}
         <LegalLinks className="mt-2 px-1" />
@@ -242,27 +258,51 @@ export function AppShell() {
   );
 
   return (
-    <div className="min-h-full lg:grid lg:grid-cols-[272px_1fr] print:block" style={accentStyle}>
-      <aside className="sticky top-0 hidden h-screen border-r border-line bg-bg lg:block print:hidden">{sidebar}</aside>
+    <div className="min-h-full overflow-x-clip lg:grid lg:grid-cols-[272px_1fr] print:block" style={accentStyle}>
+      <aside className="sticky top-0 hidden h-dvh border-r border-line bg-bg lg:block print:hidden">{sidebar}</aside>
       {open && (
         <div className="fixed inset-0 z-40 lg:hidden">
           <div className="absolute inset-0 bg-black/50" onClick={() => setOpen(false)} aria-hidden />
-          <aside className="absolute inset-y-0 left-0 w-[84%] max-w-[300px] border-r border-line bg-bg">{sidebar}</aside>
+          <aside className="absolute inset-y-0 left-0 h-dvh w-[84%] max-w-[300px] overflow-hidden border-r border-line bg-bg pb-[env(safe-area-inset-bottom)]" role="dialog" aria-modal="true" aria-label="Menú">{sidebar}</aside>
         </div>
       )}
       <div className="min-w-0">
-        <header className="sticky top-0 z-20 flex items-center justify-between border-b border-line bg-bg/85 px-4 py-3 backdrop-blur lg:hidden print:hidden">
-          <button onClick={() => setOpen(true)} className="rounded-lg p-1.5 hover:bg-surface-2" aria-label="Abrir menú">
+        <header className="sticky top-0 z-20 flex items-center justify-between border-b border-line bg-bg px-4 pb-3 pt-[max(0.75rem,env(safe-area-inset-top))] lg:hidden print:hidden">
+          <button onClick={() => setOpen(true)} className="-m-1.5 grid size-11 place-items-center rounded-lg hover:bg-surface-2" aria-label="Abrir menú">
             <Menu className="size-5" />
           </button>
           {brandMark}
           <span className="w-8" />
         </header>
         <main id="main" className="mx-auto w-full max-w-7xl px-4 py-6 sm:px-6 lg:px-10 lg:py-10 print:max-w-none print:p-0">
-          {gated && !access.bypass ? (
+          {support && (
+            <div role="status" className="mb-5 flex flex-wrap items-center gap-3 rounded-2xl border border-info/30 bg-info/5 p-3 text-sm sm:p-4">
+              <ShieldCheck className="size-5 shrink-0 text-info" aria-hidden />
+              <p className="min-w-0 flex-1">
+                <span className="font-medium">Acceso de soporte de solo lectura</span>
+                <span className="text-mute"> · caduca {new Date(support.expires_at).toLocaleString("es-ES", { hour: "2-digit", minute: "2-digit", day: "numeric", month: "short" })}. Queda registrado en la auditoría de la organización.</span>
+              </p>
+              <Link to="/admin" className="text-xs font-semibold text-accent-text hover:underline">Volver al Control Center</Link>
+            </div>
+          )}
+          {suspended ? (
+            <div className="mx-auto max-w-xl rounded-3xl border border-line bg-surface p-8 text-center">
+              <ShieldAlert className="mx-auto size-10 text-warn" aria-hidden />
+              <h1 className="mt-4 font-serif text-4xl leading-none">Organización en pausa</h1>
+              <p className="mt-3 text-sm text-mute">
+                El acceso a «{current?.name}» está suspendido temporalmente. Tus datos se conservan intactos y nada se ha borrado. Escríbenos a soporte y la reactivaremos en cuanto esté resuelto.
+              </p>
+              {(me?.memberships.length ?? 0) > 1 && (
+                <Link to={`/o/${me!.memberships.find((m) => m.id !== orgId)!.id}`} className="mt-5 inline-flex min-h-10 items-center rounded-full border border-line px-4 text-sm font-semibold hover:bg-surface-2">
+                  Ir a otra organización
+                </Link>
+              )}
+            </div>
+          ) : gated && !access.bypass ? (
             <PlanLockedPanel orgId={orgId} module={pageModule} plan={access.plan} />
           ) : (
             <>
+              {!support && <UsageBanner orgId={orgId} />}
               {gated && <AdminBypassNotice module={pageModule} onViewAsClient={() => access.setViewAsClient(true)} />}
               <Outlet />
             </>

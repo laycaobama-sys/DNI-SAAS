@@ -1,14 +1,15 @@
-import { useState, type FormEvent } from "react";
-import { Link, Navigate, useParams, useSearchParams } from "react-router";
-import { Lock, Mail, UserMinus } from "lucide-react";
-import { ApiError, del, fmtDate, patch, post, timeAgo } from "../lib/api";
+import { useEffect, useState, type FormEvent } from "react";
+import { Link, Navigate, useLocation, useNavigate, useParams, useSearchParams } from "react-router";
+import { Lock, Mail, Trash2, UserMinus } from "lucide-react";
+import { api, ApiError, del, fmtDate, patch, post, timeAgo } from "../lib/api";
 import { useAuth } from "../lib/auth";
 import { useApi } from "../lib/hooks";
 import { MODULES } from "../shell";
-import { AI_DAILY_REQUESTS, PLAN_PITCH } from "@dni/core/plan-access";
+import { AI_DAILY_REQUESTS, AI_IMAGES_DAILY, AI_USER_DAILY_REQUESTS, PLAN_PITCH } from "@dni/core/plan-access";
+import { UsageMeters, useUsage } from "../usage";
 import { PlanModulesTable } from "../planaccess";
 import { Entitlements } from "./agency";
-import { Badge, Button, Card, EmptyState, ErrorState, Notice, PageHeader, Select, Spinner, TextField } from "../ui";
+import { Badge, Button, Card, EmptyState, ErrorState, Input, Notice, PageHeader, Select, Spinner, TextField } from "../ui";
 
 export const ROLE_LABELS: Record<string, string> = {
   owner: "Propietario",
@@ -167,7 +168,66 @@ export function TeamPage() {
           <Notice title="Solo lectura">Tu rol no permite invitar ni cambiar permisos.</Notice>
         )}
       </div>
+      {access.role === "owner" && <OrgSettings orgId={orgId!} />}
     </>
+  );
+}
+
+/** Owner-only: rename the organisation, or delete it with a 30-day undo (nothing is erased before). */
+function OrgSettings({ orgId }: { orgId: string }) {
+  const { me, refresh } = useAuth();
+  const nav = useNavigate();
+  const current = me?.memberships.find((m) => m.id === orgId);
+  const [name, setName] = useState(current?.name ?? "");
+  const [confirm, setConfirm] = useState("");
+  const [busy, setBusy] = useState<string | null>(null);
+  const [err, setErr] = useState<ApiError | null>(null);
+  const [ok, setOk] = useState<string | null>(null);
+  const run = async (key: string, fn: () => Promise<unknown>, done?: string) => {
+    setBusy(key);
+    setErr(null);
+    setOk(null);
+    try {
+      await fn();
+      if (done) setOk(done);
+    } catch (e) {
+      setErr(e as ApiError);
+    } finally {
+      setBusy(null);
+    }
+  };
+  const rename = (e: FormEvent) => (e.preventDefault(), run("rename", async () => (await patch(`/orgs/${orgId}`, { name: name.trim() }), await refresh()), "Nombre actualizado."));
+  const remove = () =>
+    run("delete", async () => {
+      await api(`/orgs/${orgId}`, { method: "DELETE", body: { confirmName: confirm } });
+      const m = await refresh();
+      nav(m?.memberships[0] ? `/o/${m.memberships[0].id}` : "/onboarding", { replace: true });
+    });
+  return (
+    <div className="mt-6 grid gap-6 lg:grid-cols-2">
+      <Card title="Datos de la organización">
+        <form onSubmit={rename} className="space-y-3">
+          <TextField label="Nombre" value={name} onChange={(e) => setName(e.target.value)} minLength={2} maxLength={120} required />
+          <Button type="submit" loading={busy === "rename"} disabled={name.trim().length < 2 || name.trim() === current?.name}>
+            Guardar nombre
+          </Button>
+        </form>
+        {ok && <div className="mt-3"><Notice tone="ok">{ok}</Notice></div>}
+      </Card>
+      <Card title="Eliminar organización" subtitle="Puedes deshacerlo durante 30 días desde «Organizaciones eliminadas».">
+        <p className="text-sm text-mute">
+          Todo el equipo pierde el acceso y las landings y formularios públicos dejan de funcionar. No se borra ningún dato hasta pasados 30 días. Si tienes una suscripción de pago, cancélala antes.
+        </p>
+        <label className="mt-3 block text-sm">
+          <span className="mb-1 block">Escribe «{current?.name}» para confirmar</span>
+          <Input value={confirm} onChange={(e) => setConfirm(e.target.value)} placeholder={current?.name} />
+        </label>
+        <Button variant="danger" className="mt-3" loading={busy === "delete"} disabled={confirm.trim() !== current?.name?.trim()} onClick={remove}>
+          <Trash2 className="size-4" aria-hidden /> Eliminar organización
+        </Button>
+      </Card>
+      {err && <div className="lg:col-span-2"><ErrorState error={err} /></div>}
+    </div>
   );
 }
 
@@ -251,9 +311,16 @@ export function BillingPage() {
   const [params] = useSearchParams();
   const access = useOrgAccess(orgId);
   const { data, error, loading, reload } = useApi<any>(`/orgs/${orgId}/billing`);
+  const { data: usage } = useUsage(orgId);
   const [err, setErr] = useState<ApiError | null>(null);
   const [busyPlan, setBusyPlan] = useState<string | null>(null);
   const { me } = useAuth();
+  const { hash } = useLocation();
+  // Deep links from warnings («#uso», «#planes») scroll once the content exists.
+  useEffect(() => {
+    if (!hash || !data) return;
+    document.getElementById(hash.slice(1))?.scrollIntoView({ block: "start" });
+  }, [hash, data, usage]);
   if (loading && !data) return <Spinner />;
   if (error) return <ErrorState error={error} onRetry={reload} />;
 
@@ -287,7 +354,7 @@ export function BillingPage() {
 
   return (
     <>
-      <PageHeader eyebrow="Organización" title="Facturación y créditos" subtitle="Cuota del software y créditos de uso separados. Cada consumo queda registrado en un libro contable inmutable." />
+      <PageHeader eyebrow="Organización" title="Plan, límites y créditos" subtitle="Lo que incluye tu plan, cuánto llevas usado hoy y este mes, y cuándo se renueva. Cada consumo queda registrado." />
       <div className="mb-4 space-y-3">
         {params.get("checkout") === "success" && <Notice tone="ok">Pago recibido por Stripe. El plan se activa cuando llega la confirmación firmada (normalmente en segundos).</Notice>}
         {params.get("checkout") === "cancel" && <Notice tone="warn">Pago cancelado. No se ha realizado ningún cargo.</Notice>}
@@ -337,6 +404,15 @@ export function BillingPage() {
         </div>
       </div>
 
+      {usage && (
+        <section id="uso" className="mb-8 scroll-mt-20" aria-labelledby="uso-title">
+          <h2 id="uso-title" className="mb-1 font-serif text-2xl">Tu uso</h2>
+          <p className="mb-3 text-sm text-mute">Te avisamos al llegar al 75 % y al 90 % de cada límite. Al agotarse, la acción se detiene sin cobrar nada.</p>
+          <UsageMeters orgId={orgId!} usage={usage} />
+        </section>
+      )}
+
+      <h2 id="planes" className="mb-3 scroll-mt-20 font-serif text-2xl">Planes</h2>
       <div className="mb-6 grid gap-4 md:grid-cols-2 xl:grid-cols-5">
         {data.plans.map((p: any) => {
           const l = JSON.parse(p.limits_json);
@@ -362,7 +438,8 @@ export function BillingPage() {
                 {l.videoProjects !== undefined && <li>{l.videoProjects} proyectos de vídeo</li>}
                 {l.trackedPrompts !== undefined && <li>{l.trackedPrompts} preguntas GEO</li>}
                 {l.clientOrgs ? <li>{l.clientOrgs} clientes (agencia) y marca blanca</li> : null}
-                <li>{AI_DAILY_REQUESTS[p.code as keyof typeof AI_DAILY_REQUESTS] ?? 10} peticiones de IA al día</li>
+                <li>{AI_DAILY_REQUESTS[p.code as keyof typeof AI_DAILY_REQUESTS] ?? 10} consultas de IA al día ({AI_USER_DAILY_REQUESTS[p.code as keyof typeof AI_USER_DAILY_REQUESTS] ?? 10} por persona)</li>
+                {(AI_IMAGES_DAILY[p.code as keyof typeof AI_IMAGES_DAILY] ?? 0) > 0 && <li>{AI_IMAGES_DAILY[p.code as keyof typeof AI_IMAGES_DAILY]} imágenes con IA al día</li>}
               </ul>
               <p className="mt-3 text-xs leading-snug">{PLAN_PITCH[p.code as keyof typeof PLAN_PITCH] ?? ""}</p>
               {!current && p.price_eur_month > 0 && !stripeSub && (

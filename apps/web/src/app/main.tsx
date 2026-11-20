@@ -52,7 +52,8 @@ function Home() {
 function OrgGuard() {
   const { orgId } = useParams();
   const { me } = useAuth();
-  if (!me?.memberships.some((m) => m.id === orgId)) return <NotFoundPage />;
+  // Members, or platform staff with an active (read-only, audited) support grant.
+  if (!me?.memberships.some((m) => m.id === orgId) && !me?.supportAccess?.some((s) => s.id === orgId)) return <NotFoundPage />;
   return <Outlet />;
 }
 

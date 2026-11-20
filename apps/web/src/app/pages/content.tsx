@@ -292,7 +292,7 @@ export function ContentDetailPage() {
       />
       <Notice tone={it.status === "approved" ? "ok" : "info"} title={it.status === "approved" ? `Aprobado ${fmtDate(it.approvedAt)}` : "Borrador generado por IA"}>
         {it.status === "approved" ? "Aprobado por una persona del equipo. Si lo editas, vuelve a borrador." : it.measurement}
-        {it.provider && ` Generado con ${it.provider === "openrouter" ? "OpenRouter (modelo gratuito)" : it.provider === "workers_ai" ? "Workers AI" : it.provider}${it.model ? ` · ${it.model}` : ""}.`}
+        {it.provider && " Generado con IA DNI Growth."}
       </Notice>
       {it.reviewNote && it.status === "draft" && (
         <Notice tone="warn" title="Cambios solicitados">

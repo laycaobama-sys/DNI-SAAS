@@ -51,8 +51,50 @@ export function OnboardingPage() {
             Continuar <ArrowRight className="size-4" />
           </Button>
         </form>
+        {!!me?.deletedOrganizations?.length && <DeletedOrganizations />}
       </div>
     </div>
+  );
+}
+
+/** Organisations the owner deleted in the last 30 days: one click brings them back with all their data. */
+function DeletedOrganizations() {
+  const { me, refresh } = useAuth();
+  const nav = useNavigate();
+  const [busy, setBusy] = useState<string | null>(null);
+  const [error, setError] = useState<ApiError | null>(null);
+  const restore = async (id: string) => {
+    setBusy(id);
+    setError(null);
+    try {
+      await post(`/orgs/${id}/restore`);
+      await refresh();
+      nav(`/o/${id}`);
+    } catch (e) {
+      setError(e as ApiError);
+    } finally {
+      setBusy(null);
+    }
+  };
+  return (
+    <section className="mt-10" aria-labelledby="deleted-orgs">
+      <h2 id="deleted-orgs" className="text-sm font-semibold">Organizaciones eliminadas</h2>
+      <p className="mt-1 text-xs text-mute">Puedes restaurarlas con todos sus datos hasta la fecha indicada.</p>
+      <ul className="mt-3 divide-y divide-line rounded-2xl border border-line">
+        {me!.deletedOrganizations!.map((o) => (
+          <li key={o.id} className="flex flex-wrap items-center gap-3 px-4 py-3 text-sm">
+            <span className="min-w-0 flex-1 truncate font-medium">{o.name}</span>
+            <span className="text-xs text-mute">hasta el {new Date(o.purge_after).toLocaleDateString("es-ES", { day: "numeric", month: "long" })}</span>
+            <Button loading={busy === o.id} onClick={() => restore(o.id)}>
+              Restaurar
+            </Button>
+          </li>
+        ))}
+      </ul>
+      <div className="mt-2">
+        <ErrorState error={error} />
+      </div>
+    </section>
   );
 }
 

@@ -1,5 +1,6 @@
 import { useId, useState, type ButtonHTMLAttributes, type InputHTMLAttributes, type ReactNode, type SelectHTMLAttributes, type TextareaHTMLAttributes } from "react";
-import { AlertTriangle, CheckCircle2, Info, Loader2, Lock } from "lucide-react";
+import { AlertTriangle, CheckCircle2, Info, Loader2, Lock, Sparkles } from "lucide-react";
+import { Link, useParams } from "react-router";
 import type { ApiError } from "./lib/api";
 
 const cx = (...c: Array<string | false | null | undefined>) => c.filter(Boolean).join(" ");
@@ -139,14 +140,32 @@ export function Skeleton({ className }: { className?: string }) {
   return <div className={cx("skeleton h-4", className)} aria-hidden />;
 }
 
+/** Errors that a better plan solves: they get a «mejorar plan» call to action instead of a dead end. */
+const UPGRADE_CODES = new Set(["plan_required", "plan_limit", "ai_plan_daily_limit", "ai_user_daily_limit", "ai_images_daily_limit", "insufficient_credits"]);
+const PLAN_NAME: Record<string, string> = { free: "Gratis", starter: "Starter", growth: "Growth", pro: "Pro", agency: "Agency" };
+
+export function UpgradeLink({ error, className }: { error: ApiError | null; className?: string }) {
+  const { orgId } = useParams();
+  if (!error || !orgId || !UPGRADE_CODES.has(error.code)) return null;
+  const target = (error.data.upgradePlan ?? error.data.requiredPlan) as string | undefined;
+  return (
+    <Link to={`/o/${orgId}/billing#planes`} className={cx("inline-flex min-h-9 items-center gap-1.5 rounded-full bg-accent px-3.5 text-xs font-semibold text-accent-ink", className)}>
+      <Sparkles className="size-3.5" aria-hidden />
+      {target && PLAN_NAME[target] ? `Pasar a ${PLAN_NAME[target]}` : error.code === "insufficient_credits" ? "Conseguir más créditos" : "Ver planes"}
+    </Link>
+  );
+}
+
 export function ErrorState({ error, onRetry }: { error: ApiError | null; onRetry?: () => void }) {
   if (!error) return null;
+  const upgrade = UPGRADE_CODES.has(error.code);
   return (
-    <div role="alert" className="flex flex-wrap items-start gap-3 rounded-2xl border border-danger/30 bg-danger/5 p-4 text-sm">
-      <AlertTriangle className="mt-0.5 size-4 shrink-0 text-danger" aria-hidden />
-      <div className="flex-1">
+    <div role="alert" className={cx("flex flex-wrap items-start gap-3 rounded-2xl border p-4 text-sm", upgrade ? "border-warn/30 bg-warn/5" : "border-danger/30 bg-danger/5")}>
+      <AlertTriangle className={cx("mt-0.5 size-4 shrink-0", upgrade ? "text-warn" : "text-danger")} aria-hidden />
+      <div className="min-w-0 flex-1">
         <p className="font-medium">{error.message}</p>
         {error.status === 404 && <p className="text-mute">Puede que no exista o que no tengas acceso.</p>}
+        <UpgradeLink error={error} className="mt-3" />
       </div>
       {onRetry && (
         <Button variant="ghost" onClick={onRetry}>

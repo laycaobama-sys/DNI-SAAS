@@ -66,17 +66,17 @@ type Visibility = {
 };
 const STOP_REASON: Record<string, string> = {
   daily_cap: "se alcanzó el tope diario gratuito; el resto se muestreará otro día",
-  gemini_quota: "Gemini indicó que se agotó la cuota gratuita por ahora",
+  gemini_quota: "Gemini no admite más preguntas por ahora; el resto se muestreará otro día",
   gemini_unavailable: "Gemini no estaba respondiendo (servicio saturado); el resto se muestreará en la próxima ejecución",
-  gemini_grounding_unavailable: "la búsqueda de Google no está disponible para esta clave",
+  gemini_grounding_unavailable: "la búsqueda web no está disponible ahora mismo",
 };
 const FAIL: Record<string, string> = {
-  gemini_403: "Gemini rechazó la clave (403).",
-  gemini_401: "Gemini rechazó la clave (401).",
-  gemini_grounding_unavailable: "La búsqueda de Google no está disponible en el nivel gratuito de esta clave; no se ha muestreado nada.",
-  gemini_model_unavailable: "Google no ofrece este modelo a esta clave (404); no se ha muestreado nada.",
+  gemini_403: "El muestreo en Gemini no está disponible ahora mismo; no se ha muestreado nada.",
+  gemini_401: "El muestreo en Gemini no está disponible ahora mismo; no se ha muestreado nada.",
+  gemini_grounding_unavailable: "La búsqueda web no está disponible ahora mismo; no se ha muestreado nada.",
+  gemini_model_unavailable: "El muestreo en Gemini no está disponible ahora mismo; no se ha muestreado nada.",
   geo_no_prompts: "No había preguntas activas para Gemini.",
-  gemini_not_configured: "El muestreo con Gemini no está configurado.",
+  gemini_not_configured: "El muestreo en Gemini todavía no está activado.",
 };
 const pctFmt = (v: number | null) => (v === null ? "—" : `${Math.round(v * 100)} %`);
 type Interval = { low: number; high: number };
@@ -169,7 +169,7 @@ function Recommendations({ orgId, base, brandId, refreshKey }: { orgId: string; 
                         <ul className="list-disc pl-5">
                           {x.evidence.map((e) => (
                             <li key={e.sampleId}>
-                              «{e.question}» · {fmtDate(e.sampledAt)} · {e.model} · {e.grounded ? "con búsqueda" : "sin búsqueda"} · marca {e.mentioned ? "mencionada" : "no mencionada"}
+                              «{e.question}» · {fmtDate(e.sampledAt)} · {e.grounded ? "con búsqueda" : "sin búsqueda"} · marca {e.mentioned ? "mencionada" : "no mencionada"}
                               {e.competitorsMentioned.length > 0 && ` · aparecen: ${e.competitorsMentioned.join(", ")}`}
                             </li>
                           ))}
@@ -559,7 +559,7 @@ function AddPrompts({ base, data, onDone }: { base: string; data: Library; onDon
   return (
     <Card title="Añadir preguntas" subtitle="Una pregunta por línea. Se crea una fila por cada motor elegido.">
       <form onSubmit={submit} className="space-y-4">
-        <Field label="Preguntas" htmlFor="geo-q" hint={`${lines.length} pregunta(s) × ${form.engines.length} motor(es) = ${rows} fila(s). Máximo 50 por envío; entre 8 y 300 caracteres. No incluyas datos personales: las preguntas de Gemini se envían a Google (nivel gratuito).`}>
+        <Field label="Preguntas" htmlFor="geo-q" hint={`${lines.length} pregunta(s) × ${form.engines.length} motor(es) = ${rows} fila(s). Máximo 50 por envío; entre 8 y 300 caracteres. No incluyas datos personales: las preguntas se envían a Gemini (Google) para medir cómo responde.`}>
           <Textarea id="geo-q" value={form.text} onChange={(e) => setForm({ ...form, text: e.target.value })} placeholder={"¿Cuál es el mejor software de SEO para pymes en España?\n¿Qué herramientas ayudan a aparecer en respuestas de IA?"} rows={4} />
         </Field>
         <fieldset>
@@ -696,7 +696,7 @@ function Monitor({ base, data, canWrite, reload }: { base: string; data: Library
   return (
     <Card
       title="Visibilidad observada en Gemini"
-      subtitle={`Muestras reales por la API oficial · ${smp.model}${smp.fallbackModel ? ` (respaldo: ${smp.fallbackModel})` : ""} · nivel gratuito`}
+      subtitle="Muestras reales por la API oficial: así responde Gemini a tus preguntas, con fecha y fuentes."
       actions={
         canWrite ? (
           <Button variant="primary" loading={busy || running} disabled={!geminiActive || left === 0 || smp.platformExhausted} onClick={start}>
@@ -718,7 +718,7 @@ function Monitor({ base, data, canWrite, reload }: { base: string; data: Library
               <>
                 Última ejecución {timeAgo(smp.lastJob.finishedAt)}: {out.ok} respuesta(s) correcta(s){out.errors ? `, ${out.errors} con error` : ""}; la marca aparece en {out.mentioned}.
                 {out.stoppedReason ? ` Se detuvo antes porque ${STOP_REASON[out.stoppedReason] ?? out.stoppedReason}.` : ""}
-                {out.grounded === false ? " Sin búsqueda de Google: el nivel gratuito no la incluye para este modelo, así que las respuestas reflejan el conocimiento del modelo y no traen fuentes." : ""}
+                {out.grounded === false ? " Sin búsqueda web: las respuestas reflejan lo que el asistente ya sabe y no traen fuentes." : ""}
               </>
             ) : (
               <span className="text-danger">Última ejecución sin muestras: {FAIL[smp.lastJob.failureCode ?? ""] ?? smp.lastJob.failureCode ?? smp.lastJob.state}</span>
@@ -746,7 +746,7 @@ function Monitor({ base, data, canWrite, reload }: { base: string; data: Library
                 {v.groundedSamples === 0 ? (
                   <>
                     <p className="text-2xl font-semibold">—</p>
-                    <p className="text-xs text-mute">Sin fuentes: ninguna muestra usó la búsqueda de Google (no incluida en el nivel gratuito de este modelo).</p>
+                    <p className="text-xs text-mute">Sin fuentes: ninguna muestra usó la búsqueda web.</p>
                   </>
                 ) : (
                   <>
@@ -836,9 +836,9 @@ type SampleFull = {
 const SAMPLE_ERROR: Record<string, string> = {
   gemini_503: "Gemini estaba saturado (503)",
   gemini_500: "error interno de Gemini (500)",
-  gemini_quota: "cuota gratuita de Gemini agotada por ahora",
+  gemini_quota: "Gemini no admite más preguntas por ahora",
   gemini_network: "no se pudo contactar con Gemini",
-  gemini_model_unavailable: "modelo no disponible para esta clave (404)",
+  gemini_model_unavailable: "Gemini no estaba disponible",
 };
 function sampleErrorLabel(x: { status: string; error_code: string | null }) {
   if (x.status === "blocked") return "Gemini no respondió (bloqueo de seguridad)";
@@ -864,8 +864,7 @@ function SampleDetail({ base, promptId }: { base: string; promptId: string }) {
         </p>
       )}
       <p className="text-xs text-mute">
-        {fmtDate(s.sampled_at)} · {s.model}
-        {s.model_version ? ` (${s.model_version})` : ""} · {s.grounded ? "con búsqueda de Google" : "sin búsqueda"}
+        {fmtDate(s.sampled_at)} · Gemini · {s.grounded ? "con búsqueda web" : "sin búsqueda"}
         {s.latency_ms ? ` · ${(s.latency_ms / 1000).toFixed(1)} s` : ""}
       </p>
       {s.status === "ok" ? (

@@ -5,34 +5,31 @@ import { ApiError, post, timeAgo } from "../lib/api";
 import { useApi } from "../lib/hooks";
 import { Badge, Button, Card, EmptyState, ErrorState, Notice, PageHeader, Skeleton, cx } from "../ui";
 
+/** Customers get «IA DNI Growth» availability only; platform staff get the full engine status. */
 type AiStatus = {
-  workersAi: boolean;
-  openRouter: boolean;
-  gemini: boolean;
-  groq?: boolean;
+  available?: boolean;
+  capacityReached?: boolean;
   images: boolean;
-  dailyBudgetUsd: number;
-  spentTodayUsd: number;
-  budgetExhausted: boolean;
-  neuronsToday?: number;
-  neuronsDailyCap?: number;
   resetsAt?: string;
+  workersAi?: boolean;
+  openRouter?: boolean;
+  gemini?: boolean;
+  groq?: boolean;
+  budgetExhausted?: boolean;
 };
 type Msg = { id: string; role: "user" | "assistant"; content: string; provider?: string | null; model?: string | null; servedModel?: string | null; fallback?: boolean; cached?: boolean; credits?: number; created_at?: string };
 
-const PROVIDER_LABEL: Record<string, string> = { workers_ai: "Cloudflare Workers AI", openrouter: "OpenRouter (modelo gratuito)", gemini: "Gemini (nivel gratuito)", groq: "Groq (nivel gratuito)" };
-
 function StatusNotice({ s }: { s: AiStatus | null }) {
   if (!s) return null;
-  if (!s.workersAi && !s.openRouter && !s.gemini && !s.groq) return <Notice tone="warn" title="IA no disponible">No hay ningún proveedor de IA activo en este entorno.</Notice>;
-  if (s.budgetExhausted && !s.openRouter && !s.gemini && !s.groq)
+  const available = s.available ?? (s.workersAi || s.openRouter || s.gemini || s.groq);
+  const capacity = s.capacityReached ?? (s.budgetExhausted && !s.openRouter && !s.gemini && !s.groq);
+  if (!available) return <Notice tone="warn" title="IA no disponible">IA DNI Growth no está disponible en este momento. Inténtalo de nuevo en unos minutos.</Notice>;
+  if (capacity)
     return (
-      <Notice tone="warn" title="Cupo gratuito diario agotado">
-        Hoy se ha agotado el cupo gratuito de IA de la plataforma. Se renueva cada día a las {s.resetsAt ?? "00:00 UTC"} (01:00 en España peninsular en invierno). No se cobra nada.
+      <Notice tone="warn" title="Capacidad de hoy alcanzada">
+        IA DNI Growth ha alcanzado su capacidad de hoy. Se renueva a las {s.resetsAt ?? "00:00 UTC"} (01:00 en España peninsular en invierno). No se cobra nada.
       </Notice>
     );
-  if (s.budgetExhausted)
-    return <Notice tone="info" title="Respaldo gratuito activo">El cupo diario de Cloudflare se ha agotado; responden los proveedores gratuitos de respaldo hasta que se renueve a las {s.resetsAt ?? "00:00 UTC"}.</Notice>;
   return null;
 }
 
@@ -178,9 +175,7 @@ export function AdvisorPage() {
                   {m.role === "assistant" ? <Answer text={m.content} /> : <p className="whitespace-pre-wrap text-sm">{m.content}</p>}
                   {m.role === "assistant" && m.provider && (
                     <p className="mt-2 text-[11px] text-mute">
-                      Generado por IA · {PROVIDER_LABEL[m.provider] ?? m.provider}
-                      {(m.servedModel ?? m.model) && <> · <span className="font-mono">{m.servedModel ?? m.model}</span></>}
-                      {m.fallback && " · respaldo automático"}
+                      Generado por IA DNI Growth
                       {m.cached && " · respuesta reutilizada (sin gastar cupo)"} · revisa antes de aplicar
                     </p>
                   )}
@@ -303,7 +298,7 @@ export function CreativePage() {
               <div className="space-y-2 p-4">
                 <p className="line-clamp-2 text-sm">{im.prompt}</p>
                 <div className="flex flex-wrap items-center justify-between gap-2">
-                  <Badge>{PROVIDER_LABEL[im.provider] ?? im.provider}</Badge>
+                  <Badge>IA DNI Growth</Badge>
                   <a href={fileUrl(im.id)} download className="inline-flex min-h-10 items-center gap-1 text-sm text-accent-text hover:underline">
                     <Download className="size-4" aria-hidden /> Descargar
                   </a>
