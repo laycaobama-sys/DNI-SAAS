@@ -20,7 +20,7 @@ import {
 } from "../lib/openrouter";
 import { rateLimit } from "../lib/ratelimit";
 import { addSeconds, nowIso, uuid } from "../lib/util";
-import { requirePlatformAdmin, requireUser } from "../middleware";
+import { requirePlatform, requirePlatformAdmin, requireStepUp, requireUser } from "../middleware";
 import { billingAccess, ensureWebhookEndpoint, getSetting, StripeApiError, stripeMode, syncStripeCatalog, webhookSecrets } from "../lib/stripe";
 import { providerStatus } from "./aihub";
 
@@ -249,7 +249,7 @@ const likeOf = (q: string | undefined) => (q ? `%${q.replace(/[%_]/g, "")}%` : n
 admin.get("/organizations", async (c) => {
   const { q, plan } = ListQuery.parse({ q: c.req.query("q") || undefined, plan: c.req.query("plan") || undefined });
   const { results } = await c.env.DB.prepare(
-    `SELECT o.id, o.name, o.slug, o.plan_code, o.created_at, o.agency_org_id, a.name AS agency_name,
+    `SELECT o.id, o.name, o.slug, o.plan_code, o.status, o.deleted_at, o.purge_after, o.created_at, o.agency_org_id, a.name AS agency_name,
             (SELECT COUNT(*) FROM memberships m WHERE m.organization_id = o.id AND m.status = 'active') AS members,
             (SELECT COUNT(*) FROM brands b WHERE b.organization_id = o.id) AS brands,
             (SELECT COUNT(*) FROM leads l WHERE l.organization_id = o.id) AS leads,
@@ -282,7 +282,7 @@ admin.get("/users", async (c) => {
  * Internal plan (no charge): for the owner's own organisations, partners or support. Refused when the
  * organisation pays through Stripe, so a manual change can never contradict a real subscription.
  */
-admin.post("/organizations/:id/plan", async (c) => {
+admin.post("/organizations/:id/plan", requirePlatform("platform:billing:manage"), requireStepUp, async (c) => {
   const user = c.get("user")!;
   const orgId = c.req.param("id");
   const { planCode, reason } = await parseBody(c, z.strictObject({ planCode: z.enum(["free", "starter", "growth", "pro", "agency"]), reason: z.string().trim().min(3).max(200) }));

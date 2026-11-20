@@ -4,10 +4,13 @@ import { bodyLimit } from "hono/body-limit";
 import type { AppEnv, Deps } from "./env";
 import { ApiError, problem } from "./lib/http";
 import { log } from "./lib/util";
-import { csrf, requestId, requireMembership, requirePlanModule, requireScope, requireUser, securityHeaders, session } from "./middleware";
+import { aiPrivacy, csrf, requestId, requireMembership, requirePlanModule, requireScope, requireUser, securityHeaders, session } from "./middleware";
 import { admin } from "./routes/admin";
+import { control } from "./routes/control";
+import { platform } from "./routes/platform";
 import { ai } from "./routes/ai";
 import { aihub } from "./routes/aihub";
+import { usage } from "./routes/usage";
 import { content } from "./routes/content";
 import { crm, crmPublic } from "./routes/crm";
 import { landings, servePublicLanding } from "./routes/landings";
@@ -81,13 +84,14 @@ export function createApp(deps: Deps) {
 
   // Every tenant route: authenticated user + active membership resolved from the path.
   const tenant = new Hono<AppEnv>();
-  tenant.use("*", requireUser, requireMembership, requirePlanModule);
+  tenant.use("*", requireUser, requireMembership, requirePlanModule, aiPrivacy);
   tenant.route("/", org);
   tenant.route("/", work);
   tenant.route("/", insights);
   tenant.route("/", billing);
   tenant.route("/", ai);
   tenant.route("/", aihub);
+  tenant.route("/", usage);
   tenant.route("/", content);
   tenant.route("/", searchConsole);
   tenant.route("/", analytics);
@@ -118,7 +122,9 @@ export function createApp(deps: Deps) {
     return c.json({ items });
   });
   app.route("/api/v1/orgs/:orgId", tenant);
+  app.route("/api/v1/admin", control);
   app.route("/api/v1/admin", admin);
+  app.route("/api/v1/platform", platform);
 
   // Development-only mailbox to complete email flows locally. 404 in every other environment.
   app.get("/api/v1/dev/mailbox", async (c) => {

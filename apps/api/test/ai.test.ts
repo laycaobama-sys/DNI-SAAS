@@ -54,7 +54,10 @@ describe("AI advisor", () => {
     const before = await balance(owner, orgId);
     const r = await owner.post(`/api/v1/orgs/${orgId}/advisor`, { question: "¿Qué arreglo primero en mi web?" });
     expect(r.status).toBe(200);
-    expect(r.json.message).toMatchObject({ content: "Respuesta del asesor.", provider: "workers_ai", model: "@cf/google/gemma-4-26b-a4b-it", credits: 1 });
+    expect(r.json.message).toMatchObject({ content: "Respuesta del asesor.", provider: "dni_ai", credits: 1 });
+    // «IA DNI Growth»: the customer never sees the model behind the answer.
+    expect(r.json.message.model).toBeUndefined();
+    expect(JSON.stringify(r.json)).not.toMatch(/gemma|@cf\/|workers_ai/);
     expect(await balance(owner, orgId)).toBe(before - 1);
     const conv = await owner.get(`/api/v1/orgs/${orgId}/advisor/conversations/${r.json.conversationId}`);
     expect(conv.json.messages.map((m: { role: string }) => m.role)).toEqual(["user", "assistant"]);
@@ -67,7 +70,7 @@ describe("AI advisor", () => {
   it("falls back to the next Workers AI model when one fails", async () => {
     const { owner, orgId, aiBinding } = await setup({ failModels: ["@cf/google/gemma-4-26b-a4b-it"] });
     const r = await owner.post(`/api/v1/orgs/${orgId}/advisor`, { question: "Hola asesor" });
-    expect(r.json.message.model).toBe("@cf/zai-org/glm-4.7-flash");
+    expect(r.status).toBe(200);
     expect(aiBinding.calls).toEqual(["@cf/google/gemma-4-26b-a4b-it", "@cf/zai-org/glm-4.7-flash"]);
   });
 
@@ -88,29 +91,72 @@ describe("AI advisor", () => {
     const r = await owner.post(`/api/v1/orgs/${orgId}/advisor`, { question: "Hola" });
     expect(r.status).toBe(503);
     expect(r.json.code).toBe("ai_daily_quota");
-    expect(r.json.title).toMatch(/cupo gratuito diario de IA.*00:00 UTC.*No se ha cobrado/);
+    expect(r.json.title).toMatch(/IA DNI Growth.*00:00 UTC.*No se ha cobrado/);
     expect(aiBinding.calls).toHaveLength(0);
     const st = await owner.get(`/api/v1/orgs/${orgId}/ai/status`);
-    expect(st.json).toMatchObject({ workersAi: true, openRouter: false, gemini: false, budgetExhausted: true });
+    expect(st.json).toEqual({ engine: "IA DNI Growth", available: true, images: true, capacityReached: true, resetsAt: "00:00 UTC" });
   });
 
   it("fair use per plan: the free plan stops at its daily AI requests without charging credits", async () => {
     const { h, owner, orgId, aiBinding } = await setup();
-    const today = new Date().toISOString();
-    // Test data: 10 successful calls already today (the free plan's daily allowance).
-    for (let i = 0; i < 10; i++)
-      await h.db
-        .prepare("INSERT INTO ai_invocations (id, organization_id, request_ref, task, strategy, provider, model, status, cost_state, is_fallback, created_at) VALUES (?, ?, ?, 'advisor_chat', 'automatic_free', 'workers_ai', 'm', 'ok', 'zero_expected', 0, ?)")
-        .bind(`inv-${i}`, orgId, `ref-${i}`, today)
-        .run();
+    // Test data: the organisation's counter already shows the free plan's 10 requests today.
+    await h.db.prepare("INSERT INTO ai_quota_counters (scope, window_key, count) VALUES (?, ?, 10)").bind(`plan:org:${orgId}`, new Date().toISOString().slice(0, 10)).run();
     const before = await balance(owner, orgId);
     const r = await owner.post(`/api/v1/orgs/${orgId}/advisor`, { question: "¿Qué hago hoy?" });
     expect(r.status).toBe(429);
-    expect(r.json).toMatchObject({ code: "ai_plan_daily_limit", limit: 10, plan: "free" });
+    expect(r.json).toMatchObject({ code: "ai_plan_daily_limit", limit: 10, plan: "free", upgradePlan: "starter", upgradeLimit: 60 });
+    expect(r.json.title).toMatch(/plan Starter tendrías 60/);
     expect(aiBinding.calls).toHaveLength(0);
     expect(await balance(owner, orgId)).toBe(before);
     await h.db.prepare("UPDATE organizations SET plan_code = 'starter' WHERE id = ?").bind(orgId).run();
     expect((await owner.post(`/api/v1/orgs/${orgId}/advisor`, { question: "¿Qué hago hoy?" })).status).toBe(200);
+  });
+
+  it("each person has a daily cap inside the organisation's; nothing is charged and teammates keep theirs", async () => {
+    const { h, owner, orgId, aiBinding } = await setup(undefined, "growth");
+    const me = await h.db.prepare("SELECT id FROM users WHERE email = 'owner@luna.es'").first<{ id: string }>();
+    await h.db.prepare("INSERT INTO ai_quota_counters (scope, window_key, count) VALUES (?, ?, 60)").bind(`plan:user:${orgId}:${me!.id}`, new Date().toISOString().slice(0, 10)).run();
+    const r = await owner.post(`/api/v1/orgs/${orgId}/advisor`, { question: "¿Y ahora?" });
+    expect(r.status).toBe(429);
+    expect(r.json).toMatchObject({ code: "ai_user_daily_limit", limit: 60, plan: "growth", upgradePlan: "pro", upgradeLimit: 100 });
+    expect(aiBinding.calls).toHaveLength(0);
+    const mate = await h.invite(owner, orgId, "mate@luna.es", "marketing_manager");
+    expect((await mate.post(`/api/v1/orgs/${orgId}/advisor`, { question: "¿Y ahora?" })).status).toBe(200);
+  });
+
+  it("a failed answer gives the request back (the quota counter is released)", async () => {
+    const all = ["@cf/google/gemma-4-26b-a4b-it", "@cf/zai-org/glm-4.7-flash"];
+    const { h, owner, orgId } = await setup({ failModels: all });
+    expect((await owner.post(`/api/v1/orgs/${orgId}/advisor`, { question: "Hola" })).status).toBe(503);
+    const n = await h.db.prepare("SELECT COALESCE(SUM(count), 0) AS n FROM ai_quota_counters WHERE scope = ?").bind(`plan:org:${orgId}`).first<{ n: number }>();
+    expect(n!.n).toBe(0);
+  });
+
+  it("usage endpoint: meters with level, reset time and the plan that raises each limit", async () => {
+    const { h, owner, orgId } = await setup();
+    await h.db.prepare("INSERT INTO ai_quota_counters (scope, window_key, count) VALUES (?, ?, 8)").bind(`plan:org:${orgId}`, new Date().toISOString().slice(0, 10)).run();
+    const u = await owner.get(`/api/v1/orgs/${orgId}/usage`);
+    expect(u.status).toBe(200);
+    const ai = u.json.items.find((i: { key: string }) => i.key === "ai_org_day");
+    expect(ai).toMatchObject({ used: 8, limit: 10, level: "warning", upgrade: { plan: "starter", limit: 60 } });
+    expect(u.json.alerts.map((a: { key: string }) => a.key)).toContain("ai_org_day");
+    // Free plan: no meters for modules it does not include (images need Growth).
+    expect(u.json.items.map((i: { key: string }) => i.key)).not.toContain("ai_images_day");
+    expect(u.json).toMatchObject({ measurement: "observed", plan: { code: "free" } });
+    // The owner's own single seat on Free is shown as «complete» but never nags as a daily warning.
+    expect(u.json.items.find((i: { key: string }) => i.key === "seats")).toMatchObject({ used: 1, limit: 1, level: "exhausted" });
+    expect(u.json.alerts.map((a: { key: string }) => a.key)).not.toContain("seats");
+  });
+
+  it("platform AI stop: every AI request is refused without charging until it is lifted", async () => {
+    const { h, owner, orgId, aiBinding } = await setup();
+    await h.db.prepare("INSERT INTO platform_settings (k, v, updated_at) VALUES ('ai_global_halt', ?, ?)").bind(JSON.stringify({ reason: "prueba", at: new Date().toISOString() }), new Date().toISOString()).run();
+    const before = await balance(owner, orgId);
+    expect((await owner.post(`/api/v1/orgs/${orgId}/advisor`, { question: "Hola" })).status).toBe(503);
+    expect(aiBinding.calls).toHaveLength(0);
+    expect(await balance(owner, orgId)).toBe(before);
+    await h.db.prepare("UPDATE platform_settings SET v = 'null' WHERE k = 'ai_global_halt'").run();
+    expect((await owner.post(`/api/v1/orgs/${orgId}/advisor`, { question: "Hola" })).status).toBe(200);
   });
 
   it("without credits: 402 and no model call", async () => {

@@ -18,7 +18,8 @@ import { auditStmt } from "../lib/audit";
 import { ApiError, parseBody } from "../lib/http";
 import { getState, listModels, loadModel, openRouterAvailability, quotaLimits, quotaUsage, type KeyInfo, type ModelRow, type SyncSummary } from "../lib/openrouter";
 import { addSeconds, nowIso } from "../lib/util";
-import { requireScope } from "../middleware";
+import { isPlatformAdmin, platformOnly, requireScope } from "../middleware";
+import { aiUsageToday } from "../lib/quotas";
 
 /** Public, credential-free view of an allowlist row. Descriptions are sanitised at sync time. */
 export function publicModel(m: ModelRow) {
@@ -96,12 +97,12 @@ export async function providerStatus(env: Env, orgEnabled = true) {
 
 export const aihub = new Hono<AppEnv>();
 
-aihub.get("/ai/provider-status", requireScope("ai:use"), async (c) => {
+aihub.get("/ai/provider-status", platformOnly, requireScope("ai:use"), async (c) => {
   const prefs = await getAiPreferences(c.env.DB, c.get("tenant").orgId);
   return c.json({ ...(await providerStatus(c.env, prefs.openrouterEnabled)), legacy: await aiStatus(c.env) });
 });
 
-aihub.get("/ai/models", requireScope("ai:use"), async (c) => {
+aihub.get("/ai/models", platformOnly, requireScope("ai:use"), async (c) => {
   const task = c.req.query("task") as AiTask | undefined;
   const category = c.req.query("category") as AiCategory | undefined;
   const capability = c.req.query("capability");
@@ -124,9 +125,9 @@ aihub.get("/ai/models", requireScope("ai:use"), async (c) => {
   });
 });
 
-aihub.get("/ai/preferences", requireScope("ai:use"), async (c) => c.json(await getAiPreferences(c.env.DB, c.get("tenant").orgId)));
+aihub.get("/ai/preferences", platformOnly, requireScope("ai:use"), async (c) => c.json(await getAiPreferences(c.env.DB, c.get("tenant").orgId)));
 
-aihub.patch("/ai/preferences", requireScope("ai:configure"), async (c) => {
+aihub.patch("/ai/preferences", platformOnly, requireScope("ai:configure"), async (c) => {
   const t = c.get("tenant");
   const input = await parseBody(c, AiPreferencesInput);
   let manual: string | null = null;
@@ -156,6 +157,30 @@ aihub.get("/ai/usage", requireScope("ai:use"), async (c) => {
   const t = c.get("tenant");
   const since = addSeconds(-30 * 86400);
   const db = c.env.DB;
+  if (!(await isPlatformAdmin(c.env, c.get("user") ?? null))) {
+    // Customers: «IA DNI Growth» activity only — no providers, models, tokens or costs.
+    const [{ results: recent }, totals, today] = await Promise.all([
+      db.prepare("SELECT task, status, latency_ms, created_at FROM ai_invocations WHERE organization_id = ? AND status IN ('ok','failed') ORDER BY created_at DESC LIMIT 60").bind(t.orgId).all(),
+      db
+        .prepare("SELECT COUNT(*) AS calls, SUM(CASE WHEN status = 'ok' THEN 1 ELSE 0 END) AS ok FROM ai_invocations WHERE organization_id = ? AND created_at > ? AND status IN ('ok','failed')")
+        .bind(t.orgId, since)
+        .first(),
+      aiUsageToday(c.env, t.orgId, t.userId),
+    ]);
+    return c.json({
+      period: "últimos 30 días",
+      measurement: "observed",
+      source: "Actividad de IA DNI Growth en tu organización",
+      observedAt: nowIso(),
+      engine: "IA DNI Growth",
+      totals,
+      recent,
+      quotaToday: {
+        organization: { used: today.used.org, limit: today.limits.orgDaily },
+        user: { used: today.used.user, limit: today.limits.userDaily },
+      },
+    });
+  }
   const [{ results: recent }, { results: byModel }, totals] = await Promise.all([
     db
       .prepare(

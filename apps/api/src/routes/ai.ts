@@ -7,7 +7,7 @@ import { ensureMonthlyGrant, orgPlan, reserveCredits, usageLedgerStmt } from "..
 import { ApiError, parseBody } from "../lib/http";
 import { rateLimit } from "../lib/ratelimit";
 import { nowIso, parseJson, uuid } from "../lib/util";
-import { requireScope } from "../middleware";
+import { isPlatformAdmin, requireScope } from "../middleware";
 
 export const ADVISOR_CREDITS = 1;
 export const IMAGE_CREDITS = 5;
@@ -16,7 +16,19 @@ const noCredits = () => new ApiError(402, "insufficient_credits", "No tienes cr�
 
 export const ai = new Hono<AppEnv>();
 
-ai.get("/ai/status", requireScope("ai:use"), async (c) => c.json(await aiStatus(c.env)));
+ai.get("/ai/status", requireScope("ai:use"), async (c) => {
+  const s = await aiStatus(c.env);
+  if (await isPlatformAdmin(c.env, c.get("user") ?? null)) return c.json(s);
+  // Customers: «IA DNI Growth» availability only — no engines, models, budgets or costs.
+  const fallback = s.groq || s.gemini || (s.openRouter && s.openRouterUsable);
+  return c.json({
+    engine: "IA DNI Growth",
+    available: s.workersAi || s.groq || s.gemini || s.openRouter,
+    images: s.images,
+    capacityReached: s.budgetExhausted && !fallback,
+    resetsAt: s.resetsAt,
+  });
+});
 
 /** Builds the advisor context from tenant data (all queries scoped by organization_id). */
 export async function advisorContext(db: D1Database, orgId: string, brandId: string | null): Promise<AdvisorContext> {

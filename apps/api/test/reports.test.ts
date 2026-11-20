@@ -74,7 +74,8 @@ describe("GEO explainable recommendations", () => {
     expect(ids).toEqual(expect.arrayContaining(["brand-verify", "transactional", "comparative", "site"]));
     const comp = r.items.find((x: { id: string }) => x.id.startsWith("comparative:"));
     expect(comp.target).toMatchObject({ type: "existing_page", url: "https://tienda-a.es/zapatillas-trail" });
-    expect(comp.evidence[0]).toMatchObject({ model: "gemini-3.5-flash-lite", grounded: false, mentioned: false, competitorsMentioned: ["Rival"] });
+    expect(comp.evidence[0]).toMatchObject({ grounded: false, mentioned: false, competitorsMentioned: ["Rival"] });
+    expect(JSON.stringify(r)).not.toMatch(/flash-lite|gemini-\d/i); // engine kept, model id hidden
     expect(r.items.some((x: { id: string }) => x.id === "site:organization-jsonld")).toBe(true);
     expect(r.items.some((x: { id: string }) => x.id === "site:llms-txt")).toBe(true);
     expect(r.basedOn).toMatchObject({ sampledPrompts: 4, crawledPages: 2 });

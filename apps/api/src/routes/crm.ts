@@ -76,7 +76,7 @@ function corsHeaders(origin: string | undefined, allowed: Set<string>): Record<s
 
 async function loadPublicForm(env: Env, formId: string | undefined): Promise<FormRow | null> {
   if (!formId || !/^[0-9a-f-]{36}$/i.test(formId)) return null;
-  return env.DB.prepare("SELECT id, organization_id, brand_id, name, consent_text, marketing_text, privacy_url, success_message, redirect_url, allowed_origins_json, ask_phone, ask_company, notify, status FROM lead_forms WHERE id = ? AND status = 'active'")
+  return env.DB.prepare("SELECT id, organization_id, brand_id, name, consent_text, marketing_text, privacy_url, success_message, redirect_url, allowed_origins_json, ask_phone, ask_company, notify, status FROM lead_forms WHERE id = ? AND status = 'active' AND organization_id IN (SELECT id FROM organizations WHERE status = 'active' AND deleted_at IS NULL)")
     .bind(formId)
     .first<FormRow>();
 }

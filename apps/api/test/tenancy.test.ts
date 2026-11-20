@@ -167,6 +167,10 @@ describe("Static SQL guard", () => {
       /^"DELETE FROM ai_response_cache WHERE expires_at < \?"$/,
       /^"SELECT SUM\(kind = 'site_analysis' AND created_at >= \?\) AS audits30, SUM\(state = 'failed' AND created_at >= \?\) AS failed7, SUM\(state IN \('queued','running'\)\) AS running FROM jobs"$/,
       /^"SELECT COUNT\(\*\) AS n FROM leads WHERE created_at >= \?"$/,
+      // Platform Control Center «Operaciones» (routes/control.ts): platform-wide status COUNTs, no rows.
+      /^"SELECT kind, state, COUNT\(\*\) AS n FROM jobs WHERE created_at >= \? GROUP BY kind, state"$/,
+      /^"SELECT status, COUNT\(\*\) AS n FROM webhook_deliveries WHERE created_at >= \? GROUP BY status"$/,
+      /^"SELECT \(SELECT COUNT\(\*\) FROM organizations\) AS orgs, \(SELECT COUNT\(\*\) FROM users\) AS users, \(SELECT COUNT\(\*\) FROM jobs\) AS jobs, \(SELECT COUNT\(\*\) FROM audit_logs\) AS audit_rows"$/,
       // Google disconnect: a COUNT of other live connections of the SAME Google account (revoking at
       // Google kills the whole grant, so it must not break another organisation). No rows are returned.
       /^`SELECT COUNT\(\*\) AS n FROM integrations WHERE id != \? AND status IN \('connected','error','reauth_required'\)\s+AND provider IN \(\$\{GOOGLE_PROVIDERS\.map\(\(\) => "\?"\)\.join\(","\)\}\) AND lower\(account_ref\) = lower\(\?\)`$/,

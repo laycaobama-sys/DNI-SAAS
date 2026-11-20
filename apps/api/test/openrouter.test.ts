@@ -34,8 +34,11 @@ type ChatHandler = (body: { model: string; provider?: { max_price?: Record<strin
 // Workers AI is the PRIMARY engine of the AI service. These tests exercise the OpenRouter route,
 // so by default there is no Workers AI binding (OpenRouter is then the free provider that answers).
 // Pass `wai` to add a Workers AI binding that answers ("ok") or fails ("fail").
-async function setup(opts: { chat?: ChatHandler; models?: unknown[]; key?: boolean; wai?: "ok" | "fail" } = {}) {
+async function setup(opts: { chat?: ChatHandler; models?: unknown[]; key?: boolean; wai?: "ok" | "fail"; staff?: boolean } = {}) {
   const h = createHarness();
+  // These tests inspect the internal AI engine, so the owner is platform staff (legacy admin): customers
+  // only ever see «IA DNI Growth» (see the privacy tests at the end of this file).
+  if (opts.staff !== false) h.env.PLATFORM_ADMIN_EMAILS = "owner@luna.es";
   const waiCalls: string[] = [];
   if (opts.wai) Object.assign(h.env, {
     AI: {
@@ -403,14 +406,30 @@ describe("Preferences, kill switches and permissions", () => {
     expect(r2.json.message.provider).toBe("workers_ai");
   });
 
-  it("only owner/admin/marketing manager can change AI preferences; editors and viewers cannot", async () => {
-    const { h, owner, orgId } = await setup();
+  it("AI engine settings are platform-only: customers (even the owner) get 404; staff can change them", async () => {
+    const { h, owner, orgId } = await setup({ staff: false });
     await sync(h);
     const editor = await h.invite(owner, orgId, "editor@luna.es", "editor");
-    const viewer = await h.invite(owner, orgId, "viewer@luna.es", "client_viewer");
-    expect((await editor.patch(`/api/v1/orgs/${orgId}/ai/preferences`, { strategy: "cloudflare_only" })).status).toBe(403);
-    expect((await viewer.get(`/api/v1/orgs/${orgId}/ai/models`)).status).toBe(403);
-    expect((await editor.get(`/api/v1/orgs/${orgId}/ai/models`)).status).toBe(200);
+    for (const c of [owner, editor]) {
+      expect((await c.patch(`/api/v1/orgs/${orgId}/ai/preferences`, { strategy: "cloudflare_only" })).status).toBe(404);
+      expect((await c.get(`/api/v1/orgs/${orgId}/ai/models`)).status).toBe(404);
+      expect((await c.get(`/api/v1/orgs/${orgId}/ai/provider-status`)).status).toBe(404);
+    }
+    h.env.PLATFORM_ADMIN_EMAILS = "owner@luna.es";
+    expect((await owner.get(`/api/v1/orgs/${orgId}/ai/models`)).status).toBe(200);
+    expect((await owner.patch(`/api/v1/orgs/${orgId}/ai/preferences`, { strategy: "cloudflare_only" })).status).toBe(200);
+  });
+
+  it("customers never see which provider or model answered, nor its cost («IA DNI Growth»)", async () => {
+    const { h, owner, orgId } = await setup({ staff: false });
+    await sync(h);
+    const r = await ask(owner, orgId);
+    expect(r.status).toBe(200);
+    const text = JSON.stringify(r.json);
+    expect(text).not.toMatch(/openrouter|workers_ai|alpha|@cf\/|:free|cost_usd|costUsd|servedModel/i);
+    expect(r.json.message.provider).toBe("dni_ai");
+    const u = await owner.get(`/api/v1/orgs/${orgId}/ai/usage`);
+    expect(JSON.stringify(u.json)).not.toMatch(/openrouter|workers_ai|alpha|:free|cost/i);
   });
 
   it("usage is tenant-isolated", async () => {
@@ -424,7 +443,7 @@ describe("Preferences, kill switches and permissions", () => {
   });
 
   it("platform admin endpoints are invisible (404) to normal users and work for platform admins", async () => {
-    const { h, owner } = await setup();
+    const { h, owner } = await setup({ staff: false });
     expect((await owner.post("/api/v1/admin/ai/models/sync")).status).toBe(404);
     expect((await owner.get("/api/v1/admin/ai/overview")).status).toBe(404);
     h.env.PLATFORM_ADMIN_EMAILS = "owner@luna.es";

@@ -14,7 +14,8 @@ import {
   OPENROUTER_FREE_ROUTER,
   WORKERS_AI_IMAGE_MODEL,
   WORKERS_AI_TEXT_MODELS,
-  aiDailyLimit,
+  isPlanCode,
+  PLAN_LABEL,
   type AiProviderKey,
   type AiTask,
   type ChatMessage,
@@ -30,7 +31,7 @@ import {
   releaseQuota,
   reserveQuota,
 } from "./openrouter";
-import { orgPlan } from "./billing";
+import { AI_LIMIT_CODE, aiGlobalHalt, AiQuotaError, releaseAi, reserveAi } from "./quotas";
 import { ApiError } from "./http";
 import { log, nowIso, uuid } from "./util";
 
@@ -76,35 +77,40 @@ export class AiUnavailableError extends Error {
   }
 }
 
-/** Spanish, user-facing API error for any AI failure. No credit is ever charged when this is thrown. */
+/**
+ * Spanish, user-facing API error for any AI failure. No credit is ever charged when this is thrown.
+ * Customers never see which provider or model runs behind «IA DNI Growth».
+ */
 export function aiApiError(e: unknown): unknown {
-  if (e instanceof AiPlanDailyLimitError)
-    return new ApiError(
-      429,
-      "ai_plan_daily_limit",
-      `Has usado las ${e.limit} peticiones de IA de hoy incluidas en tu plan. Se renuevan a las 00:00 UTC. No se ha cobrado ningún crédito.`,
-      { limit: e.limit, plan: e.planCode },
-    );
+  if (e instanceof AiQuotaError) {
+    const label = PLAN_LABEL[isPlanCode(e.planCode) ? e.planCode : "free"];
+    const up = e.upgradePlan ? ` Con el plan ${PLAN_LABEL[e.upgradePlan]} tendrías ${e.upgradeLimit} al día.` : "";
+    const what =
+      e.kind === "images"
+        ? e.limit === 0
+          ? `La generación de imágenes no está incluida en el plan ${label}.`
+          : `Tu organización ha generado las ${e.limit} imágenes de hoy incluidas en el plan ${label}.`
+        : e.kind === "user"
+          ? `Has usado tus ${e.limit} consultas personales de IA de hoy en el plan ${label}.`
+          : `Tu organización ha usado las ${e.limit} consultas de IA de hoy incluidas en el plan ${label}.`;
+    return new ApiError(429, AI_LIMIT_CODE[e.kind], `${what} Se renuevan a las 00:00 UTC. No se ha cobrado ningún crédito.${up}`, {
+      limit: e.limit,
+      plan: e.planCode,
+      scope: e.kind,
+      upgradePlan: e.upgradePlan,
+      upgradeLimit: e.upgradeLimit,
+    });
+  }
   if (e instanceof SelectedModelFailedError)
-    return new ApiError(503, "selected_model_failed", "El modelo gratuito que elegiste no ha respondido. No se ha cobrado ningún crédito. ¿Quieres usar el respaldo automático?", { attempts: e.attempts });
+    return new ApiError(503, "selected_model_failed", "IA DNI Growth no ha podido responder con la configuración elegida. No se ha cobrado ningún crédito. Inténtalo de nuevo.", { attempts: e.attempts.length });
   if (e instanceof AiUnavailableError) {
     if (e.dailyQuotaExhausted)
-      return new ApiError(
-        503,
-        "ai_daily_quota",
-        "Se ha agotado el cupo gratuito diario de IA. Se renueva cada día a las 00:00 UTC (01:00 en España peninsular en invierno, 02:00 en verano). No se ha cobrado ningún crédito.",
-      );
-    return new ApiError(
-      503,
-      "ai_unavailable",
-      e.openRouterQuotaExhausted
-        ? "La cuota gratuita de OpenRouter se ha agotado y los respaldos gratuitos no están disponibles ahora. No se ha cobrado ningún crédito. Inténtalo más tarde."
-        : "Los modelos de IA gratuitos no están disponibles en este momento. No se ha cobrado ningún crédito. Inténtalo de nuevo en unos minutos.",
-    );
+      return new ApiError(503, "ai_daily_quota", "IA DNI Growth ha alcanzado su capacidad de hoy. Se renueva a las 00:00 UTC (01:00 en España peninsular en invierno, 02:00 en verano). No se ha cobrado ningún crédito.");
+    return new ApiError(503, "ai_unavailable", "IA DNI Growth no está disponible en este momento. No se ha cobrado ningún crédito. Inténtalo de nuevo en unos minutos.");
   }
   return e;
 }
-/** The organisation used today's AI requests included in its plan (AI_DAILY_REQUESTS). */
+/** @deprecated kept for compatibility; plan limits now raise AiQuotaError (lib/quotas.ts). */
 export class AiPlanDailyLimitError extends Error {
   constructor(
     readonly planCode: string,
@@ -333,15 +339,10 @@ export async function generateText(env: Env, deps: Deps, messages: ChatMessage[]
       return { text: hit.response_text, provider: hit.provider, model: hit.model, inputTokens: hit.input_tokens ?? 0, outputTokens: hit.output_tokens ?? 0, costUsd: 0, fallback: false, attempts, cached: true };
     }
   }
-  // Fair use per plan (cache hits above never count): one organisation cannot drain the shared free quota.
-  if (base.orgId && !o.onlyProvider) {
-    const plan = await orgPlan(env.DB, base.orgId);
-    const limit = aiDailyLimit(plan.code);
-    const used = await env.DB.prepare("SELECT COUNT(*) AS n FROM ai_invocations WHERE organization_id = ? AND status = 'ok' AND provider != 'cache' AND created_at >= ?")
-      .bind(base.orgId, `${nowIso().slice(0, 10)}T00:00:00.000Z`)
-      .first<{ n: number }>();
-    if ((used?.n ?? 0) >= limit) throw new AiPlanDailyLimitError(plan.code, limit);
-  }
+  // Plan quotas (organisation + person per day), reserved atomically BEFORE any provider is called.
+  // Cache hits above never count. Released below if no provider answers.
+  if (base.orgId && (await aiGlobalHalt(env))) throw new AiUnavailableError(["platform:parada_global"]);
+  const reserved = base.orgId && !o.onlyProvider ? await reserveAi(env, base.orgId, base.userId, "text") : [];
   const done = async (r: Omit<TextResult, "cached" | "attempts" | "fallback">): Promise<TextResult> => {
     const result: TextResult = { ...r, fallback: attempts.length > (thirdPartyAllowed ? 0 : 1), attempts, cached: false };
     if (key && base.orgId) await cachePut(env, base.orgId, key, task, result);
@@ -519,24 +520,28 @@ export async function generateText(env: Env, deps: Deps, messages: ChatMessage[]
     if (o.onlyProvider === "gemini" && !env.GEMINI_API_KEY) attempts.push("gemini:sin_clave");
     throw new AiUnavailableError(attempts, false, dailyQuota);
   }
-  const openRouterFirst = thirdPartyAllowed && (prefs.strategy === "manual_free" || prefs.strategy === "openrouter_free_router");
-  if (openRouterFirst) {
-    const r = await openRouter();
-    if (r) return r;
-    if (prefs.strategy === "manual_free" && prefs.fallbackPolicy === "ask" && !o.allowFallback) throw new SelectedModelFailedError(attempts);
+  try {
+    const openRouterFirst = thirdPartyAllowed && (prefs.strategy === "manual_free" || prefs.strategy === "openrouter_free_router");
+    if (openRouterFirst) {
+      const r = await openRouter();
+      if (r) return r;
+      if (prefs.strategy === "manual_free" && prefs.fallbackPolicy === "ask" && !o.allowFallback) throw new SelectedModelFailedError(attempts);
+    }
+    const chain: Array<() => Promise<TextResult | null>> = [workersAi];
+    if (prefs.strategy !== "cloudflare_only" && thirdPartyAllowed) {
+      chain.push(groq, gemini);
+      if (!openRouterFirst) chain.push(openRouter);
+    }
+    for (const step of chain) {
+      const r = await step();
+      if (r) return r;
+    }
+    log("error", "ai.text_unavailable", { attempts, task });
+    throw new AiUnavailableError(attempts, openRouterQuota, dailyQuota);
+  } catch (e) {
+    await releaseAi(env, reserved); // no answer → the plan quota is not consumed
+    throw e;
   }
-  const chain: Array<() => Promise<TextResult | null>> = [workersAi];
-  if (prefs.strategy !== "cloudflare_only" && thirdPartyAllowed) {
-    chain.push(groq, gemini);
-    if (!openRouterFirst) chain.push(openRouter);
-  }
-  for (const step of chain) {
-    const r = await step();
-    if (r) return r;
-  }
-
-  log("error", "ai.text_unavailable", { attempts, task });
-  throw new AiUnavailableError(attempts, openRouterQuota, dailyQuota);
 }
 
 // ── Images (Workers AI FLUX only: OpenRouter has no free image-generation model in the catalogue) ─
@@ -558,6 +563,17 @@ export async function generateImage(env: Env, _deps: Deps, prompt: string, ctx: 
   const attempts: string[] = [];
   const estimate = estimateImageCostUsd();
   const base = { orgId: ctx.orgId ?? null, userId: ctx.userId ?? null, requestRef: ctx.requestRef ?? uuid(), task: "image_generation", strategy: "cloudflare_only" };
+  if (base.orgId && (await aiGlobalHalt(env))) throw new AiUnavailableError(["platform:parada_global"]);
+  const reserved = base.orgId ? await reserveAi(env, base.orgId, base.userId, "image") : [];
+  try {
+    return await generateImageInner(env, prompt, estimate, base, attempts);
+  } catch (e) {
+    await releaseAi(env, reserved);
+    throw e;
+  }
+}
+
+async function generateImageInner(env: Env, prompt: string, estimate: number, base: { orgId: string | null; userId: string | null; requestRef: string; task: string; strategy: string }, attempts: string[]): Promise<ImageResult> {
   if (await workersAiAllowed(env, estimate)) {
     const started = Date.now();
     try {

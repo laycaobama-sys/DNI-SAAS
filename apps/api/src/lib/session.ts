@@ -35,7 +35,7 @@ export async function loadSession(c: Context<AppEnv>): Promise<SessionUser | nul
   if (!token || !/^[0-9a-f]{64}$/.test(token)) return null;
   const id = await sha256Hex(token);
   const row = await c.env.DB.prepare(
-    `SELECT s.id, s.expires_at, s.absolute_expires_at, s.last_seen_at, s.revoked_at,
+    `SELECT s.id, s.expires_at, s.absolute_expires_at, s.last_seen_at, s.revoked_at, s.platform_mfa_at,
             u.id AS user_id, u.email, u.name, u.email_verified_at
      FROM sessions s JOIN users u ON u.id = s.user_id WHERE s.id = ?`,
   )
@@ -46,6 +46,7 @@ export async function loadSession(c: Context<AppEnv>): Promise<SessionUser | nul
       absolute_expires_at: string;
       last_seen_at: string;
       revoked_at: string | null;
+      platform_mfa_at: string | null;
       user_id: string;
       email: string;
       name: string;
@@ -58,7 +59,7 @@ export async function loadSession(c: Context<AppEnv>): Promise<SessionUser | nul
     const next = idle < row.absolute_expires_at ? idle : row.absolute_expires_at;
     await c.env.DB.prepare("UPDATE sessions SET last_seen_at = ?, expires_at = ? WHERE id = ?").bind(nowIso(now), next, row.id).run();
   }
-  return { id: row.user_id, email: row.email, name: row.name, emailVerified: !!row.email_verified_at, sessionId: row.id };
+  return { id: row.user_id, email: row.email, name: row.name, emailVerified: !!row.email_verified_at, sessionId: row.id, platformMfaAt: row.platform_mfa_at };
 }
 
 export async function destroySession(c: Context<AppEnv>, sessionId: string | null) {

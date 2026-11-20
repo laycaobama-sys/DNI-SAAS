@@ -317,7 +317,8 @@ export async function servePublicLanding(c: Context<AppEnv>): Promise<Response> 
   const orgSlugParam = c.req.param("orgSlug") ?? "";
   const slug = c.req.param("slug") ?? "";
   if (!/^[a-z0-9-]{1,80}$/.test(orgSlugParam) || !LANDING_SLUG.safeParse(slug).success) return notFoundPage();
-  const org = await c.env.DB.prepare("SELECT id, name FROM organizations WHERE slug = ?").bind(orgSlugParam).first<{ id: string; name: string }>();
+  // Suspended or deleted organisations do not serve public pages.
+  const org = await c.env.DB.prepare("SELECT id, name FROM organizations WHERE slug = ? AND status = 'active' AND deleted_at IS NULL").bind(orgSlugParam).first<{ id: string; name: string }>();
   if (!org) return notFoundPage();
   const p = await c.env.DB.prepare(`SELECT ${PAGE_COLS} FROM landing_pages WHERE organization_id = ? AND slug = ? AND status = 'published'`).bind(org.id, slug).first<PageRow>();
   if (!p?.published_version_id) return notFoundPage();

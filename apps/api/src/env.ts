@@ -79,12 +79,16 @@ export interface SessionUser {
   name: string;
   emailVerified: boolean;
   sessionId: string;
+  /** When this session last proved the platform second factor (platform staff only). */
+  platformMfaAt?: string | null;
 }
 
 export interface Tenant {
   orgId: string;
   userId: string;
   role: Role;
+  /** Set when the access comes from a temporary, audited support grant (read-only), not a membership. */
+  supportGrantId?: string;
 }
 
 export type AppEnv = {

@@ -21,3 +21,5 @@ export * from "./landing";
 export * from "./features";
 export * from "./growth";
 export * from "./plan-access";
+export * from "./totp";
+export * from "./platform-rbac";

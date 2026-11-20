@@ -1,9 +1,11 @@
 import type { MiddlewareHandler } from "hono";
-import { can, isPlanCode, isRole, moduleForApiPath, PLAN_LABEL, planIncludes, requiredPlan, type Scope } from "@dni/core";
+import { can, isPlanCode, isRole, moduleForApiPath, PLAN_LABEL, planIncludes, platformCan, requiredPlan, type PlatformScope, type Scope } from "@dni/core";
 import type { AppEnv } from "./env";
 import { ApiError, assertUuid, forbidden, notFound, unauthorized } from "./lib/http";
 import { orgPlan } from "./lib/billing";
 import { loadSession } from "./lib/session";
+import { effectiveRole, platformAccess } from "./lib/platform";
+import { scrubAi } from "./lib/scrub";
 
 export const requestId: MiddlewareHandler<AppEnv> = async (c, next) => {
   const incoming = c.req.header("cf-ray") ?? "";
@@ -64,11 +66,37 @@ export const requireMembership: MiddlewareHandler<AppEnv> = async (c, next) => {
   const user = c.get("user");
   if (!user) throw unauthorized();
   const orgId = assertUuid(c.req.param("orgId"), "Organización");
-  const row = await c.env.DB.prepare("SELECT role FROM memberships WHERE organization_id = ? AND user_id = ? AND status = 'active'")
-    .bind(orgId, user.id)
-    .first<{ role: string }>();
-  if (!row || !isRole(row.role)) throw notFound("Organización");
-  c.set("tenant", { orgId, userId: user.id, role: row.role });
+  const [row, org] = await Promise.all([
+    c.env.DB.prepare("SELECT role FROM memberships WHERE organization_id = ? AND user_id = ? AND status = 'active'").bind(orgId, user.id).first<{ role: string }>(),
+    c.env.DB.prepare("SELECT status, status_reason, deleted_at, purge_after FROM organizations WHERE id = ?")
+      .bind(orgId)
+      .first<{ status: string; status_reason: string | null; deleted_at: string | null; purge_after: string | null }>(),
+  ]);
+  let role = row && isRole(row.role) ? row.role : null;
+  let supportGrantId: string | undefined;
+  if (!role) {
+    // Temporary, audited support access (read-only) granted from the Platform Control Center.
+    const g = await c.env.DB.prepare(
+      "SELECT id FROM support_access_grants WHERE organization_id = ? AND user_id = ? AND revoked_at IS NULL AND expires_at > ? ORDER BY expires_at DESC LIMIT 1",
+    )
+      .bind(orgId, user.id, new Date().toISOString())
+      .first<{ id: string }>();
+    if (g && effectiveRole(await platformAccess(c.env, user))) {
+      role = "client_viewer";
+      supportGrantId = g.id;
+    }
+  }
+  if (!role || !org) throw notFound("Organización");
+  const rel = c.req.path.replace(/^\/api\/v1\/orgs\/[^/]+/, "") || "/";
+  if (org.deleted_at) {
+    // Deleted organisations are recoverable for 30 days; only the restore endpoint stays reachable.
+    if (!(rel === "/restore" && c.req.method === "POST") && !(rel === "/" && c.req.method === "GET"))
+      throw new ApiError(410, "organization_deleted", "Esta organización está eliminada. Puede restaurarse hasta el " + (org.purge_after ?? "").slice(0, 10) + ".", { purgeAfter: org.purge_after });
+  } else if (org.status === "suspended" && !(rel === "/" && c.req.method === "GET")) {
+    throw new ApiError(423, "organization_suspended", "Esta organización está suspendida. Escribe a soporte para reactivarla.");
+  }
+  if (supportGrantId && c.req.method !== "GET" && c.req.method !== "HEAD") throw forbidden("El acceso de soporte es de solo lectura.");
+  c.set("tenant", { orgId, userId: user.id, role, ...(supportGrantId ? { supportGrantId } : {}) });
   return next();
 };
 
@@ -82,24 +110,38 @@ export const requireScope =
   };
 
 /**
- * Platform SuperAdmin (not an organization role). Granted only by users.is_platform_admin = 1 or
- * by the PLATFORM_ADMIN_EMAILS Worker secret (comma separated), and only for verified emails.
+ * Platform staff with an effective role right now (see lib/platform.ts): an active platform member
+ * whose session proved TOTP recently, or — only until the first owner is claimed — the legacy admin.
  */
-export async function isPlatformAdmin(env: AppEnv["Bindings"], user: { id: string; email: string; emailVerified: boolean } | null): Promise<boolean> {
-  if (!user || !user.emailVerified) return false;
-  const list = (env.PLATFORM_ADMIN_EMAILS ?? "")
-    .split(",")
-    .map((s) => s.trim().toLowerCase())
-    .filter(Boolean);
-  if (list.includes(user.email.toLowerCase())) return true;
-  const r = await env.DB.prepare("SELECT is_platform_admin FROM users WHERE id = ?").bind(user.id).first<{ is_platform_admin: number }>();
-  return r?.is_platform_admin === 1;
+export async function isPlatformAdmin(env: AppEnv["Bindings"], user: Parameters<typeof platformAccess>[1]): Promise<boolean> {
+  return !!effectiveRole(await platformAccess(env, user));
 }
 
-export const requirePlatformAdmin: MiddlewareHandler<AppEnv> = async (c, next) => {
-  const u = c.get("user");
-  if (!u) throw unauthorized();
-  if (!(await isPlatformAdmin(c.env, u))) throw notFound("Recurso");
+/** Platform route guard: 404 for everyone outside the platform, 401 until the second factor is proved. */
+export const requirePlatform =
+  (scope: PlatformScope = "platform:overview"): MiddlewareHandler<AppEnv> =>
+  async (c, next) => {
+    const u = c.get("user");
+    if (!u) throw unauthorized();
+    const a = await platformAccess(c.env, u);
+    if (!a.legacy && !a.role) throw notFound("Recurso");
+    if (a.role && a.status === "pending_mfa" && !a.legacy) throw new ApiError(401, "platform_enrolment_required", "Completa la activación del segundo factor para entrar.");
+    const role = effectiveRole(a);
+    if (!role) throw new ApiError(401, "platform_mfa_required", "Introduce el código de tu app de autenticación para entrar al Control Center.");
+    if (!platformCan(role, scope)) throw forbidden("Tu rol de plataforma no permite esta acción.");
+    return next();
+  };
+/** Back-compat alias used by existing admin routes. */
+export const requirePlatformAdmin = requirePlatform("platform:overview");
+
+/**
+ * Step-up for critical actions (suspend, delete, plans, limits, kill switches, support access): the
+ * session must have proved TOTP within the last 15 minutes. Not available in legacy mode.
+ */
+export const requireStepUp: MiddlewareHandler<AppEnv> = async (c, next) => {
+  const a = await platformAccess(c.env, c.get("user") ?? null);
+  if (!a.claimed) throw new ApiError(401, "platform_claim_required", "Vincula tu cuenta de propietario y activa el segundo factor para hacer esta acción.");
+  if (!a.stepUpFresh) throw new ApiError(401, "step_up_required", "Por seguridad, vuelve a introducir el código de tu app de autenticación.");
   return next();
 };
 
@@ -122,4 +164,27 @@ export const requirePlanModule: MiddlewareHandler<AppEnv> = async (c, next) => {
     requiredPlan: need,
     currentPlan: plan.code,
   });
+};
+
+/**
+ * «IA DNI Growth» privacy for customer workspaces: JSON answers are scrubbed of AI providers, models
+ * and internal costs (lib/scrub.ts) unless the caller is platform staff with an unlocked session.
+ */
+export const aiPrivacy: MiddlewareHandler<AppEnv> = async (c, next) => {
+  await next();
+  const type = c.res.headers.get("content-type") ?? "";
+  if (!type.includes("application/json")) return;
+  if (await isPlatformAdmin(c.env, c.get("user") ?? null)) return;
+  const body = await c.res.clone().json().catch(() => undefined);
+  if (body === undefined) return;
+  const headers = new Headers(c.res.headers);
+  headers.delete("content-length");
+  const keepEngineNames = /\/geo(\/|$)/.test(c.req.path);
+  c.res = new Response(JSON.stringify(scrubAi(body, "", { keepEngineNames })), { status: c.res.status, headers });
+};
+
+/** Platform-only endpoints mounted inside a workspace (AI engine internals): 404 for customers. */
+export const platformOnly: MiddlewareHandler<AppEnv> = async (c, next) => {
+  if (!(await isPlatformAdmin(c.env, c.get("user") ?? null))) throw notFound("Recurso");
+  return next();
 };

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { MODULE_MIN_PLAN, moduleForApiPath, PLAN_ORDER, planIncludes } from "@dni/core";
-import { createHarness } from "./helpers";
+import { claimPlatformOwner, createHarness } from "./helpers";
 
 /** One representative GET per module (relative to /orgs/:orgId). */
 const PROBE: Record<string, string> = {
@@ -149,6 +149,9 @@ describe("platform console", () => {
     const admin = await h.signup("admin@dni.es", "Admin");
     await h.db.prepare("UPDATE users SET is_platform_admin = 1 WHERE email = 'admin@dni.es'").run();
     const url = `/api/v1/admin/organizations/${orgId}/plan`;
+    // A legacy admin (before the owner is bound with TOTP) cannot change plans.
+    expect((await admin.post(url, { planCode: "agency", reason: "Organización interna" })).json.code).toBe("platform_claim_required");
+    await claimPlatformOwner(h, admin);
     expect((await admin.post(url, { planCode: "agency", reason: "x" })).status).toBe(422);
     expect((await admin.post(url, { planCode: "agency", reason: "Organización interna" })).json).toMatchObject({ changed: true });
     expect((await user.get(`/api/v1/orgs/${orgId}/agency/clients`)).status).toBe(200);

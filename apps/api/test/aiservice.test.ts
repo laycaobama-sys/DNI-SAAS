@@ -10,6 +10,8 @@ type RunInput = { messages?: Array<{ role: string; content: string }>; max_token
 
 async function setup(opts: { wai?: "ok" | "fail" } = { wai: "ok" }) {
   const h = createHarness();
+  // Engine internals are inspected as platform staff; customers only see «IA DNI Growth».
+  h.env.PLATFORM_ADMIN_EMAILS = "owner@luna.es";
   const runs: Array<{ model: string; input: RunInput }> = [];
   Object.assign(h.env, {
     AI: {
@@ -78,7 +80,7 @@ describe("AI service: Workers AI is the primary free engine", () => {
     const r = await ask(owner, orgId);
     expect(r.status).toBe(503);
     expect(r.json.code).toBe("ai_daily_quota");
-    expect(r.json.title).toContain("Se ha agotado el cupo gratuito diario de IA");
+    expect(r.json.title).toMatch(/IA DNI Growth.*00:00 UTC.*No se ha cobrado/);
     expect(runs).toHaveLength(0);
     expect((await owner.get(`/api/v1/orgs/${orgId}/billing`)).json.balance).toBe(before);
   });
@@ -187,6 +189,7 @@ describe("AI service: 24 h response cache", () => {
 describe("Admin «probar conexión» per provider", () => {
   it("is invisible to normal users; calls only the chosen provider, never caches, audits without the key", async () => {
     const { h, owner, runs, external, setGroq } = await setup();
+    h.env.PLATFORM_ADMIN_EMAILS = "";
     expect((await owner.post("/api/v1/admin/ai/providers/test", { provider: "groq" })).status).toBe(404);
     h.env.PLATFORM_ADMIN_EMAILS = "owner@luna.es";
     const none = await owner.post("/api/v1/admin/ai/providers/test", { provider: "groq" });

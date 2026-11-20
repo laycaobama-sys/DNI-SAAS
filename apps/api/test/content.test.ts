@@ -35,7 +35,7 @@ describe("Content Studio", () => {
     const before = (await owner.get(`${base}/billing`)).json.balance;
     const r = await owner.post(`${base}/content`, brief);
     expect(r.status).toBe(201);
-    expect(r.json).toMatchObject({ status: "draft", version: 1, provider: "workers_ai", kind: "blog_article" });
+    expect(r.json).toMatchObject({ status: "draft", version: 1, provider: "dni_ai", kind: "blog_article" });
     expect(r.json.bodyMd).toContain("Fuentes y supuestos");
     expect((await owner.get(`${base}/billing`)).json.balance).toBe(before - 3);
     expect(prompts[0]).toContain("<datos>");

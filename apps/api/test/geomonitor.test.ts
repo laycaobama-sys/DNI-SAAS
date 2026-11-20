@@ -31,6 +31,8 @@ async function setup(opts: { key?: boolean; replies?: Reply[]; env?: Record<stri
     }
     return realFetch(input, init);
   }) as typeof fetch;
+  // Engine internals (models, fallbacks) are inspected as platform staff; customers see neither.
+  h.env.PLATFORM_ADMIN_EMAILS = "alice@a.es";
   const alice = await h.signup("alice@a.es", "Alice");
   const orgA = await h.createOrg(alice, "Org A", "starter");
   const brandA = (await alice.post(`/api/v1/orgs/${orgA}/brands`, { name: "Tienda A", domain: "tienda-a.es" })).json.id as string;

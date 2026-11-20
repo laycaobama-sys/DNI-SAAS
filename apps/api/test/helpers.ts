@@ -205,3 +205,32 @@ export const html = (o: { title?: string; desc?: string; h1?: string; links?: st
 <meta name="viewport" content="width=device-width, initial-scale=1">
 ${o.title ? `<title>${o.title}</title>` : ""}${o.desc ? `<meta name="description" content="${o.desc}">` : ""}${o.extraHead ?? ""}</head>
 <body>${o.h1 ? `<h1>${o.h1}</h1>` : ""}${(o.links ?? []).map((l) => `<a href="${l}">${l}</a>`).join("")}${o.body ?? `<p>${"Contenido real del negocio con información útil. ".repeat(30)}</p>`}</body></html>`;
+
+// ── Platform owner (Control Center) test helpers ─────────────────────────────────────────────────────
+export const TEST_ENC_KEY = "a".repeat(64);
+type Harness = ReturnType<typeof createHarness>;
+type Cl = InstanceType<Harness["Client"]>;
+
+/** Current TOTP code for a base32 secret, `offset` steps from now (+1 = next 30 s window). */
+export async function totpNow(secret: string, offset = 0): Promise<string> {
+  const { base32Decode, hotp, totpStep } = await import("@dni/core");
+  return hotp(base32Decode(secret), totpStep(Date.now()) + offset);
+}
+
+/** Inserts a one-time claim code like scripts/platform-claim.mjs does (only its hash is stored). */
+export async function insertClaimCode(h: Harness, code: string, role = "platform_owner", expiresInMs = 30 * 60_000) {
+  const { sha256Hex } = await import("@dni/core");
+  await h.db.prepare("INSERT INTO platform_claim_codes (code_hash, role, expires_at) VALUES (?, ?, ?)").bind(await sha256Hex(code), role, new Date(Date.now() + expiresInMs).toISOString()).run();
+}
+
+/** Claims the platform owner role for `c` and enrols TOTP. Returns the secret and recovery codes. */
+export async function claimPlatformOwner(h: Harness, c: Cl, code = "TEST1-CLAIM-CODE2-ABCDE") {
+  h.env.DATA_ENC_KEY ??= TEST_ENC_KEY;
+  await insertClaimCode(h, code);
+  const claim = await c.post("/api/v1/platform/claim", { code });
+  if (claim.status !== 200) throw new Error(`claim failed ${claim.status} ${JSON.stringify(claim.json)}`);
+  const secret = claim.json.secret as string;
+  const conf = await c.post("/api/v1/platform/mfa/confirm", { code: await totpNow(secret) });
+  if (conf.status !== 200) throw new Error(`mfa confirm failed ${conf.status} ${JSON.stringify(conf.json)}`);
+  return { secret, recoveryCodes: conf.json.recoveryCodes as string[] };
+}

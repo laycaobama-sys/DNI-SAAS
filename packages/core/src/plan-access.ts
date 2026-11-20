@@ -65,6 +65,45 @@ export function aiDailyLimit(planCode: string): number {
   return AI_DAILY_REQUESTS[isPlanCode(planCode) ? planCode : "free"];
 }
 
+/** AI requests per person per organisation per day (UTC): one member cannot use the whole team's quota. */
+export const AI_USER_DAILY_REQUESTS: Record<PlanCode, number> = { free: 10, starter: 40, growth: 60, pro: 100, agency: 150 };
+/** Generated images per organisation per day (UTC). Images are the most expensive AI operation. */
+export const AI_IMAGES_DAILY: Record<PlanCode, number> = { free: 0, starter: 0, growth: 15, pro: 30, agency: 60 };
+
+export function aiUserDailyLimit(planCode: string): number {
+  return AI_USER_DAILY_REQUESTS[isPlanCode(planCode) ? planCode : "free"];
+}
+export function aiImagesDailyLimit(planCode: string): number {
+  return AI_IMAGES_DAILY[isPlanCode(planCode) ? planCode : "free"];
+}
+
+/** Next plan up (null on the top plan): what we suggest when a limit is reached. */
+export function nextPlan(planCode: string): PlanCode | null {
+  const i = planRank(planCode);
+  return i < PLAN_ORDER.length - 1 ? PLAN_ORDER[i + 1]! : null;
+}
+
+/**
+ * Cheapest plan whose value for a numeric limit is strictly higher than the current one, given a
+ * lookup of that limit per plan. Used to say «Pasa a Growth: 150 al día» instead of a vague upsell.
+ */
+export function planThatRaises(planCode: string, valueOf: (p: PlanCode) => number): PlanCode | null {
+  const current = valueOf(isPlanCode(planCode) ? planCode : "free");
+  for (const p of PLAN_ORDER.slice(planRank(planCode) + 1)) if (valueOf(p) > current) return p;
+  return null;
+}
+
+export type UsageLevel = "ok" | "warning" | "critical" | "exhausted";
+/** 0–74 % ok · 75–89 % warning · 90–99 % critical · ≥100 % exhausted. A limit of 0 means «not included». */
+export function usageLevel(used: number, limit: number): UsageLevel {
+  if (limit <= 0) return "exhausted";
+  const pct = used / limit;
+  if (pct >= 1) return "exhausted";
+  if (pct >= 0.9) return "critical";
+  if (pct >= 0.75) return "warning";
+  return "ok";
+}
+
 /** Modules a plan adds on top of the previous one (for the comparison table). */
 export function modulesAddedBy(plan: PlanCode): string[] {
   return Object.entries(MODULE_MIN_PLAN)

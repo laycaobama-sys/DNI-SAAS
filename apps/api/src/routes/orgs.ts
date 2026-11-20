@@ -1,4 +1,5 @@
 import { Hono } from "hono";
+import { z } from "zod";
 import { canAssignRole, CreateOrgInput, InviteInput, randomToken, scopesFor, sha256Hex, UpdateMemberInput, type Role } from "@dni/core";
 import { planIncludes } from "@dni/core/plan-access";
 import type { AppEnv } from "../env";
@@ -59,9 +60,55 @@ export const org = new Hono<AppEnv>();
 
 org.get("/", requireScope("org:read"), async (c) => {
   const t = c.get("tenant");
-  const o = await c.env.DB.prepare("SELECT id, name, slug, currency, region, plan_code, created_at FROM organizations WHERE id = ?").bind(t.orgId).first();
+  const o = await c.env.DB.prepare("SELECT id, name, slug, currency, region, plan_code, status, status_reason, deleted_at, purge_after, created_at FROM organizations WHERE id = ?").bind(t.orgId).first();
   const plan = await orgPlan(c.env.DB, t.orgId);
-  return c.json({ organization: o, role: t.role, scopes: scopesFor(t.role), plan });
+  return c.json({ organization: o, role: t.role, scopes: scopesFor(t.role), plan, supportAccess: !!t.supportGrantId });
+});
+
+const RenameOrg = z.object({ name: z.string().trim().min(2).max(120) });
+org.patch("/", requireScope("org:update"), async (c) => {
+  const t = c.get("tenant");
+  const { name } = await parseBody(c, RenameOrg);
+  const before = await c.env.DB.prepare("SELECT name FROM organizations WHERE id = ?").bind(t.orgId).first<{ name: string }>();
+  await c.env.DB.batch([
+    c.env.DB.prepare("UPDATE organizations SET name = ? WHERE id = ?").bind(name, t.orgId),
+    auditStmt(c.env.DB, { organizationId: t.orgId, actorUserId: t.userId, action: "org.rename", entityType: "organization", entityId: t.orgId, before, after: { name }, requestId: c.get("requestId") }),
+  ]);
+  return c.json({ ok: true, name });
+});
+
+/**
+ * Deleting an organisation is recoverable for 30 days (soft delete): nothing is erased now, every
+ * member loses access and the owner can restore it from «Organizaciones eliminadas». The owner must
+ * type the exact name. A live paid subscription must be cancelled first (no silent billing).
+ */
+export const ORG_RESTORE_DAYS = 30;
+org.delete("/", requireScope("org:delete"), async (c) => {
+  const t = c.get("tenant");
+  const { confirmName } = await parseBody(c, z.object({ confirmName: z.string().trim().min(1).max(120) }));
+  const o = await c.env.DB.prepare("SELECT name FROM organizations WHERE id = ?").bind(t.orgId).first<{ name: string }>();
+  if (!o || o.name.trim() !== confirmName) throw new ApiError(400, "confirm_name_mismatch", "Escribe el nombre exacto de la organización para confirmar.");
+  const live = await c.env.DB.prepare("SELECT status FROM subscriptions WHERE organization_id = ? AND provider = 'stripe' AND status IN ('active','trialing','past_due') LIMIT 1").bind(t.orgId).first();
+  if (live) throw new ApiError(409, "subscription_active", "Cancela antes la suscripción de pago desde «Plan, límites y créditos».");
+  const now = new Date();
+  const purgeAfter = new Date(now.getTime() + ORG_RESTORE_DAYS * 86400_000).toISOString();
+  await c.env.DB.batch([
+    c.env.DB.prepare("UPDATE organizations SET deleted_at = ?, purge_after = ?, status_changed_at = ? WHERE id = ? AND deleted_at IS NULL").bind(now.toISOString(), purgeAfter, now.toISOString(), t.orgId),
+    c.env.DB.prepare("UPDATE jobs SET cancel_requested_at = ? WHERE organization_id = ? AND state IN ('queued','validating','running') AND cancel_requested_at IS NULL").bind(now.toISOString(), t.orgId),
+    auditStmt(c.env.DB, { organizationId: t.orgId, actorUserId: t.userId, action: "org.delete", entityType: "organization", entityId: t.orgId, after: { purgeAfter, by: "owner" }, requestId: c.get("requestId") }),
+  ]);
+  return c.json({ ok: true, deletedAt: now.toISOString(), purgeAfter });
+});
+
+org.post("/restore", requireScope("org:delete"), async (c) => {
+  const t = c.get("tenant");
+  const now = nowIso();
+  const r = await c.env.DB.prepare("UPDATE organizations SET deleted_at = NULL, purge_after = NULL, status_changed_at = ? WHERE id = ? AND deleted_at IS NOT NULL AND purge_after > ? RETURNING id")
+    .bind(now, t.orgId, now)
+    .first();
+  if (!r) throw new ApiError(409, "not_restorable", "Esta organización no está eliminada o ya no se puede restaurar.");
+  await auditStmt(c.env.DB, { organizationId: t.orgId, actorUserId: t.userId, action: "org.restore", entityType: "organization", entityId: t.orgId, requestId: c.get("requestId") }).run();
+  return c.json({ ok: true });
 });
 
 org.get("/dashboard", requireScope("org:read"), async (c) => {
