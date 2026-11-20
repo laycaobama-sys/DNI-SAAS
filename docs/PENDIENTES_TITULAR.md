@@ -1,6 +1,23 @@
-# Pendientes de la titular (2026-11-19)
+# Pendientes de la titular (2026-11-20)
 
-Dos tareas que solo puedes hacer tú porque necesitan tu sesión de Meta y de Google. Ninguna cuesta dinero.
+Tareas que solo puedes hacer tú porque necesitan tu sesión (Cloudflare, Meta, Google). Ninguna cuesta dinero.
+
+---
+
+## 0. Vincular tu cuenta al Control Center (5 minutos, gratis) — PENDIENTE
+
+Hasta que lo hagas, el Control Center está en **acceso provisional**. Puedes verlo todo, pero suspender, borrar, cambiar planes, límites, créditos o parar la IA queda bloqueado. Así nadie gana privilegios solo por tener tu email.
+
+1. En tu ordenador, abre una terminal en la carpeta `DNI SAAS` (con tu sesión de Cloudflare iniciada) y ejecuta:
+   ```
+   node scripts/platform-claim.mjs
+   ```
+2. Copia el código que aparece **en tu terminal**. Caduca en 30 minutos y solo sirve una vez. **No lo pegues en ningún chat ni correo**, tampoco aquí.
+3. Abre https://dnigrowth.com/app/admin?tab=security con tu cuenta y pega el código en «Código de vinculación».
+4. Escanea el QR con tu app de autenticación (Google Authenticator, Microsoft Authenticator, 1Password…) y escribe el código de 6 cifras.
+5. Guarda los **10 códigos de recuperación** fuera del ordenador. Cada uno sirve una vez si pierdes el móvil.
+
+Desde ese momento la lista de administradores por email deja de dar acceso. Si el código se filtra, vuelve a ejecutar el script: el anterior caduca solo.
 
 ---
 

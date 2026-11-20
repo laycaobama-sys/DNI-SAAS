@@ -1,6 +1,6 @@
 # Estado de implementación — DNI Growth
 
-Última actualización: 2026-11-19 · Producción: **https://dnigrowth.com** (Worker `dni-growth`, versión `c46543cd-a4c2-417e-bb53-7564c744ac0e`; workers.dev redirige con 301 a dnigrowth.com) · Workers Paid, sin servicios de pago adicionales ([verificación de la cuenta](CLOUDFLARE_ACCOUNT_VERIFICATION.md)).
+Última actualización: 2026-11-20 · Producción: **https://dnigrowth.com** (Worker `dni-growth`, versión `170a65b4-1c3d-4a36-bf3e-c3c36764f7bc`; workers.dev redirige con 301 a dnigrowth.com) · Workers Paid, sin servicios de pago adicionales ([verificación de la cuenta](CLOUDFLARE_ACCOUNT_VERIFICATION.md)).
 
 Leyenda:
 - **VERIFICADO EN PRODUCCIÓN**: probado contra la URL pública con una respuesta comprobable.
@@ -8,7 +8,7 @@ Leyenda:
 - **BLOQUEADO POR PERMISOS**: necesita una acción, clave o aceptación del titular.
 - **NO IMPLEMENTADO**.
 
-Pruebas automáticas: lint, typecheck, **375 tests** (26 ficheros, core + API), build y escaneo de secretos en verde el 2026-11-19 (`pnpm -s verify`, código de salida 0).
+Pruebas automáticas: lint, typecheck, **420 tests** (33 ficheros, core + API), build y escaneo de secretos en verde el 2026-11-20 (`pnpm -s verify`, código de salida 0).
 
 Pruebas E2E en producción del 2026-11-18 con la cuenta verificada de la titular (organización propia, plan Free), ejecutadas desde el navegador contra https://dnigrowth.com; cada fila indica la respuesta observada.
 
@@ -221,6 +221,27 @@ Versión `75a82608`, migración 0015 aplicada con copia previa `backups/dni-grow
 | El cliente solo ve lo de su plan: el menú ya no lista los módulos de planes superiores (antes salían con candado) y el Command Center no ofrece tarjetas de módulos no incluidos. Se añade el enlace «Plan X · Mejorar plan» | VERIFICADO EN PRODUCCIÓN | versión `d7859be4`, 2026-11-19, con «Ver como cliente». Org Gratis: 13 apartados base y tarjetas «Tráfico orgánico» y «Contactos». Org Growth: sin Ads ni Agencia. `/ads` en Gratis → bloqueo «Disponible desde el plan Pro». Tests: `plan-access.test.ts` (menú por plan, código de plan manipulado → gratis) y `plan-modules.test.ts` (org nueva = free, no admin; tarjetas por plan) |
 | «Desconectar» Google en una organización ya no revoca el permiso de la cuenta de Google si otra conexión lo usa (otra organización o el otro módulo). Antes Google retiraba el permiso entero y rompía las demás conexiones | VERIFICADO SOLO EN LOCAL | test «disconnecting one organisation never revokes a Google grant another organisation still uses»: la org B sigue `connected`, 0 llamadas de revocación y el registro de auditoría lo indica. La última conexión sí revoca. Política de privacidad y página de eliminación de datos actualizadas (publicadas, versión `aa57211b`) |
 
+## Control Center de plataforma, cuotas por plan e «IA DNI Growth» (nuevo, [ADR 0019](adr/0019-control-center-plataforma.md))
+Migración aditiva 0017 aplicada en remoto el 2026-11-20 con copia previa `backups/pre-0017-platform-20261120-0128.sql`. Pruebas en producción hechas con la cuenta de la titular en **acceso provisional** (aún sin vincular), sobre la org de prueba `PRUEBA Stripe planes` y la consola. No se tocó DNI GYM.
+
+| Pieza | Estado | Prueba |
+|---|---|---|
+| Vinculación de la propietaria con código de un solo uso (solo hash en D1, 30 min, `owner_exists`) | VERIFICADO SOLO EN LOCAL | `platform.test.ts`: código válido, reutilizado, caducado, segundo propietario → 409. En producción falta que la titular ejecute `node scripts/platform-claim.mjs` |
+| TOTP + 10 códigos de recuperación, sin reutilización (UPDATE condicional) | VERIFICADO SOLO EN LOCAL | `platform.test.ts` (mismo código dos veces → rechazado; recuperación de un uso); `totp.test.ts` con vectores RFC 6238 |
+| Step-up de 15 min para acciones críticas; acceso provisional solo lectura | VERIFICADO EN PRODUCCIÓN | suspender la org de prueba → **401 `platform_claim_required`** y la org siguió `active`. Pantalla Seguridad muestra «Vincula tu cuenta de propietaria» |
+| Consola solo para personal (404 al resto; 401 sin sesión) | VERIFICADO EN PRODUCCIÓN | `curl` sin sesión: `/api/v1/admin/overview`, `/admin/ops`, `/platform/session` → 401; test de 404 para cliente y de mínimo privilegio del rol analista |
+| Ficha de organización (equipo con email enmascarado, plan, créditos, IA hoy, soporte, acciones) | VERIFICADO EN PRODUCCIÓN | «Gestionar» en «Demo verificación Google»: `i***@gmail.com`, IA hoy 0/150, 1550 créditos |
+| Suspender (423 sin motivo visible), borrar con 30 días para restaurar (410), restaurar, renombrar | VERIFICADO SOLO EN LOCAL | `platform.test.ts`: suspend/delete/restore, la propietaria borra y restaura su propia org. En producción bloqueado hasta la vinculación (comprobado arriba). Purgado definitivo: NO IMPLEMENTADO (decisión aparte) |
+| Soporte temporal 1–24 h, solo lectura, revocable | VERIFICADO SOLO EN LOCAL | `platform.test.ts`: el soporte lee pero un POST → 403 |
+| Topes de IA por organización, por usuario y de imágenes; liberación si falla; tope personalizado con caducidad | VERIFICADO SOLO EN LOCAL | `ai.test.ts` (growth 60/usuario → mejora a Pro 100; cuota liberada en fallo); `platform.test.ts` (override de límites) |
+| Ajuste de créditos idempotente (nunca saldo negativo) | VERIFICADO SOLO EN LOCAL | `platform.test.ts`: misma clave → `duplicate:true`; saldo negativo → 409 |
+| Parada global de IA sin desplegar | VERIFICADO EN PRODUCCIÓN (lectura) | `/admin/ai/usage` → `halt: null`, interruptor visible; activar requiere vinculación. Test: con parada → la IA del cliente responde no disponible y no cobra |
+| Uso y avisos del cliente (`/orgs/:id/usage`, 75/90/100 %, mejora de plan, banner) | VERIFICADO EN PRODUCCIÓN | org de prueba Free: 7 contadores reales (IA org 0/10, IA usuario 0/10, créditos 0/50, auditorías 0/3, marcas 0/1, personas 1/1 «Completo», formularios 0/1); sin banner porque nada pasa del 75 % (el asiento único no avisa a diario) |
+| «IA DNI Growth»: el cliente no ve proveedor, modelo ni coste | VERIFICADO SOLO EN LOCAL | `scrub.test.ts`, `openrouter.test.ts` («customers never see which provider»), `ai.test.ts` (`provider: dni_ai`, sin `model`); `/ai/provider-status`, `/ai/models`, `/ai/preferences` → 404 para clientes. GEO conserva «Gemini» como fuente de la métrica, sin id de modelo |
+| BI de IA (7 días con días a cero, por motor y por plan; hoy por organización) | VERIFICADO EN PRODUCCIÓN | gráfico con datos reales: 13 consultas el 18-nov, 2 el 19-nov; motores reales solo en la consola |
+| Operaciones (trabajos atascados, fallos, outbox, webhooks, recuentos) y auditoría con email enmascarado | VERIFICADO EN PRODUCCIÓN | `/admin/ops`: 5 orgs, 3 usuarios, 0 atascados; trabajos 7 días (ga4_sync 3, geo_sample 5, gsc_sync 3, site_analysis 3); `/admin/audit` 200. R2/métricas del Worker: NO IMPLEMENTADO (requiere token) |
+| Versión móvil | VERIFICADO EN PRODUCCIÓN | 375×812 y 768×1024 (navegador integrado): sin scroll horizontal (`scrollWidth` = ancho), campos a 16 px, menú como diálogo que bloquea el fondo y se cierra con Escape, botón de menú de 44 px; la tabla de planes se desplaza dentro de su caja; tema aplicado antes de pintar (`/theme-init.js` 200) |
+
 ## Marca DNI Growth (producción)
 | Elemento | Estado | Prueba |
 |---|---|---|
@@ -229,7 +250,7 @@ Versión `75a82608`, migración 0015 aplicada con copia previa `backups/dni-grow
 | Avisos del perfil que ya se resolvieron | VERIFICADO SOLO EN LOCAL | el aviso «varias variantes del nombre» y «Información no encontrada» se ocultan cuando ya están resueltos (antes seguían visibles tras rechazar/rellenar) |
 
 ## BLOQUEADO EXTERNO (no depende del código)
-Cobros reales con Stripe (verificación KYC de la titular), conexión de clientes a Search Console/Analytics (vídeo de verificación de Google), publicación y gasto real en Meta/Google Ads (aprobación de sus API), volúmenes y CPC de keywords (proveedor de pago), dominio propio por cliente (Cloudflare for SaaS, coste), avisos por WhatsApp (verificación de empresa en Meta y conversaciones de pago), 2FA/SSO (fase F8).
+Cobros reales con Stripe (verificación KYC de la titular), conexión de clientes a Search Console/Analytics (vídeo de verificación de Google), publicación y gasto real en Meta/Google Ads (aprobación de sus API), volúmenes y CPC de keywords (proveedor de pago), dominio propio por cliente (Cloudflare for SaaS, coste), avisos por WhatsApp (verificación de empresa en Meta y conversaciones de pago), 2FA/SSO para clientes (fase F8; la consola de plataforma ya tiene TOTP).
 
 ## Bloqueos que requieren al titular
 Guía paso a paso de Google y Meta: [GUIA_APROBACIONES_GOOGLE_META.md](GUIA_APROBACIONES_GOOGLE_META.md). Ya publicados para las revisiones: `/legal/eliminacion-datos` y los iconos `/icon-1024.png` y `/icon-120.png` (versión `762e157f`).
