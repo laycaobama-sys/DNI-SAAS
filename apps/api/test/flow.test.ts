@@ -97,6 +97,11 @@ describe("E2E F1: URL → job → audit → brand → plan", () => {
     const paid = plan.tasks.find((t: { channel: string }) => t.channel === "paid");
     expect(paid.status).toBe("blocked");
     expect(paid.requires_approval).toBe(true);
+    // B3/B4: no internal phase codes; available modules/integrations are actionable, not "blocked".
+    expect(paid.blocked_reason).not.toMatch(/\bF\d\b/);
+    expect(plan.tasks.find((t: { channel: string }) => t.channel === "measurement").status).toBe("todo");
+    expect(plan.tasks.find((t: { channel: string }) => t.channel === "content").status).toBe("todo");
+    expect(plan.disclaimer).not.toMatch(/measurement/);
     const tech = plan.tasks.find((t: { channel: string; status: string }) => t.channel === "technical" && t.status === "todo");
     expect((await owner.patch(`/api/v1/orgs/${orgId}/plans/${job.output.planId}/tasks/${tech.id}`, { status: "doing", week: 2 })).status).toBe(200);
     expect((await owner.patch(`/api/v1/orgs/${orgId}/plans/${job.output.planId}/tasks/${paid.id}`, { status: "done" })).json.code).toBe("task_blocked");

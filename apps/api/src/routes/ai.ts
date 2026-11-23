@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import { AdvisorInput, buildAdvisorMessages, checkImagePrompt, ImageInput, type AdvisorContext, type ChatMessage } from "@dni/core";
+import { AdvisorInput, buildAdvisorMessages, checkImagePrompt, classifyPage, ImageInput, organicPotential, validateAdvisorAnswer, type AdvisorContext, type ChatMessage } from "@dni/core";
 import type { AppEnv } from "../env";
 import { aiApiError, AiUnavailableError, aiStatus, generateImage, generateText } from "../lib/ai";
 import { auditStmt } from "../lib/audit";
@@ -53,8 +53,35 @@ export async function advisorContext(db: D1Database, orgId: string, brandId: str
     .bind(orgId, brand.id)
     .first<{ id: string; origin: string; health_score: number | null; completed_at: string | null; opportunities_json: string }>();
   if (crawl) {
-    const ops = parseJson<Array<{ title: string; severity: string; fix: string; affectedCount: number }>>(crawl.opportunities_json, []);
-    ctx.audit = { origin: crawl.origin, healthScore: crawl.health_score, completedAt: crawl.completed_at, opportunities: ops };
+    const raw = parseJson<Array<{ title: string; severity: string; fix: string; affectedCount: number; affectedUrls?: string[]; pageTypes?: Record<string, number>; legalOnly?: boolean }>>(crawl.opportunities_json, []);
+    // Older crawls have no page types: derive them from the URLs so legal pages never lead the advice (B9/B8).
+    const ops = raw
+      .map((o) => {
+        const urls = (o.affectedUrls ?? []).slice(0, 5);
+        const pageTypes = o.pageTypes ?? urls.reduce<Record<string, number>>((acc, u) => ((acc[classifyPage(u)] = (acc[classifyPage(u)] ?? 0) + 1), acc), {});
+        const legalOnly = o.legalOnly ?? (urls.length > 0 && urls.every((u) => classifyPage(u) === "legal"));
+        return { title: o.title, severity: o.severity, fix: o.fix, affectedCount: o.affectedCount, urls, pageTypes, legalOnly };
+      })
+      .sort((a, b) => Number(a.legalOnly) - Number(b.legalOnly));
+    const homeRow = await db
+      .prepare("SELECT final_url, status_code, content_type, word_count, metadata_json FROM crawl_pages WHERE organization_id = ? AND crawl_id = ? ORDER BY fetched_at LIMIT 40")
+      .bind(orgId, crawl.id)
+      .all<{ final_url: string; status_code: number; content_type: string | null; word_count: number | null; metadata_json: string | null }>();
+    const htmlRows = homeRow.results.filter((p) => p.status_code >= 400 || !p.content_type || /text\/html|application\/xhtml/.test(p.content_type));
+    const first = htmlRows[0];
+    const meta = (p: (typeof htmlRows)[number]) => parseJson<{ h2?: string[]; jsonLdTypes?: string[]; internalLinks?: number; og?: Record<string, string> }>(p.metadata_json ?? "{}", {});
+    const potential = organicPotential(
+      htmlRows.map((p) => ({ url: p.final_url, status: p.status_code, wordCount: p.word_count, h2: meta(p).h2 ?? [], jsonLdTypes: meta(p).jsonLdTypes ?? [], internalLinks: meta(p).internalLinks ?? 0 })),
+      { homepageUrl: first?.final_url ?? null, sitemapUrlCount: 0 },
+    );
+    ctx.audit = {
+      origin: crawl.origin,
+      healthScore: crawl.health_score,
+      completedAt: crawl.completed_at,
+      opportunities: ops,
+      home: first ? { url: first.final_url, jsonLdTypes: meta(first).jsonLdTypes ?? [], ogImage: meta(first).og?.["image"] ?? null } : null,
+      potential: { score: potential.score, level: potential.level },
+    };
     const { results } = await db
       .prepare(
         `SELECT gt.title, gt.status, gt.week FROM growth_tasks gt JOIN growth_plans gp ON gp.organization_id = gt.organization_id AND gp.id = gt.plan_id
@@ -83,8 +110,10 @@ ai.get("/advisor/conversations/:convId", requireScope("ai:use"), async (c) => {
   if (!conv) throw new ApiError(404, "not_found", "Conversación no encontrada.");
   const { results } = await c.env.DB.prepare("SELECT id, role, content, provider, model, credits, created_at FROM ai_messages WHERE organization_id = ? AND conversation_id = ? ORDER BY created_at, rowid")
     .bind(t.orgId, c.req.param("convId"))
-    .all();
-  return c.json({ conversation: conv, messages: results });
+    .all<{ role: string; content: string }>();
+  // Each answer is re-checked against the current audit data (B9), so old answers also show what to double-check.
+  const ctx = await advisorContext(c.env.DB, t.orgId, (conv as { brand_id?: string | null }).brand_id ?? null).catch(() => null);
+  return c.json({ conversation: conv, messages: results.map((m) => (m.role === "assistant" && ctx ? { ...m, check: validateAdvisorAnswer(m.content, ctx) } : m)) });
 });
 
 ai.post("/advisor", requireScope("ai:use"), async (c) => {
@@ -146,10 +175,12 @@ ai.post("/advisor", requireScope("ai:use"), async (c) => {
     usageLedgerStmt(db, { orgId: t.orgId, refId: msgId, kind: "release", amount: ADVISOR_CREDITS, category: "ai_advisor" }),
     usageLedgerStmt(db, { orgId: t.orgId, refId: msgId, kind: "settle", amount: ADVISOR_CREDITS, category: "ai_advisor", provider: result.provider }),
   );
+  // B15: who used the advisor and when — never the question or the answer.
+  stmts.push(auditStmt(db, { organizationId: t.orgId, actorUserId: t.userId, action: "advisor.message", entityType: "ai_message", entityId: msgId, after: { conversationId: convId, credits: ADVISOR_CREDITS, cached: result.cached }, requestId: c.get("requestId") }));
   await db.batch(stmts);
   return c.json({
     conversationId: convId,
-    message: { id: msgId, role: "assistant", content: result.text, provider: result.provider, model: result.model, servedModel: result.servedModel ?? null, fallback: result.fallback, cached: result.cached, credits: ADVISOR_CREDITS },
+    message: { id: msgId, role: "assistant", content: result.text, provider: result.provider, model: result.model, servedModel: result.servedModel ?? null, fallback: result.fallback, cached: result.cached, credits: ADVISOR_CREDITS, check: validateAdvisorAnswer(result.text, ctx) },
     measurement: "Respuesta generada por IA a partir de los datos observados de tu auditoría; revísala antes de aplicarla.",
   });
 });

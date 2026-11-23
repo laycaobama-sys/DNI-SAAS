@@ -67,6 +67,20 @@ describe("AI advisor", () => {
     expect((await owner.get(`/api/v1/orgs/${orgId}/advisor/conversations/${r.json.conversationId}`)).json.messages).toHaveLength(4);
   });
 
+  it("logs advisor use without the content (B15) and returns a deterministic check of the answer (B9)", async () => {
+    const { h, owner, orgId } = await setup({ text: "Te recomiendo implementar datos estructurados para conseguir estrellas en los resultados. Garantiza el primer puesto." });
+    const r = await owner.post(`/api/v1/orgs/${orgId}/advisor`, { question: "Mi pregunta secreta sobre precios" });
+    expect(r.status).toBe(200);
+    expect(r.json.message.check.ok).toBe(false);
+    expect(r.json.message.check.warnings.join(" ")).toMatch(/resultados enriquecidos/);
+    expect(r.json.message.check.warnings.join(" ")).toMatch(/garantías/);
+    const log = await h.db.prepare("SELECT action, entity_type, after_redacted FROM audit_logs WHERE organization_id = ? AND action = 'advisor.message'").bind(orgId).first<{ action: string; entity_type: string; after_redacted: string }>();
+    expect(log).toMatchObject({ action: "advisor.message", entity_type: "ai_message" });
+    expect(log!.after_redacted).not.toMatch(/secreta|precios|estrellas/);
+    const conv = await owner.get(`/api/v1/orgs/${orgId}/advisor/conversations/${r.json.conversationId}`);
+    expect(conv.json.messages.find((m: { role: string }) => m.role === "assistant").check.ok).toBe(false);
+  });
+
   it("falls back to the next Workers AI model when one fails", async () => {
     const { owner, orgId, aiBinding } = await setup({ failModels: ["@cf/google/gemma-4-26b-a4b-it"] });
     const r = await owner.post(`/api/v1/orgs/${orgId}/advisor`, { question: "Hola asesor" });

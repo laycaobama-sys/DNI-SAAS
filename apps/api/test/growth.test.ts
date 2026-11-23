@@ -341,8 +341,9 @@ describe("Agency, white label and entitlements", () => {
 
   it("entitlements change with the plan and the dashboard shows actionable KPIs instead of locked cards", async () => {
     const { h, owner, orgId, O } = await setup({}, "free");
-    const limit = async (k: string) => (await owner.get(`${O}/entitlements`)).json.rows.find((r: any) => r.key === k).limit;
-    const expected: Record<string, [number, number, number]> = { free: [1, 2, 0], starter: [5, 10, 0], growth: [20, 30, 0], pro: [50, 100, 0], agency: [200, 300, 50] };
+    // Modules outside the plan list no limit at all (B11): `null` means "not included", never a fake allowance.
+    const limit = async (k: string) => (await owner.get(`${O}/entitlements`)).json.rows.find((r: any) => r.key === k)?.limit ?? null;
+    const expected: Record<string, [number | null, number | null, number | null]> = { free: [null, null, null], starter: [5, null, null], growth: [20, 30, null], pro: [50, 100, null], agency: [200, 300, 50] };
     for (const [plan, [landings, rules, clients]] of Object.entries(expected)) {
       await h.db.prepare("UPDATE organizations SET plan_code = ? WHERE id = ?").bind(plan, orgId).run();
       expect([await limit("landingPages"), await limit("automationRules"), await limit("clientOrgs")]).toEqual([landings, rules, clients]);

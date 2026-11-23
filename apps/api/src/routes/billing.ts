@@ -246,7 +246,7 @@ webhooks.post("/stripe", async (c) => {
 
 function emailEntry(env: Env): ProviderManifestEntry {
   const mode = mailMode(env);
-  const base = { key: "email", name: "Email transaccional (Cloudflare Email Service)", category: "Comunicación", phase: "F0" };
+  const base = { key: "email", name: "Email transaccional (Cloudflare Email Service)", category: "Comunicación" };
   if (mode === "enabled") return { ...base, status: "connected", note: "Envío activo mediante el binding send_email; cola con reintentos." };
   if (mode === "dev_mailbox") return { ...base, status: "demo", note: "Buzón de desarrollo local (no envía correos)." };
   return { ...base, status: "not_configured", note: "Falta un dominio remitente verificado en Cloudflare Email Service: los correos no se envían." };
@@ -259,17 +259,15 @@ export function providerManifest(env: Env): ProviderManifestEntry[] {
       key: "stripe",
       name: "Stripe (pagos)",
       category: "Facturación",
-      phase: "F0",
       status: stripeMode(env) ? (stripeMode(env) === "live" && billingFlag(env) ? "connected" : "demo") : "not_configured",
       note: stripeMode(env) ? ACCESS_NOTE[billingAccess(env)] : "Falta STRIPE_SECRET_KEY.",
     },
     emailEntry(env),
-    { key: "crawler", name: "Rastreador público DNIGrowthBot", category: "Auditoría", phase: "F1", status: "connected", note: "Funciona sin credenciales: solo HTML público, respeta robots.txt." },
+    { key: "crawler", name: "Rastreador público DNIGrowthBot", category: "Auditoría", status: "connected", note: "Funciona sin credenciales: solo HTML público, respeta robots.txt." },
     {
       key: "workers_ai",
-      name: "IA (Workers AI + respaldo OpenRouter/Gemini)",
+      name: "IA DNI Growth (motores gratuitos con respaldo automático)",
       category: "IA",
-      phase: "F1+",
       status: env.AI ? "connected" : "not_configured",
       note: env.AI ? "Asesor y generación de imágenes con presupuesto diario y respaldo automático entre modelos." : "Falta el binding AI en wrangler.jsonc.",
     },
@@ -277,7 +275,6 @@ export function providerManifest(env: Env): ProviderManifestEntry[] {
       key: "google_search_console",
       name: "Google Search Console",
       category: "Datos",
-      phase: "F3",
       status: gscReady(env) ? "available" : "not_configured",
       note: gscReady(env) ? "Disponible: conecta tu cuenta de Google (solo lectura) desde «Search Console»." : "Falta la configuración de Google (cliente OAuth y clave de cifrado).",
     },
@@ -285,15 +282,14 @@ export function providerManifest(env: Env): ProviderManifestEntry[] {
       key: "ga4",
       name: "Google Analytics 4",
       category: "Datos",
-      phase: "F3",
       status: gscReady(env) ? "available" : "not_configured",
       note: gscReady(env) ? "Disponible: conecta tu cuenta de Google (solo lectura) desde «Analytics»." : "Falta la configuración de Google (cliente OAuth y clave de cifrado).",
     },
-    { key: "keywords", name: "Proveedor de keywords/SERP", category: "SEO", phase: "F2", status: "planned", note: "Sin proveedor no se muestran volúmenes ni dificultad." },
-    { key: "wordpress", name: "WordPress", category: "CMS", phase: "F2", status: "planned", note: "Publicación solo tras aprobación; export HTML/Markdown sin credenciales." },
-    { key: "geo_monitor", name: "Monitor de visibilidad en IA", category: "GEO", phase: "F3", status: "planned", note: "Solo mediante APIs oficiales; muestreo, no cobertura total." },
-    { key: "meta_ads", name: "Meta Ads", category: "Publicidad", phase: "F6", status: "blocked_external_approval", note: "Requiere app de Meta con ads_management/ads_read y revisión de la app." },
-    { key: "google_ads", name: "Google Ads", category: "Publicidad", phase: "F9", status: "blocked_external_approval", note: "Requiere developer token aprobado." },
-    { key: "whatsapp", name: "WhatsApp Business", category: "CRM", phase: "F5", status: "planned", note: "Plantillas aprobadas y opt-in obligatorio." },
+    { key: "keywords", name: "Proveedor de keywords/SERP", category: "SEO", status: "planned", note: "Sin proveedor no se muestran volúmenes ni dificultad." },
+    { key: "wordpress", name: "WordPress", category: "CMS", status: "planned", note: "Publicación solo tras aprobación; export HTML/Markdown sin credenciales." },
+    { key: "geo_monitor", name: "Monitor de visibilidad en IA", category: "GEO", status: "planned", note: "Solo mediante APIs oficiales; muestreo, no cobertura total." },
+    { key: "meta_ads", name: "Meta Ads", category: "Publicidad", status: "blocked_external_approval", note: "Requiere app de Meta con ads_management/ads_read y revisión de la app." },
+    { key: "google_ads", name: "Google Ads", category: "Publicidad", status: "blocked_external_approval", note: "Requiere developer token aprobado." },
+    { key: "whatsapp", name: "WhatsApp Business", category: "CRM", status: "planned", note: "Plantillas aprobadas y opt-in obligatorio." },
   ];
 }

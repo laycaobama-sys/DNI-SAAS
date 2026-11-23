@@ -243,6 +243,8 @@ export interface SafeFetchOptions {
   userAgent?: string;
   accept?: string;
   method?: "GET" | "HEAD";
+  /** For non-text responses (images): keep up to this many leading bytes in `bytes` (e.g. to read dimensions). */
+  binaryPrefixBytes?: number;
 }
 
 export interface SafeFetchResult {
@@ -252,6 +254,8 @@ export interface SafeFetchResult {
   headers: Record<string, string>;
   contentType: string;
   body: string;
+  /** Leading bytes of a non-text body, only when `binaryPrefixBytes` was requested. */
+  bytes?: Uint8Array;
   truncated: boolean;
   redirects: string[];
   durationMs: number;
@@ -259,8 +263,8 @@ export interface SafeFetchResult {
 
 export const CRAWLER_USER_AGENT = "DNIGrowthBot/0.1 (+https://dni-growth.example/bot)";
 
-async function readLimited(res: Response, maxBytes: number): Promise<{ text: string; truncated: boolean }> {
-  if (!res.body) return { text: "", truncated: false };
+async function readBytes(res: Response, maxBytes: number): Promise<{ buf: Uint8Array; truncated: boolean }> {
+  if (!res.body) return { buf: new Uint8Array(0), truncated: false };
   const reader = res.body.getReader();
   const chunks: Uint8Array[] = [];
   let total = 0;
@@ -284,7 +288,12 @@ async function readLimited(res: Response, maxBytes: number): Promise<{ text: str
     buf.set(c, off);
     off += c.byteLength;
   }
-  return { text: new TextDecoder("utf-8").decode(buf), truncated };
+  return { buf, truncated };
+}
+
+async function readLimited(res: Response, maxBytes: number): Promise<{ text: string; truncated: boolean }> {
+  const r = await readBytes(res, maxBytes);
+  return { text: new TextDecoder("utf-8").decode(r.buf), truncated: r.truncated };
 }
 
 /** Fetches a public URL with manual, re-validated redirects and hard resource limits. */
@@ -329,11 +338,16 @@ export async function safeFetch(rawUrl: string, opts: SafeFetchOptions): Promise
     });
     const contentType = (res.headers.get("content-type") ?? "").toLowerCase();
     let body = "";
+    let bytes: Uint8Array | undefined;
     let truncated = false;
     const textual = /text\/|xml|json|xhtml/.test(contentType) || contentType === "";
     if (opts.method !== "HEAD" && textual) {
       const r = await readLimited(res, maxBytes);
       body = r.text;
+      truncated = r.truncated;
+    } else if (opts.method !== "HEAD" && opts.binaryPrefixBytes) {
+      const r = await readBytes(res, Math.min(opts.binaryPrefixBytes, maxBytes));
+      bytes = r.buf;
       truncated = r.truncated;
     } else {
       await res.body?.cancel();
@@ -345,6 +359,7 @@ export async function safeFetch(rawUrl: string, opts: SafeFetchOptions): Promise
       headers,
       contentType,
       body,
+      ...(bytes ? { bytes } : {}),
       truncated,
       redirects,
       durationMs: Date.now() - started,

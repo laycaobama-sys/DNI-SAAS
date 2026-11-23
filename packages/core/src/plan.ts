@@ -43,13 +43,14 @@ export function generateGrowthPlan(input: PlanInput): PlanTaskDraft[] {
     });
   }
   input.opportunities.forEach((o, idx) => {
-    const week = (o.severity === "critical" || o.severity === "high" || idx < 3 ? 1 : idx < 6 ? 2 : 3) as 1 | 2 | 3;
+    const week = (o.legalOnly ? 4 : o.severity === "critical" || o.severity === "high" || idx < 3 ? 1 : idx < 6 ? 2 : 3) as 1 | 2 | 3 | 4;
     const perUrl = HOURS_BY_EFFORT[o.effort] ?? 2;
-    const hours = Math.round(Math.min(40, perUrl * Math.max(1, Math.min(o.affectedCount, 10))) * 10) / 10;
+    // Prefer the per-rule, per-page-type estimate (template fixes are done once; legal pages weigh little).
+    const hours = o.estimateHours ?? Math.round(Math.min(40, perUrl * Math.max(1, Math.min(o.affectedCount, 10))) * 10) / 10;
     tasks.push({
       title: o.title,
       description: `${o.fix}${o.affectedCount > 0 ? ` Afecta a ${o.affectedCount} URL(s).` : ""}`,
-      channel: o.category === "geo" ? "geo" : "technical",
+      channel: o.category === "geo" ? "geo" : o.category === "content" ? "content" : "technical",
       week,
       estimateHours: hours,
       sourceRule: o.ruleKey,
@@ -58,26 +59,31 @@ export function generateGrowthPlan(input: PlanInput): PlanTaskDraft[] {
       requiresApproval: false,
     });
   });
+  const gsc = input.integrations.searchConsole;
+  const ga4 = input.integrations.ga4;
+  const missing = [!gsc && "Search Console", !ga4 && "GA4"].filter(Boolean).join(" y ");
   tasks.push({
     title: "Conectar Google Search Console y GA4",
-    description: "Necesario para medir clics, impresiones y tráfico reales antes y después de los cambios.",
+    description: gsc && ga4
+      ? "Conectadas: ya se miden clics, impresiones y tráfico reales antes y después de los cambios."
+      : `Pendiente de conectar ${missing} (solo lectura) desde Integraciones. Sin ellas no hay medición real del antes y el después.`,
     channel: "measurement",
     week: 2,
     estimateHours: 0.5,
     sourceRule: null,
-    status: input.integrations.searchConsole && input.integrations.ga4 ? "done" : "blocked",
-    blockedReason: input.integrations.searchConsole && input.integrations.ga4 ? null : "Integración disponible en la fase F3 (aún no conectada).",
+    status: gsc && ga4 ? "done" : "todo",
+    blockedReason: null,
     requiresApproval: false,
   });
   tasks.push({
     title: "Calendario editorial basado en evidencias",
-    description: "Briefs con fuentes, revisión factual y aprobación antes de publicar.",
+    description: "Crea un borrador desde cada hallazgo de la auditoría en Content Studio: brief con la evidencia observada, revisión humana y aprobación antes de exportar o publicar.",
     channel: "content",
     week: 3,
     estimateHours: 4,
     sourceRule: null,
-    status: "blocked",
-    blockedReason: "Content Studio llega en la fase F2.",
+    status: "todo",
+    blockedReason: null,
     requiresApproval: true,
   });
   tasks.push({
@@ -87,11 +93,18 @@ export function generateGrowthPlan(input: PlanInput): PlanTaskDraft[] {
     week: 4,
     estimateHours: 3,
     sourceRule: null,
-    status: "blocked",
-    blockedReason: input.integrations.meta ? null : "Meta Ads no está conectado (fase F6).",
+    status: input.integrations.meta ? "todo" : "blocked",
+    blockedReason: input.integrations.meta ? null : "Pendiente de conectar Meta Ads. Puedes preparar el borrador sin gasto en Ads Manager; publicarlo exige la conexión y tu aprobación.",
     requiresApproval: true,
   });
   return tasks;
+}
+
+/** Old plans stored internal phase codes as a block reason ("fase F3"). They are actionable now. */
+export const LEGACY_PHASE_BLOCK_RE = /\bfase F\d/i;
+
+export function isLegacyPhaseBlock(task: { status: string; blocked_reason?: string | null }): boolean {
+  return task.status === "blocked" && !!task.blocked_reason && LEGACY_PHASE_BLOCK_RE.test(task.blocked_reason);
 }
 
 export function planToMarkdown(

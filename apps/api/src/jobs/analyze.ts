@@ -6,6 +6,7 @@ import {
   extractPage,
   generateGrowthPlan,
   healthScore,
+  imageInfo,
   isAllowed,
   issueScore,
   normalizeForCrawl,
@@ -17,14 +18,17 @@ import {
   sha256Hex,
   validatePublicUrl,
   type CrawledPage,
+  type OgImageCheck,
   type RobotsTxt,
   type SafeFetchResult,
 } from "@dni/core";
+import { auditStmt } from "../lib/audit";
 import { orgPlan } from "../lib/billing";
 import { batchChunks, nowIso, uuid } from "../lib/util";
 import { PermanentJobError, type JobContext } from "./consumer";
 
-const SKIP_EXT = /\.(pdf|jpe?g|png|gif|webp|avif|svg|ico|zip|rar|gz|mp4|mp3|webm|mov|docx?|xlsx?|pptx?|css|js|json|xml|woff2?|ttf)$/i;
+const SKIP_EXT = /\.(pdf|jpe?g|png|gif|webp|avif|svg|ico|zip|rar|gz|mp4|mp3|webm|mov|docx?|xlsx?|pptx?|css|js|json|xml|woff2?|ttf|txt|md|csv|rss|atom)$/i;
+const isHtml = (contentType: string) => /text\/html|application\/xhtml/.test(contentType);
 const MAX_DELAY_MS = 5000;
 
 export interface AnalysisInput {
@@ -150,6 +154,11 @@ export async function runSiteAnalysis(ctx: JobContext, input: AnalysisInput) {
       skipped.push({ url: next.url, reason: "redirect_offsite" });
       continue;
     }
+    // Only HTML documents are pages (B5): llms.txt, feeds or files linked from the site are checked apart or ignored.
+    if (r.status < 400 && !isHtml(r.contentType)) {
+      skipped.push({ url: next.url, reason: "not_html" });
+      continue;
+    }
     const finalNorm = normalizeForCrawl(r.finalUrl);
     if (finalNorm !== next.url && pages.some((p) => p.finalUrl === finalNorm)) continue;
     const page = toPage(r, finalNorm);
@@ -160,8 +169,12 @@ export async function runSiteAnalysis(ctx: JobContext, input: AnalysisInput) {
   await ctx.event("info", "crawled", `${pages.length} página(s) analizadas`, { skipped: skipped.length, limit: pagesLimit });
   await ctx.checkpoint();
 
+  // og:image of the home (B6): download its first bytes (SSRF-safe) to check format and size.
+  const ogImage = await checkOgImage(pages[0]?.extraction?.og["image"] ?? null, home.finalUrl, fetchOpts);
+  if (ogImage) await ctx.event("info", "og_image", "Imagen para compartir (og:image) revisada", { format: ogImage.info?.format ?? null, status: ogImage.status });
+
   // Deterministic rules + prioritisation
-  const site = { origin, homepageUrl: homeUrl, servedOverHttps, robotsFound, robotsBlocksAll, sitemapFound, sitemapUrlCount: sitemapUrls.length, llmsTxtFound, pages };
+  const site = { origin, homepageUrl: homeUrl, servedOverHttps, robotsFound, robotsBlocksAll, sitemapFound, sitemapUrlCount: sitemapUrls.length, llmsTxtFound, pages, ogImage };
   const issues = runSeoRules(site);
   const opportunities = prioritize(issues, 10);
   const health = healthScore(issues);
@@ -198,13 +211,30 @@ export async function runSiteAnalysis(ctx: JobContext, input: AnalysisInput) {
   await ctx.progress(88);
 
   // Brand facts draft (never overwrites a profile the user already confirmed).
-  const brand = extractBrand(pages.map((p) => p.extraction).filter((e): e is NonNullable<typeof e> => !!e));
+  // Brand colours come from the CSS (B10): read up to 2 same-site stylesheets of the home, as untrusted text.
+  let css = "";
+  for (const href of (pages[0]?.extraction?.stylesheets ?? []).slice(0, 2)) {
+    if (safeOrigin(href) !== origin) continue;
+    const r = await tryFetch(href, "text/css");
+    if (r && r.status === 200 && /css|^$/.test(r.contentType)) css += `
+${r.body.slice(0, 300_000)}`;
+  }
+  const brand = extractBrand(pages.map((p) => p.extraction).filter((e): e is NonNullable<typeof e> => !!e), { css });
   const existing = await db.prepare("SELECT id, confirmed_at FROM brand_profiles WHERE organization_id = ? AND brand_id = ?").bind(orgId, input.brandId).first<{ id: string; confirmed_at: string | null }>();
-  if (!existing) {
-    await db
-      .prepare("INSERT INTO brand_profiles (id, organization_id, brand_id, facts_json, missing_json, warnings_json, source_crawl_id) VALUES (?, ?, ?, ?, ?, ?, ?)")
-      .bind(uuid(), orgId, input.brandId, JSON.stringify(brand.facts), JSON.stringify(brand.missing), JSON.stringify(brand.warnings), crawlId)
-      .run();
+  const brandRow = await db.prepare("SELECT domain FROM brands WHERE organization_id = ? AND id = ?").bind(orgId, input.brandId).first<{ domain: string | null }>();
+  const bare = (h: string) => h.replace(/^www\./, "").toLowerCase();
+  // Auditing another domain (e.g. a competitor) inside an existing brand never rewrites that brand's profile.
+  const otherDomain = !!brandRow?.domain && bare(brandRow.domain) !== bare(new URL(origin).hostname);
+  if (otherDomain && existing) {
+    await ctx.event("info", "brand_kept", "Dominio distinto al de la marca: el perfil de marca no se modifica.");
+  } else if (!existing) {
+    const profileId = uuid();
+    await db.batch([
+      db
+        .prepare("INSERT INTO brand_profiles (id, organization_id, brand_id, facts_json, missing_json, warnings_json, source_crawl_id) VALUES (?, ?, ?, ?, ?, ?, ?)")
+        .bind(profileId, orgId, input.brandId, JSON.stringify(brand.facts), JSON.stringify(brand.missing), JSON.stringify(brand.warnings), crawlId),
+      auditStmt(db, { organizationId: orgId, actorUserId: job.actor_user_id, action: "brand.profile_created", entityType: "brand_profile", entityId: profileId, after: { brandId: input.brandId, crawlId, suggestions: brand.facts.length } }),
+    ]);
   } else if (!existing.confirmed_at) {
     await db
       .prepare("UPDATE brand_profiles SET facts_json = ?, missing_json = ?, warnings_json = ?, source_crawl_id = ?, version = version + 1, updated_at = ? WHERE organization_id = ? AND id = ?")
@@ -227,6 +257,7 @@ export async function runSiteAnalysis(ctx: JobContext, input: AnalysisInput) {
     db
       .prepare("INSERT INTO growth_plans (id, organization_id, brand_id, crawl_id, title, created_by) VALUES (?, ?, ?, ?, ?, ?)")
       .bind(planId, orgId, input.brandId, crawlId, `Plan de crecimiento 30 días · ${new URL(origin).hostname}`, job.actor_user_id),
+    auditStmt(db, { organizationId: orgId, actorUserId: job.actor_user_id, action: "plan.created", entityType: "growth_plan", entityId: planId, after: { crawlId, tasks: tasks.length } }),
     ...tasks.map((t, idx) =>
       db
         .prepare(
@@ -256,8 +287,25 @@ function safeOrigin(u: string): string | null {
   }
 }
 
+async function checkOgImage(raw: string | null, base: string, fetchOpts: { resolve: JobContext["deps"]["resolve"]; fetchImpl: JobContext["deps"]["fetchImpl"]; timeoutMs: number }): Promise<OgImageCheck | null> {
+  if (!raw) return null;
+  let url: string;
+  try {
+    url = new URL(raw, base).toString();
+  } catch {
+    return { url: raw.slice(0, 300), status: null, contentType: "", contentLength: null, info: null, error: "invalid_url" };
+  }
+  try {
+    const r = await safeFetch(url, { ...fetchOpts, accept: "image/avif,image/webp,image/png,image/jpeg,image/*;q=0.8", maxBytes: 300_000, binaryPrefixBytes: 262_144 });
+    const len = Number(r.headers["content-length"] ?? "");
+    const bytes = r.bytes ?? new TextEncoder().encode(r.body.slice(0, 1024));
+    return { url, status: r.status, contentType: r.contentType.split(";")[0] ?? "", contentLength: Number.isFinite(len) && len > 0 ? len : null, info: r.status < 400 ? imageInfo(bytes, r.contentType) : null };
+  } catch (e) {
+    return { url, status: null, contentType: "", contentLength: null, info: null, error: e instanceof Error ? e.name : "fetch_failed" };
+  }
+}
+
 function toPage(r: SafeFetchResult, normalized: string): CrawledPage {
-  const isHtml = /text\/html|application\/xhtml/.test(r.contentType);
   return {
     url: r.requestedUrl,
     finalUrl: normalized,
@@ -266,6 +314,6 @@ function toPage(r: SafeFetchResult, normalized: string): CrawledPage {
     durationMs: r.durationMs,
     truncated: r.truncated,
     redirects: r.redirects,
-    extraction: isHtml && r.status < 400 ? extractPage(r.body, r.finalUrl) : null,
+    extraction: isHtml(r.contentType) && r.status < 400 ? extractPage(r.body, r.finalUrl) : null,
   };
 }

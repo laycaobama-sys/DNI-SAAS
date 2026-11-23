@@ -90,6 +90,12 @@ describe("Content Studio", () => {
     const rej = await manager.post(`${base}/content/${item.id}/reject`, { note: "Añade fuentes" });
     expect(rej.json).toMatchObject({ status: "draft", reviewNote: "Añade fuentes" });
     await editor.post(`${base}/content/${item.id}/submit`);
+    // An AI draft still marked [VERIFICAR] cannot be approved: the editor resolves it first.
+    const unverified = await manager.post(`${base}/content/${item.id}/approve`, {});
+    expect(unverified.status).toBe(422);
+    expect(unverified.json.code).toBe("draft_checks_failed");
+    await editor.patch(`${base}/content/${item.id}`, { bodyMd: ["# Guía de pan de masa madre", "", "## Fuentes y supuestos", "- Receta propia del obrador."].join("\n") });
+    await editor.post(`${base}/content/${item.id}/submit`);
     const ok = await manager.post(`${base}/content/${item.id}/approve`, {});
     expect(ok.json.status).toBe("approved");
     const edited = await editor.patch(`${base}/content/${item.id}`, { bodyMd: "# cambio" });

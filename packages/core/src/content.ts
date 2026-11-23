@@ -96,20 +96,63 @@ export function buildContentMessages(brief: ContentBrief, ctx: AdvisorContext): 
   ];
 }
 
-/** Minimal, safe Markdown → HTML for exports (escapes everything; supports headings, lists, bold, tables as text). */
+/** Safe Markdown → HTML for exports: escapes everything; headings, lists, quotes, tables, code, safe links and images with alt. */
 export function markdownToSafeHtml(md: string): string {
   const esc = (s: string) => s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]!);
-  const inline = (s: string) => esc(s).replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>").replace(/\*([^*]+)\*/g, "<em>$1</em>");
+  // Only http(s), mailto and same-site relative links survive; anything else (javascript:, data:) becomes plain text.
+  const safeUrl = (u: string) => (/^(https?:\/\/|mailto:|\/(?!\/)|#)/i.test(u.trim()) ? esc(u.trim()) : null);
+  const inline = (raw: string) => {
+    const codes: string[] = [];
+    let s = raw.replace(/`([^`]+)`/g, (_, c: string) => `${codes.push(c) - 1}`);
+    s = esc(s)
+      .replace(/!\[([^\]]*)\]\(([^)\s]+)\)/g, (m, alt: string, src: string) => {
+        const u = safeUrl(src.replace(/&amp;/g, "&"));
+        return u && /^https?:|^\//i.test(u) ? `<img src="${u}" alt="${alt}" loading="lazy">` : m;
+      })
+      .replace(/\[([^\]]+)\]\(([^)\s]+)\)/g, (m, text: string, href: string) => {
+        const u = safeUrl(href.replace(/&amp;/g, "&"));
+        return u ? `<a href="${u}" rel="noopener noreferrer nofollow">${text}</a>` : m;
+      })
+      .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
+      .replace(/\*([^*]+)\*/g, "<em>$1</em>");
+    return s.replace(/(\d+)/g, (_, i: string) => `<code>${esc(codes[Number(i)]!)}</code>`);
+  };
+  const cells = (row: string) =>
+    row
+      .trim()
+      .replace(/^\||\|$/g, "")
+      .split(/(?<!\\)\|/)
+      .map((c) => c.trim().replace(/\\\|/g, "|"));
   const out: string[] = [];
   let list: "ul" | "ol" | null = null;
   const close = () => {
     if (list) out.push(`</${list}>`);
     list = null;
   };
-  for (const line of md.replace(/\r/g, "").split("\n")) {
+  const lines = md.replace(/\r/g, "").split("\n");
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i]!;
+    const fence = /^```(\w*)\s*$/.exec(line);
+    if (fence) {
+      close();
+      const body: string[] = [];
+      while (++i < lines.length && !/^```\s*$/.test(lines[i]!)) body.push(lines[i]!);
+      out.push(`<pre><code${fence[1] ? ` class="language-${esc(fence[1])}"` : ""}>${esc(body.join("\n"))}</code></pre>`);
+      continue;
+    }
+    if (/^\s*\|.*\|\s*$/.test(line) && /^\s*\|?\s*:?-{3,}/.test(lines[i + 1] ?? "")) {
+      close();
+      const head = cells(line);
+      const rows: string[][] = [];
+      i += 1;
+      while (i + 1 < lines.length && /^\s*\|.*\|\s*$/.test(lines[i + 1]!)) rows.push(cells(lines[++i]!));
+      out.push(`<table><thead><tr>${head.map((h) => `<th>${inline(h)}</th>`).join("")}</tr></thead><tbody>${rows.map((r) => `<tr>${r.map((c) => `<td>${inline(c)}</td>`).join("")}</tr>`).join("")}</tbody></table>`);
+      continue;
+    }
     const h = /^(#{1,4})\s+(.*)$/.exec(line);
     const ul = /^\s*[-*]\s+(.*)$/.exec(line);
     const ol = /^\s*\d+[.)]\s+(.*)$/.exec(line);
+    const quote = /^>\s?(.*)$/.exec(line);
     if (h) {
       close();
       out.push(`<h${h[1]!.length}>${inline(h[2]!)}</h${h[1]!.length}>`);
@@ -121,6 +164,12 @@ export function markdownToSafeHtml(md: string): string {
         list = kind;
       }
       out.push(`<li>${inline((ul ?? ol)![1]!)}</li>`);
+    } else if (quote) {
+      close();
+      out.push(`<blockquote><p>${inline(quote[1]!)}</p></blockquote>`);
+    } else if (/^\s*(-{3,}|\*{3,})\s*$/.test(line)) {
+      close();
+      out.push("<hr>");
     } else if (line.trim() === "") close();
     else {
       close();

@@ -23,3 +23,7 @@ export * from "./growth";
 export * from "./plan-access";
 export * from "./totp";
 export * from "./platform-rbac";
+export * from "./organic";
+export * from "./image-meta";
+export * from "./finding-draft";
+export * from "./audit-report";

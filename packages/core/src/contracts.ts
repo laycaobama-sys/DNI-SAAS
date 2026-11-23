@@ -102,7 +102,24 @@ export const ContentUpdateInput = z.strictObject({
   bodyMd: z.string().max(60_000).optional(),
   expectedVersion: z.number().int().positive().optional(),
 });
-export const ContentReviewInput = z.strictObject({ note: z.string().trim().max(1000).default("") });
+export const ContentReviewInput = z.strictObject({
+  note: z.string().trim().max(1000).default(""),
+  /** Explicit, audited acknowledgement of the non-blocking pre-approval checks (unsourced figures, prices). */
+  acknowledgeChecks: z.boolean().default(false),
+});
+/** Draft from an audit finding: deterministic, no AI, no credits. */
+export const ContentFromFindingInput = z.strictObject({
+  crawlId: z.uuid(),
+  ruleKey: z.string().regex(/^[a-z][a-z0-9_]{1,40}$/),
+});
+/** Blank structured draft written by hand (works with AI off or the quota spent). */
+export const ContentManualInput = z.strictObject({
+  kind: z.enum(CONTENT_KINDS),
+  title: z.string().trim().min(3, "Escribe un título o tema.").max(160),
+  keyword: z.string().trim().max(120).default(""),
+  audience: z.string().trim().max(300).default(""),
+  brandId: z.uuid().optional(),
+});
 
 /** Measurement types required by CLAUDE.md for every metric. */
 export type Measurement = "observed" | "derived" | "estimated" | "demo";
@@ -130,7 +147,6 @@ export interface ProviderManifestEntry {
   key: string;
   name: string;
   category: string;
-  phase: string;
   status: ProviderStatus;
   note: string;
 }

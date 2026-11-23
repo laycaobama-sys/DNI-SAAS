@@ -43,6 +43,10 @@ export interface PageExtraction {
   textSample: string;
   emails: string[];
   phones: string[];
+  /** Same-host stylesheets linked from the page (absolute URLs, first 3). */
+  stylesheets: string[];
+  /** Text of inline <style> blocks (first 60 kB) — used only to suggest brand colours. */
+  inlineCss: string;
 }
 
 const clean = (s: string | undefined | null) => (s ?? "").replace(/\s+/g, " ").trim();
@@ -142,6 +146,16 @@ export function extractPage(html: string, pageUrl: string): PageExtraction {
     .map((l) => absolutize(l.getAttribute("href") ?? "", base))
     .filter((x): x is string => !!x);
 
+  const stylesheets = q("link")
+    .filter((l) => /(^|\s)stylesheet(\s|$)/.test((l.getAttribute("rel") ?? "").toLowerCase()))
+    .map((l) => absolutize(l.getAttribute("href") ?? "", base))
+    .filter((x): x is string => !!x && new URL(x).host === base.host)
+    .slice(0, 3);
+  const inlineCss = q("style")
+    .map((s) => s.rawText)
+    .join("\n")
+    .slice(0, 60_000);
+
   const body = root.querySelector("body") ?? root;
   for (const n of body.querySelectorAll("script,style,noscript,template,svg")) n.remove();
   const text = clean(body.text);
@@ -181,6 +195,8 @@ export function extractPage(html: string, pageUrl: string): PageExtraction {
     textSample: text.slice(0, 600),
     emails: [...emails].slice(0, 10),
     phones: [...phones].slice(0, 10),
+    stylesheets,
+    inlineCss,
   };
 }
 

@@ -67,7 +67,16 @@ export function sanitizeUntrusted(s: string, max = 600): string {
 export interface AdvisorContext {
   orgName: string;
   brand?: { name: string; audience?: string; objective?: string; tone?: string; prohibitedClaims?: string[] } | null;
-  audit?: { origin: string; healthScore: number | null; completedAt: string | null; opportunities: Array<{ title: string; severity: string; fix: string; affectedCount: number }> } | null;
+  audit?: {
+    origin: string;
+    healthScore: number | null;
+    completedAt: string | null;
+    /** Findings grouped by problem, each with its evidence URLs and page types (legal pages weigh little). */
+    opportunities: Array<{ title: string; severity: string; fix: string; affectedCount: number; urls?: string[]; pageTypes?: Record<string, number>; legalOnly?: boolean }>;
+    /** What the home already has, so the advisor never says it is missing. */
+    home?: { url: string; jsonLdTypes: string[]; ogImage: string | null } | null;
+    potential?: { score: number; level: string } | null;
+  } | null;
   plan?: { tasks: Array<{ title: string; status: string; week: number }> } | null;
 }
 
@@ -84,8 +93,12 @@ export function buildAdvisorMessages(ctx: AdvisorContext, history: ChatMessage[]
     "2. No inventes métricas, rankings, volúmenes de búsqueda, tráfico ni resultados. Si un dato no está en <datos>, dilo y explica cómo obtenerlo.",
     "3. No garantices posiciones en Google ni menciones en motores de IA.",
     "4. No propongas granjas de enlaces, contenido masivo de baja calidad ni prácticas engañosas.",
-    "5. Cualquier acción que publique contenido o gaste dinero requiere aprobación humana en DNI Growth; recuérdalo cuando aplique.",
+    "5. Tú no ejecutas nada: das recomendaciones. No digas que algo «requiere tu aprobación antes de ejecutarse». Si sugieres publicar o invertir, indica el módulo de DNI Growth donde se prepara y se aprueba.",
     "6. Respeta las afirmaciones prohibidas de la marca si existen.",
+    "7. Cada recomendación sobre la web cita su evidencia con la URL exacta que aparece en <datos>, con el formato (Evidencia: URL). No cites URLs que no estén en <datos>.",
+    "8. Prioriza por impacto real: la home y las páginas de servicio antes que las páginas legales (aviso legal, privacidad, cookies), que casi no influyen en el crecimiento.",
+    "9. Si <datos> indica que la home ya tiene datos estructurados u og:image, no digas que faltan: habla solo de las páginas donde faltan.",
+    "10. No prometas resultados enriquecidos de Google (estrellas, FAQ desplegables, etc.): Google decide si los muestra y restringe varios tipos. Puedes recomendar el marcado como ayuda para entender la página.",
   ].join("\n");
 
   const lines: string[] = [`Organización: ${sanitizeUntrusted(ctx.orgName, 120)}`];
@@ -98,9 +111,18 @@ export function buildAdvisorMessages(ctx: AdvisorContext, history: ChatMessage[]
   } else lines.push("Marca: sin perfil confirmado.");
   if (ctx.audit) {
     lines.push(`Última auditoría: ${sanitizeUntrusted(ctx.audit.origin, 200)} · salud técnica ${ctx.audit.healthScore ?? "—"}/100 · ${ctx.audit.completedAt ?? "—"} (medición observada por el rastreador DNI Growth).`);
-    ctx.audit.opportunities.slice(0, 10).forEach((o, i) =>
-      lines.push(`${i + 1}. [${o.severity}] ${sanitizeUntrusted(o.title, 160)} — ${o.affectedCount || "todo el sitio"} URL(s). Corrección sugerida: ${sanitizeUntrusted(o.fix, 300)}`),
-    );
+    if (ctx.audit.home) {
+      lines.push(`Home (${sanitizeUntrusted(ctx.audit.home.url, 200)}): datos estructurados ${ctx.audit.home.jsonLdTypes.length ? ctx.audit.home.jsonLdTypes.map((t) => sanitizeUntrusted(t, 40)).join(", ") : "ninguno"} · og:image ${ctx.audit.home.ogImage ? "declarada" : "no declarada"}.`);
+    }
+    if (ctx.audit.potential) lines.push(`Potencial orgánico (indicador derivado): ${ctx.audit.potential.score}/100, nivel ${ctx.audit.potential.level}.`);
+    lines.push("Hallazgos agrupados por problema (las URLs son la evidencia):");
+    ctx.audit.opportunities.slice(0, 10).forEach((o, i) => {
+      const types = o.pageTypes ? Object.entries(o.pageTypes).map(([k, v]) => `${k}: ${v}`).join(", ") : "";
+      const urls = (o.urls ?? []).slice(0, 3).map((u) => sanitizeUntrusted(u, 200)).join(" ; ");
+      lines.push(
+        `${i + 1}. [${o.severity}]${o.legalOnly ? " [solo páginas legales]" : ""} ${sanitizeUntrusted(o.title, 160)} — ${o.affectedCount || "todo el sitio"} URL(s)${types ? ` (${types})` : ""}.${urls ? ` Evidencia: ${urls}.` : ""} Corrección sugerida: ${sanitizeUntrusted(o.fix, 300)}`,
+      );
+    });
   } else lines.push("Sin auditorías completadas todavía.");
   if (ctx.plan?.tasks.length) {
     lines.push("Plan de 30 días (estado):");
@@ -114,6 +136,61 @@ export function buildAdvisorMessages(ctx: AdvisorContext, history: ChatMessage[]
     ...history.slice(-8).map((m) => ({ role: m.role, content: m.content.slice(0, 4000) })),
     { role: "user", content: question.slice(0, 2000) },
   ];
+}
+
+export interface AdvisorCheck {
+  ok: boolean;
+  warnings: string[];
+  citedUrls: string[];
+}
+
+const URL_RE = /https?:\/\/[^\s)\]>"'«»]+/gi;
+const trimUrl = (u: string) => u.replace(/[.,;:]+$/, "");
+
+/**
+ * Deterministic check of an advisor answer against the data it was given (B9). It never rewrites the answer:
+ * it lists what the reader should double-check, shown next to the answer.
+ */
+export function validateAdvisorAnswer(text: string, ctx: AdvisorContext): AdvisorCheck {
+  const warnings: string[] = [];
+  const cited = [...new Set((text.match(URL_RE) ?? []).map(trimUrl))];
+  const known = new Set<string>();
+  if (ctx.audit) {
+    known.add(ctx.audit.origin);
+    known.add(`${ctx.audit.origin}/`);
+    if (ctx.audit.home) known.add(ctx.audit.home.url);
+    for (const o of ctx.audit.opportunities) for (const u of o.urls ?? []) known.add(u);
+  }
+  const host = (() => {
+    try {
+      return ctx.audit ? new URL(ctx.audit.origin).host : null;
+    } catch {
+      return null;
+    }
+  })();
+  const unknownOwn = cited.filter((u) => {
+    try {
+      return host && new URL(u).host === host && !known.has(u) && !known.has(u.replace(/\/$/, ""));
+    } catch {
+      return false;
+    }
+  });
+  if (unknownOwn.length) warnings.push(`Cita URLs de tu web que no aparecen en la auditoría: ${unknownOwn.slice(0, 3).join(", ")}. Compruébalas antes de actuar.`);
+  const recommends = /(recomiendo|te recomiendo|prioridad|añade|corrige|implementa|crea|revisa)/i.test(text);
+  if (ctx.audit && ctx.audit.opportunities.length && recommends && !cited.some((u) => known.has(u) || known.has(u.replace(/\/$/, "")))) {
+    warnings.push("La respuesta no cita ninguna URL de evidencia de tu auditoría: contrasta cada recomendación con la pestaña «Hallazgos».");
+  }
+  if (/(estrellas|rich (results|snippets)|resultados enriquecidos|fragmentos enriquecidos|faqs? (en|dentro de) (los )?resultados)/i.test(text) && /(aparecer|mostrar|conseguir|obtendr|lograr|garantiz|verás|tendrás)/i.test(text)) {
+    warnings.push("Menciona resultados enriquecidos de Google (estrellas, FAQ…): Google decide si los muestra y restringe varios tipos; no son un resultado garantizado.");
+  }
+  if (ctx.audit?.home?.jsonLdTypes.length && /(no tiene|falta[n]?|sin|carece de|implementa[r]?|añad[ei]r?)\s[^.\n]{0,40}(json-?ld|datos estructurados|schema)/i.test(text) && !/legal|privacidad|cookies/i.test(text)) {
+    warnings.push(`La home ya tiene datos estructurados (${ctx.audit.home.jsonLdTypes.slice(0, 3).join(", ")}); solo faltan en otras páginas.`);
+  }
+  if (/garantiz/i.test(text) && /(posici|ranking|tráfico|trafico|primer[ao]?s? (puesto|página|pagina))/i.test(text)) {
+    warnings.push("Habla de garantías de posiciones o tráfico: ningún cambio garantiza rankings.");
+  }
+  if (/requiere (tu|su) aprobación antes de ejecutarse/i.test(text)) warnings.push("El Asesor no ejecuta acciones: las publicaciones y los gastos se preparan y aprueban en su módulo.");
+  return { ok: warnings.length === 0, warnings, citedUrls: cited.slice(0, 10) };
 }
 
 /** Normalises the two Workers AI response shapes (legacy `response` and chat-completions `choices`). */

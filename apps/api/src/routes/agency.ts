@@ -23,20 +23,22 @@ agency.get("/entitlements", requireScope("org:read"), async (c) => {
   const count = async (sql: string) => ((await db.prepare(sql).bind(t.orgId).first<{ n: number }>())?.n ?? 0);
   const org = await db.prepare("SELECT plan_code, agency_org_id FROM organizations WHERE id = ?").bind(t.orgId).first<{ plan_code: string; agency_org_id: string | null }>();
   const L = plan.limits;
-  const rows = [
+  const allRows = [
     { key: "brands", label: "Marcas", used: await count("SELECT COUNT(*) AS n FROM brands WHERE organization_id = ?"), limit: L.brands },
     { key: "seats", label: "Personas del equipo", used: await count("SELECT COUNT(*) AS n FROM memberships WHERE organization_id = ? AND status = 'active'"), limit: L.seats },
     { key: "analysesPerMonth", label: "Auditorías este mes", used: await analysesThisMonth(db, t.orgId), limit: L.analysesPerMonth },
     { key: "pagesPerCrawl", label: "Páginas por auditoría", used: null, limit: L.pagesPerCrawl },
-    { key: "monthlyCredits", label: "Créditos de IA al mes", used: null, limit: L.monthlyCredits, balance: await creditBalance(db, t.orgId) },
-    { key: "trackedPrompts", label: "Preguntas GEO seguidas", used: await count("SELECT COUNT(*) AS n FROM tracked_prompts WHERE organization_id = ? AND archived_at IS NULL"), limit: L.trackedPrompts ?? GEO_PROMPT_LIMITS[plan.code] ?? 0 },
+    { key: "monthlyCredits", label: "Créditos al mes", used: null, limit: L.monthlyCredits, balance: await creditBalance(db, t.orgId) },
+    { key: "trackedPrompts", module: "ai-visibility", label: "Preguntas GEO seguidas", used: await count("SELECT COUNT(*) AS n FROM tracked_prompts WHERE organization_id = ? AND archived_at IS NULL"), limit: L.trackedPrompts ?? GEO_PROMPT_LIMITS[plan.code] ?? 0 },
     { key: "leadForms", label: "Formularios de captación", used: await count("SELECT COUNT(*) AS n FROM lead_forms WHERE organization_id = ? AND status != 'archived'"), limit: L.leadForms ?? 1 },
-    { key: "landingPages", label: "Landing pages", used: await count("SELECT COUNT(*) AS n FROM landing_pages WHERE organization_id = ? AND status != 'archived'"), limit: L.landingPages ?? LANDING_LIMITS[plan.code] ?? 1 },
-    { key: "automationRules", label: "Reglas de automatización", used: await count("SELECT COUNT(*) AS n FROM automation_rules WHERE organization_id = ?"), limit: L.automationRules ?? 2 },
-    { key: "videoProjects", label: "Proyectos de vídeo", used: await count("SELECT COUNT(*) AS n FROM video_projects WHERE organization_id = ? AND status != 'archived'"), limit: L.videoProjects ?? 2 },
-    { key: "backlinks", label: "Enlaces seguidos (backlinks)", used: await count("SELECT COUNT(*) AS n FROM backlinks WHERE organization_id = ?"), limit: L.backlinks ?? 50 },
-    { key: "clientOrgs", label: "Organizaciones cliente (agencia)", used: await count("SELECT COUNT(*) AS n FROM organizations WHERE agency_org_id = ?"), limit: org?.agency_org_id || !planIncludes(plan.code, "agency") ? 0 : (L.clientOrgs ?? 0) },
+    { key: "landingPages", module: "landings", label: "Landing pages", used: await count("SELECT COUNT(*) AS n FROM landing_pages WHERE organization_id = ? AND status != 'archived'"), limit: L.landingPages ?? LANDING_LIMITS[plan.code] ?? 1 },
+    { key: "automationRules", module: "automations", label: "Reglas de automatización", used: await count("SELECT COUNT(*) AS n FROM automation_rules WHERE organization_id = ?"), limit: L.automationRules ?? 2 },
+    { key: "videoProjects", module: "video", label: "Proyectos de vídeo", used: await count("SELECT COUNT(*) AS n FROM video_projects WHERE organization_id = ? AND status != 'archived'"), limit: L.videoProjects ?? 2 },
+    { key: "backlinks", module: "authority", label: "Enlaces seguidos (backlinks)", used: await count("SELECT COUNT(*) AS n FROM backlinks WHERE organization_id = ?"), limit: L.backlinks ?? 50 },
+    { key: "clientOrgs", module: "agency", label: "Organizaciones cliente (agencia)", used: await count("SELECT COUNT(*) AS n FROM organizations WHERE agency_org_id = ?"), limit: org?.agency_org_id || !planIncludes(plan.code, "agency") ? 0 : (L.clientOrgs ?? 0) },
   ];
+  // B11: limits of modules the plan does not include are not listed (they would read as included).
+  const rows = allRows.filter((r) => !("module" in r) || planIncludes(plan.code, r.module as string)).map(({ module: _m, ...r }: { module?: string } & Record<string, unknown>) => r);
   return c.json({ plan: { code: plan.code, name: plan.name, priceEurMonth: plan.priceEurMonth }, ownPlan: org?.plan_code ?? "free", inheritedFromAgency: !!org?.agency_org_id && org.plan_code === "free" && plan.code !== "free", rows, observedAt: nowIso() });
 });
 
