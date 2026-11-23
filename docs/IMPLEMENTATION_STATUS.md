@@ -1,6 +1,6 @@
 # Estado de implementación — DNI Growth
 
-Última actualización: 2026-11-23 · Producción: **https://dnigrowth.com** (Worker `dni-growth`, versión `5a3f4d61-cddb-4e71-b28a-ad71987f7101`; workers.dev redirige con 301 a dnigrowth.com) · Workers Paid, sin servicios de pago adicionales ([verificación de la cuenta](CLOUDFLARE_ACCOUNT_VERIFICATION.md)).
+Última actualización: 2026-11-24 · Producción: **https://dnigrowth.com** (Worker `dni-growth`, versión `4c47d2b4-c389-4055-945c-a0e1e0eab6c7`; workers.dev redirige con 301 a dnigrowth.com) · Workers Paid, sin servicios de pago adicionales ([verificación de la cuenta](CLOUDFLARE_ACCOUNT_VERIFICATION.md)).
 
 Leyenda:
 - **VERIFICADO EN PRODUCCIÓN**: probado contra la URL pública con una respuesta comprobable.
@@ -8,7 +8,11 @@ Leyenda:
 - **BLOQUEADO POR PERMISOS**: necesita una acción, clave o aceptación del titular.
 - **NO IMPLEMENTADO**.
 
-Pruebas automáticas: lint, typecheck, **524 tests** (45 ficheros: core, API y web), build y escaneo de secretos en verde el 2026-11-23 (`pnpm -s verify`, código de salida 0), desplegado como `5a3f4d61`.
+Pruebas automáticas: lint, typecheck, **539 tests** (47 ficheros: core, API y web), build y escaneo de secretos en verde el 2026-11-24 (`pnpm -s verify`, código de salida 0), desplegado como `4c47d2b4`.
+
+Verificación en producción del 2026-11-24 (Fase 2, sin sesión y sin crear cuentas): auditoría gratuita de dnigrowth.com desde el formulario de la portada → completada por la cola al primer intento (92/100); comparación con example.com (71/100); páginas públicas, cabeceras, protecciones y cron en verde. Detalle en la sección «Fase 2 · Activación».
+
+Stripe en real desde el 2026-11-23 22:35 UTC: cuenta «DNI Growth-IA» con `chargesEnabled: true`, catálogo, portal, IVA (Stripe Tax automático) y webhook sincronizados en modo real; `GET /api/v1/public/pricing-status` → `{"paymentsOpen": true}`. Detalle en la sección «Stripe en real».
 
 Verificación en producción del 2026-11-23 (sesión de la administradora): **180 de 180** lecturas de la API en 4 organizaciones y en el panel de administración → 200; trabajos en segundo plano de 7 días (auditorías, sincronizaciones de Search Console y Analytics, muestreos GEO) todos completados; Stripe en modo prueba sincronizado e idempotente y Stripe Checkout abierto con «DNI Growth · Plan Pro 249,00 €» y «Growth anual 1.296 €» (sin pagar). Resumen por fases en [STATUS.md](STATUS.md).
 
@@ -210,6 +214,15 @@ Versión `75a82608`, migración 0015 aplicada con copia previa `backups/dni-grow
 | Cambiar a Agency 349 € | VERIFICADO EN PRODUCCIÓN (modo test) | `evt_1UdJdq…` → `agency`, 25 asientos, 50 clientes |
 | Cancelar | VERIFICADO EN PRODUCCIÓN (modo test) | `evt_1UdJeK…` → `free/canceled`, límites Free |
 
+## Stripe en real (cuenta «DNI Growth-IA», desde el 2026-11-23)
+| Elemento | Estado | Prueba |
+|---|---|---|
+| Clave real guardada por la titular con `wrangler secret put` (nunca pasó por el chat) | VERIFICADO EN PRODUCCIÓN | ajuste `stripe_account_live`: «DNI Growth-IA», `chargesEnabled: true`, `detailsSubmitted: true`, comprobado 2026-11-23 22:35 UTC |
+| Sincronización automática en modo real: 4 productos × mensual/anual, portal de cliente y webhook firmado (secreto cifrado) | VERIFICADO EN PRODUCCIÓN | ajustes `stripe_catalog_signature_live` (v3, 9 eventos), `stripe_portal_config_live` (`bpc_…`), `stripe_webhook_endpoint_live` → `https://dnigrowth.com/api/v1/webhooks/stripe` |
+| IVA | VERIFICADO EN PRODUCCIÓN | `stripe_tax_mode_live = automatic`: la cuenta real tiene Stripe Tax activo (comisión aproximada del 0,5 % por cobro; decisión con el gestor en [BLOQUEOS §3](BLOQUEOS.md)) |
+| Pago abierto al público (`BILLING_ENABLED="auto"`) | VERIFICADO EN PRODUCCIÓN | `GET /api/v1/public/pricing-status` → `{"paymentsOpen":true}` (2026-11-24) |
+| Primer cobro real | SIN DATOS | no se ha hecho ningún pago real (prohibido usar tarjetas de prueba en producción); el circuito completo se probó en modo prueba |
+
 ## Módulos por plan, uso justo de IA y consola de plataforma (nuevo, [ADR 0018](adr/0018-modulos-por-plan.md))
 | Pieza | Estado | Prueba |
 |---|---|---|
@@ -268,21 +281,45 @@ Versión `fe8d5379` (verificación funcional sobre `92dc1ff6`, mismo código de 
 | Sin códigos internos en la interfaz ni en integraciones | VERIFICADO SOLO EN LOCAL | `ui-guards.test.tsx`; `/integrations` sin campo de fase |
 
 ## Fase 0 de la web pública: una sola fuente, analítica sin cookies, portada, /seguridad y 404 (nuevo, [ADR 0021](adr/0021-analitica-producto-sin-cookies.md))
-Sin desplegar. Migración `0020_product_analytics.sql` aditiva, **no aplicada en remoto** (hacer copia previa de D1 antes de aplicarla).
+Desplegada. Migración `0020_product_analytics.sql` aditiva, aplicada en remoto con copia previa.
 
 | Elemento | Estado | Prueba |
 |---|---|---|
 | `FEATURES` como única fuente: etiquetas de la portada, `llms.txt` (generado en el build) y marcas «Parcial» del menú | VERIFICADO SOLO EN LOCAL | `features.test.ts` (registro y `llms.txt`), `site-sources.test.tsx` (portada = registro, menú contiene cada módulo, `MenuStatus`) |
 | Misma CSP y cabeceras en `_headers` y en las páginas del Worker (blog, app, 404); sin `cloudflareinsights` porque no se carga | VERIFICADO SOLO EN LOCAL | `site-pages.test.ts` |
 | Analítica de producto sin cookies: `product_events` sin IP, `POST /api/v1/public/events` (lista cerrada, 2 KB, origen propio, 60/10 min por IP, bots no cuentan, GPC/DNT sin código de visitante), retención 13 meses | VERIFICADO SOLO EN LOCAL | `product-events.test.ts` |
-| Eventos del servidor: `signup` (correo y Google), `onboarding_step` (correo verificado, organización creada), `gsc_connected`, `audit_started` (sin contar repeticiones idempotentes) | VERIFICADO SOLO EN LOCAL | `product-events.test.ts`. Sin instrumentar todavía: `cms_connected`, `first_article_published`, `trial_started`, `subscribed`, `upgraded`, `canceled`, `paused`, `audit_teaser_viewed` |
+| Eventos del servidor: `signup` (correo y Google), `onboarding_step` (correo verificado, organización creada), `gsc_connected`, `audit_started` (sin contar repeticiones idempotentes) | VERIFICADO SOLO EN LOCAL | `product-events.test.ts`. Instrumentados después: `trial_started`, `subscribed`, `upgraded`, `canceled`, `paused` (Fase 1) y `audit_teaser_viewed` (Fase 2). Sin instrumentar todavía: `cms_connected`, `first_article_published` |
 | `GET /api/v1/admin/funnel` (7/30 días, solo agregados, fuente y advertencias) y tarjeta «Embudo» en la consola | VERIFICADO SOLO EN LOCAL | `product-events.test.ts` (404 sin permiso, ventanas, eventos sin instrumentar, sin códigos de visitante en la respuesta) |
-| Visitantes-día en producción | BLOQUEADO POR PERMISOS | requiere `IP_HASH_SALT` (`wrangler secret put IP_HASH_SALT`); sin ella el código de visitante queda NULL |
+| Visitantes-día en producción | VERIFICADO EN PRODUCCIÓN | `IP_HASH_SALT` guardada por la titular; 2026-11-24: 5 de 5 eventos con código de visitante (nunca la IP) |
 | Portada nueva (titular, 4 beneficios, «Ya funciona hoy» con el plan de cada función, módulos como sección secundaria, sin jerga) | VERIFICADO SOLO EN LOCAL | `site-sources.test.tsx`. Precios sin tocar |
 | Capturas reales y vídeo demo | NO IMPLEMENTADO | huecos preparados y ocultos; falta material real |
 | `/seguridad` («Seguridad y confianza») en el sitemap y con URL canónica; familia de marcas DNI solo allí | VERIFICADO SOLO EN LOCAL | `site-pages.test.ts`, `site-sources.test.tsx` |
 | 404 propia para rutas públicas desconocidas (404, `noindex`, misma CSP; `/api` y `/app` sin cambios) | VERIFICADO SOLO EN LOCAL | `site-pages.test.ts` |
 | Política de privacidad: apartado «Estadística de uso, sin cookies» | VERIFICADO SOLO EN LOCAL | `legal/privacidad.html`; al ser un cambio de la política hay que avisar a los usuarios según su apartado 13 |
+
+## Fase 2 · Activación: auditoría gratuita sin registro, bienvenida guiada y correos de ayuda (nuevo, [ADR 0023](adr/0023-activacion-fase-2.md))
+Desplegada como `4c47d2b4` el 2026-11-24. Migración `0021_activation.sql` aditiva aplicada en remoto tras la copia `backups/dni-growth-db-pre-0021-20261124.sql` (610 KB).
+
+| Elemento | Estado | Prueba |
+|---|---|---|
+| Auditoría gratuita sin cuenta desde la portada (hasta 5 páginas, sin IA ni créditos) | VERIFICADO EN PRODUCCIÓN | formulario de la portada con «dnigrowth.com» → `/auditoria/3d01fe03…` «Revisando…» → completada por la cola al primer intento en menos de 15 s: global 92, Técnica 100, SEO 88, GEO/AEO 78 |
+| Adelanto: 3 problemas con evidencia y solución + «Y 1 problema más» + botón al alta | VERIFICADO EN PRODUCCIÓN | «Título demasiado largo» (67 caracteres), «Meta description demasiado larga» (173), «Sin datos estructurados»; enlace `/app/register?audit=3d01fe03…` |
+| Comparación con un competidor | VERIFICADO EN PRODUCCIÓN | example.com → tabla «Tu web frente a example.com»: 92/71, 100/86, 88/78, 78/56; la auditoría original no cambia |
+| Caché de 24 h por dominio | VERIFICADO EN PRODUCCIÓN | segundo `POST` de dnigrowth.com → `{"status":"completed","cached":true}` al instante, sin rastrear |
+| Solo desde el propio dominio y solo webs públicas | VERIFICADO EN PRODUCCIÓN | `Origin` ajeno → 403; `http://127.0.0.1/` → 422 `url_not_allowed` |
+| Límites por IP (6/h, 20/día) y tope global (400/día) | VERIFICADO SOLO EN LOCAL | `activation.test.ts` (no se fuerzan en producción) |
+| Página `/auditoria/{id}`: `noindex, nofollow` (cabecera y meta), `no-store`, CSP sin scripts ajenos, HSTS, `nosniff` | VERIFICADO EN PRODUCCIÓN | `curl -D -`; `/auditoria/no-existe` → 404 con `noindex`; `/auditoria` → 302 a `/#auditar` |
+| Móvil (375 px) | VERIFICADO EN PRODUCCIÓN | sin desplazamiento lateral (`scrollWidth = 375`), tarjetas de nota en 2 columnas; consola sin errores |
+| Compartir (copiar enlace, LinkedIn, X, WhatsApp, menú nativo del móvil) | VERIFICADO SOLO EN LOCAL | enlaces presentes en producción; imagen social fija (título y descripción con la nota) |
+| Alta con la auditoría: `?audit=` guarda el id, al crear la organización pasa a la cuenta, se borra el código de IP, análisis completo precargado | VERIFICADO EN PRODUCCIÓN (paso 1) · LOCAL (resto) | producción: `/app/register?audit=…` muestra «Al entrar verás el informe completo de tu web y tu plan de 30 días» y guarda `dni.pendingAudit`. Sin crear cuentas reales: recorrido completo URL → adelanto → alta → verificación → organización → bienvenida → análisis precargado probado en `wrangler dev` con D1 local y en `activation.test.ts`. Sin sesión: reclamar → 403, activación → 401 |
+| Bienvenida de 6 pasos leídos de datos reales, «dejar para más tarde», modo y artículos por semana | VERIFICADO SOLO EN LOCAL | `wrangler dev`: «1 de 6 pasos hechos · 17 %», saltar y retomar, guardar modo; `activation.test.ts` (aislamiento entre organizaciones y permisos) |
+| Lista de activación en el panel | VERIFICADO SOLO EN LOCAL | `wrangler dev`; se oculta cuando no queda ningún paso pendiente |
+| CMS | NO IMPLEMENTADO | el paso dice «En desarrollo»: WordPress llega en la Fase 4; mientras, exportación HTML/Markdown |
+| Piloto automático | NO IMPLEMENTADO | solo se guarda la preferencia; la interfaz dice que todo sigue esperando aprobación |
+| Correos de ayuda a 24 h y 72 h con baja en un clic | VERIFICADO EN PRODUCCIÓN (arranque) · LOCAL (envío) | cron en producción: `lifecycle_emails_since = 2026-11-23T23:25:04Z` (solo cuentas nuevas desde entonces), 0 envíos todavía; `activation.test.ts`: una vez por persona y tipo, máximo 48 h de retraso, sin envío si no queda nada, baja firmada. Firma falsa → 400 en producción |
+| Eventos `audit_started` y `audit_teaser_viewed` | VERIFICADO EN PRODUCCIÓN | `product_events`: 1 y 3 |
+| Cron sin errores | VERIFICADO EN PRODUCCIÓN | `wrangler tail` 70 s: cron `outcome: ok`, 0 excepciones |
+| Política de privacidad: auditoría gratuita (30 días), correos de ayuda y `dni.pendingAudit` | VERIFICADO EN PRODUCCIÓN | `/legal/privacidad` → 200 |
 
 ## Marca DNI Growth (producción)
 | Elemento | Estado | Prueba |
@@ -292,7 +329,7 @@ Sin desplegar. Migración `0020_product_analytics.sql` aditiva, **no aplicada en
 | Avisos del perfil que ya se resolvieron | VERIFICADO SOLO EN LOCAL | el aviso «varias variantes del nombre» y «Información no encontrada» se ocultan cuando ya están resueltos (antes seguían visibles tras rechazar/rellenar) |
 
 ## BLOQUEADO EXTERNO (no depende del código)
-Cobros reales con Stripe (verificación KYC de la titular), conexión de clientes a Search Console/Analytics (vídeo de verificación de Google), publicación y gasto real en Meta/Google Ads (aprobación de sus API), volúmenes y CPC de keywords (proveedor de pago), dominio propio por cliente (Cloudflare for SaaS, coste), avisos por WhatsApp (verificación de empresa en Meta y conversaciones de pago), 2FA/SSO para clientes (fase F8; la consola de plataforma ya tiene TOTP).
+Conexión de clientes a Search Console/Analytics (vídeo de verificación de Google), publicación y gasto real en Meta/Google Ads (aprobación de sus API), volúmenes y CPC de keywords (proveedor de pago), dominio propio por cliente (Cloudflare for SaaS, coste), avisos por WhatsApp (verificación de empresa en Meta y conversaciones de pago), 2FA/SSO para clientes (fase F8; la consola de plataforma ya tiene TOTP).
 
 ## Bloqueos que requieren al titular
 Guía paso a paso de Google y Meta: [GUIA_APROBACIONES_GOOGLE_META.md](GUIA_APROBACIONES_GOOGLE_META.md). Ya publicados para las revisiones: `/legal/eliminacion-datos` y los iconos `/icon-1024.png` y `/icon-120.png` (versión `762e157f`).
@@ -301,5 +338,5 @@ Guía paso a paso de Google y Meta: [GUIA_APROBACIONES_GOOGLE_META.md](GUIA_APRO
 |---|---|
 | Search Console y Analytics para clientes | 2026-11-19: **marca verificada y publicada** por Google; `webmasters.readonly` figura ya como no sensible y solo `analytics.readonly` requiere aprobación. 2026-11-19 (noche): vídeo https://youtu.be/iCyrb1Xcc1Q pegado y **enviado a revisión**. El Centro de verificación indica «en proceso de revisión». Falta la respuesta de Google por correo ([GOOGLE_VERIFICATION.md](GOOGLE_VERIFICATION.md)) |
 | GA4 de la propia web de DNI Growth | Propiedad GA4 «DNI Growth» creada el 2026-11-19 (ID 565232679, sitio `https://dnigrowth.com`) y conectada en la organización «Demo verificación Google». Aún no tiene datos: falta instalar la etiqueta con un banner de consentimiento de cookies. Hoy la web no usa cookies de analítica |
-| Stripe (cobros reales) | Modo prueba listo y verificado. Para cobrar: activar la cuenta «DNI Growth» (KYC), textos legales con datos fiscales, decidir IVA, guardar la clave `sk_live_…` con `wrangler secret put`, «Sincronizar» y `BILLING_ENABLED="true"` ([pasos](STRIPE_PLAN.md#3-antes-de-cobrar-dinero-real-decisión-de-la-titular)). Ciclo completo de planes probado en modo test el 2026-11-19 (Starter → Growth → Pro → Agency → cancelada) |
+| Stripe (cobros reales) | **Hecho el 2026-11-23**: clave real guardada, catálogo, portal, IVA y webhook sincronizados solos y pagos abiertos al público ([STRIPE_PLAN.md](STRIPE_PLAN.md)). Queda para la titular: revisión legal de condiciones y garantía y decisión de IVA con el gestor ([BLOQUEOS §2–§3](BLOQUEOS.md)) |
 | Textos legales definitivos | Revisión jurídica de Aviso legal, Privacidad y Condiciones; condiciones de contratación (precio con impuestos, renovación, desistimiento) antes de activar cobros; baja de cuenta autoservicio (hoy por correo) |

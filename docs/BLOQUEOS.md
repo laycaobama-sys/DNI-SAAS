@@ -1,36 +1,22 @@
 # Bloqueos humanos — lo que solo puede hacer la titular
 
-Última revisión: 2026-11-23. Ordenados por urgencia. Mientras tanto, todo lo afectado sigue funcionando en modo prueba o con el aviso correspondiente; ninguna pantalla muestra como «disponible» algo que dependa de estos pasos.
+Última revisión: 2026-11-24. Ordenados por urgencia. Mientras tanto, todo lo afectado sigue funcionando en modo prueba o con el aviso correspondiente; ninguna pantalla muestra como «disponible» algo que dependa de estos pasos.
 
 Reglas que siguen vigentes: nadie más que tú escribe claves, contraseñas o códigos; las claves se guardan con `wrangler secret put` y nunca se pegan en un chat.
 
 ---
 
-## 1. URGENTE · Stripe en real con la cuenta «DNI Growth-IA» (2 minutos, un solo paso)
+## 1. HECHO · Stripe en real con la cuenta «DNI Growth-IA» (2026-11-23)
 
-**Ya hecho y comprobado el 2026-11-23 (no tienes que tocarlo):**
-- La cuenta **DNI Growth-IA** (`acct_1TnSMAJepRhBoIxa`) está **activa**: en *Configuración → Estado de la cuenta* figuran «Pagos» y «Payouts» activos y «No hay tareas activas para completar».
-- Datos públicos ya son de DNI Growth: nombre comercial «DNI Growth», concepto en el extracto bancario «DNI GROWTH», web dnigrowth.com, soporte soporte@dnigrowth.com.
-- Los 3 productos antiguos de RestoPanel están **archivados** (tenían 0 suscripciones). Se archivan, no se borran: se pueden reactivar.
-- Los 2 webhooks antiguos que enviaban todos los eventos a resto-panel.com están **deshabilitados** (uno fallaba al 100 %). Así los pagos de DNI Growth no se envían a otro sistema.
-- Las direcciones legales que Stripe muestra en el pago y en los recibos (`/terminos-y-condiciones`, `/politica-de-privacidad`, `/soporte`) daban 404: ahora redirigen a las páginas reales.
-- En modo prueba se ha comprobado todo el circuito: catálogo sincronizado (4 planes × mensual/anual), cupón de retención, portal de cliente, webhook con 9 eventos y páginas de pago de Stripe con el precio correcto (Growth anual: 1.296 €, 108 €/mes, IVA calculado según la dirección).
+Guardaste la clave real y la plataforma hizo sola el resto a las 22:35 UTC (comprobado el 2026-11-24):
+- Cuenta **DNI Growth-IA** (`acct_1TnSMAJepRhBoIxa`) con cobros activos.
+- En modo real: los 4 planes con precio mensual y anual («DNI Growth · Plan Starter/Growth/Pro/Agency»), el portal de cliente, el IVA y el webhook firmado hacia `https://dnigrowth.com/api/v1/webhooks/stripe`.
+- Los pagos están **abiertos al público** (`/api/v1/public/pricing-status` → `paymentsOpen: true`).
+- Siguen archivados los productos antiguos de RestoPanel y deshabilitados sus webhooks.
 
-**Lo único que falta, y solo puedes hacerlo tú** (la clave secreta nunca pasa por un chat):
-1. En Stripe, arriba a la izquierda, elige **DNI Growth-IA** (sin «Entorno de prueba»).
-2. **Desarrolladores → Claves de API → Clave secreta → Revelar** y cópiala. Empieza por `sk_live_`.
-3. En PowerShell, en la carpeta `DNI SAASappsapi`:
-   ```powershell
-   npx.cmd wrangler secret put STRIPE_SECRET_KEY
-   ```
-   Pega la clave cuando te la pida y pulsa Intro.
+No tienes que hacer nada más aquí. Comprobación cuando quieras: **Facturación → Stripe · administración** debe decir «DNI Growth-IA · puede cobrar».
 
-**Qué hace la plataforma sola en el minuto siguiente** (sin desplegar nada):
-- Lee el estado de la cuenta, crea los 4 productos («DNI Growth · Plan Starter/Growth/Pro/Agency») y los 8 precios (mensual y anual, en euros, IVA aparte), el IVA (Stripe Tax si está activo; si no, IVA español del 21 %), el cupón de retención, el portal de cliente y el webhook firmado. Todo queda en el historial de auditoría.
-- Con `BILLING_ENABLED="auto"`, en cuanto Stripe confirma que la cuenta puede cobrar, el pago se abre al público y /precios cambia a «Pagos activos con Stripe».
-- Comprobación: **Facturación → Stripe · administración** debe decir «DNI Growth-IA · puede cobrar».
-
-Nota: tu organización «DNI GYM» tiene una suscripción Starter creada **en modo prueba** y ya cancelada (termina el 2026-12-18). Con la clave real, Stripe no enviará su aviso de fin; la plataforma la pasa sola a Free el 2026-12-20 (red de seguridad añadida el 2026-11-23). No hay que hacer nada.
+Nota: tu organización «DNI GYM» tiene una suscripción Starter creada **en modo prueba** y ya cancelada (termina el 2026-12-18). Con la clave real, Stripe no enviará su aviso de fin; la plataforma la pasa sola a Free el 2026-12-20. No hay que hacer nada.
 
 ## 2. URGENTE · Revisión legal antes del primer cobro real
 
@@ -43,8 +29,8 @@ El texto que acepta el cliente queda guardado con su versión (`termsVersion 202
 
 ## 3. IMPORTANTE · IVA y facturas (decisión con tu gestor)
 
-- **Por defecto:** IVA español del 21 % como tipo fijo en cada factura. Sirve para clientes en España.
-- **Para clientes de otros países de la UE:** activa **Stripe Tax** en *Configuración → Impuestos*. Tiene coste (~0,5 % por transacción). En la siguiente sincronización la plataforma lo detecta y deja de usar el tipo fijo.
+- **Hoy:** tu cuenta real tiene **Stripe Tax activo** y la plataforma lo detectó al sincronizar (2026-11-23): Stripe calcula el IVA según el país del cliente. Tiene coste (~0,5 % por cobro, sin cuota fija).
+- **Si tu gestor prefiere el IVA español del 21 % fijo** (suficiente para clientes en España): desactiva Stripe Tax en *Configuración → Impuestos* y después pulsa **Sincronizar** en *Facturación → Stripe · administración*; la plataforma crea el tipo fijo del 21 % y lo usa en los pagos nuevos.
 - Añade tu NIF en *Configuración → Facturas → Identificadores fiscales* para que aparezca en las facturas.
 - Pregunta a tu gestor por VERI*FACTU.
 
@@ -70,7 +56,7 @@ Hasta entonces, la publicación directa en Instagram y Facebook y los anuncios d
 
 | Clave | Estado | Coste | Paso |
 |---|---|---|---|
-| Stripe (clave real de DNI Growth-IA) | ❌ falta | comisión por cobro | Ver punto 1 |
+| Stripe (clave real de DNI Growth-IA) | ✅ guardada, pagos abiertos | comisión por cobro | — |
 | Gemini (monitor GEO y respaldo de IA) | ✅ guardada, nivel gratuito | 0 € | — |
 | OpenRouter (modelos gratuitos) | ✅ guardada, solo modelos gratis y gasto máximo 0 $ | 0 € | — |
 | Groq | ✅ guardada | 0 € | — |

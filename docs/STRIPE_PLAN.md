@@ -1,6 +1,6 @@
 # Cobros con Stripe: estado, cómo funciona y cuánto cuesta
 
-Última revisión: 2026-11-23. Decisiones de diseño en [ADR 0022](adr/0022-cobros-v2.md); pasos pendientes de la titular en [BLOQUEOS.md §1](BLOQUEOS.md).
+Última revisión: 2026-11-24. Decisiones de diseño en [ADR 0022](adr/0022-cobros-v2.md); lo que queda para la titular (abogado e IVA) en [BLOQUEOS.md §2–§3](BLOQUEOS.md).
 
 ## Estado
 
@@ -11,7 +11,11 @@
 | Webhooks antiguos hacia resto-panel.com | Deshabilitados | Workbench → Webhooks → «Deshabilitado» |
 | Datos públicos (nombre, extracto, web, soporte) | DNI Growth / «DNI GROWTH» / dnigrowth.com | Configuración → Datos de la empresa |
 | URL legales que muestra Stripe | Redirigen con 301 a `/legal/condiciones`, `/legal/privacidad` y `/#contacto` | `curl -I https://dnigrowth.com/terminos-y-condiciones` → 301 |
-| Clave en el Worker | **Prueba** (cuenta «DNI Growth», entorno de prueba) | Falta la clave real: la guarda la titular con `wrangler secret put` |
+| Clave en el Worker | **Real** (cuenta «DNI Growth-IA»), guardada por la titular con `wrangler secret put` el 2026-11-23 | Ajuste `stripe_account_live`: `chargesEnabled: true`, `detailsSubmitted: true` (22:35 UTC) |
+| Catálogo en modo real | 4 planes × mensual y anual, cupón, portal (`bpc_…`) y webhook firmado (9 eventos) sincronizados solos por el cron | Ajustes `stripe_catalog_signature_live`, `stripe_portal_config_live` y `stripe_webhook_endpoint_live` → `https://dnigrowth.com/api/v1/webhooks/stripe`, 2026-11-23 22:35 UTC |
+| IVA en modo real | Stripe Tax automático (la cuenta lo tiene activo; ~0,5 % por cobro) | `stripe_tax_mode_live = automatic`. Para pasar al 21 % fijo: desactivar Stripe Tax y pulsar «Sincronizar» ([BLOQUEOS §3](BLOQUEOS.md)) |
+| Pagos para el público | **Abiertos** | `GET /api/v1/public/pricing-status` → `{"paymentsOpen":true}` (2026-11-24) |
+| Primer cobro real | Sin datos todavía | No se usan tarjetas de prueba en producción |
 | Catálogo en modo prueba | 4 planes × mensual y anual, cupón, portal y webhook (9 eventos) sincronizados | `POST /api/v1/admin/billing/stripe/sync` → 200; auditoría `platform.stripe_catalog_sync` 2026-11-23 17:32 |
 | Pago en modo prueba | Stripe Checkout abre con el precio correcto (Growth anual 1.296 €, 108 €/mes, IVA según dirección) | 3 sesiones creadas por la administradora en la organización «PRUEBA Stripe planes (modo test)»; ninguna pagada |
 
