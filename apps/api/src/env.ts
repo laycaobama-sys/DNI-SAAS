@@ -20,6 +20,8 @@ export interface Env {
   /** Max real emails per month (default 2500, under the 3,000 included in Workers Paid). */
   EMAIL_MONTHLY_CAP?: string;
   GOOGLE_CLIENT_ID?: string;
+  /** Organisation whose approved articles can be published at APP_ORIGIN/blog (the site owner's own org). */
+  SITE_BLOG_ORG_ID?: string;
   /** Stripe stays off until the owner decides: "true" enables checkout/webhook. */
   BILLING_ENABLED?: string;
   /** OpenRouter FREE-only policy (fail-closed: any other value disables OpenRouter). */

@@ -26,6 +26,7 @@ import { analytics } from "./routes/analytics";
 import { geo } from "./routes/geo";
 import { reports } from "./routes/reports";
 import { searchConsole } from "./routes/searchConsole";
+import { registerPublicBlog, siteBlog } from "./routes/site-blog";
 import { org, orgsPublic } from "./routes/orgs";
 import { work } from "./routes/work";
 
@@ -46,7 +47,7 @@ export function canonicalRedirect(url: URL, canon: URL): string | null {
   if (path.startsWith("/api/") && path !== "/api/v1/auth/google/start") return null;
   let clean = path;
   if (clean === "/index.html") clean = "/";
-  else if (/^\/legal\/[a-z-]+(\.html|\/)$/.test(clean)) clean = clean.replace(/(\.html|\/)$/, "");
+  else if (/^\/(legal\/[a-z-]+|blog|blog\/[a-z0-9-]+)(\.html|\/)$/.test(clean)) clean = clean.replace(/(\.html|\/)$/, "");
   const offHost = url.host !== canon.host || url.protocol !== canon.protocol;
   if (!offHost && clean === path) return null;
   return `${canon.origin}${clean}${url.search}`;
@@ -93,6 +94,7 @@ export function createApp(deps: Deps) {
   tenant.route("/", aihub);
   tenant.route("/", usage);
   tenant.route("/", content);
+  tenant.route("/", siteBlog);
   tenant.route("/", searchConsole);
   tenant.route("/", analytics);
   tenant.route("/", geo);
@@ -155,6 +157,9 @@ export function createApp(deps: Deps) {
   app.get("/BingSiteAuth.xml", (c) => c.body(BING_SITE_AUTH, 200, { "content-type": "application/xml; charset=utf-8" }));
   // IndexNow key file (public by design: it only proves the site owns the key used to ping search engines).
   app.get(`/${INDEXNOW_KEY}.txt`, (c) => c.text(INDEXNOW_KEY));
+
+  // Public blog fed by Content Studio and the dynamic sitemap (ADR 0020).
+  registerPublicBlog(app);
 
   // Non-API routes: static landing + SPA shell served from Workers Static Assets.
   app.get("*", async (c) => {

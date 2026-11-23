@@ -23,6 +23,13 @@ describe("canonicalRedirect (duplicate-content guard)", () => {
     expect(r("https://dnigrowth.com/index.html")).toBe("https://dnigrowth.com/");
     expect(r("https://dnigrowth.com/legal/privacidad.html")).toBe("https://dnigrowth.com/legal/privacidad");
     expect(r("https://dnigrowth.com/legal/aviso-legal/")).toBe("https://dnigrowth.com/legal/aviso-legal");
+    // Blog: one URL for the list and for each post.
+    expect(r("https://dnigrowth.com/blog")).toBeNull();
+    expect(r("https://dnigrowth.com/blog.html")).toBe("https://dnigrowth.com/blog");
+    expect(r("https://dnigrowth.com/blog/")).toBe("https://dnigrowth.com/blog");
+    expect(r("https://dnigrowth.com/blog/que-es-geo/")).toBe("https://dnigrowth.com/blog/que-es-geo");
+    expect(r("https://www.dnigrowth.com/blog/que-es-geo")).toBe("https://dnigrowth.com/blog/que-es-geo");
+    expect(r("https://dnigrowth.com/blog/feed.xml")).toBeNull();
   });
 
   it("never redirects the JSON API or search-engine ownership files", () => {
