@@ -6,7 +6,7 @@ Leyenda: **Hecho** (funciona de punta a punta y está verificado) · **Parcial**
 
 ## Verificación de hoy en producción
 
-- `pnpm verify`: lint, typecheck, **523 pruebas** (45 ficheros), build y escaneo de secretos en verde.
+- `pnpm verify`: lint, typecheck, **524 pruebas** (45 ficheros), build y escaneo de secretos en verde.
 - **180 de 180** lecturas de la API responden 200 con la sesión de la administradora: 4 organizaciones (panel, miembros, marcas, auditorías, plan, contenido, Search Console, Analytics, GEO, informes, CRM, landings, SEO, automatizaciones, anuncios, medios, vídeo, agencia, facturación, IA, integraciones) y el panel de administración.
 - Procesos en segundo plano de los últimos 7 días: 5 auditorías de web, 11 sincronizaciones de Search Console, 7 de Analytics y 5 muestreos GEO, **todos completados**; ninguna tarea atascada en la cola; correos entregados.
 - Páginas públicas `/`, `/precios`, `/seguridad`, `/blog`, `/legal/*` → 200; `/no-existe` → 404; alias legales → 301.

@@ -1,6 +1,6 @@
 # Estado de implementación — DNI Growth
 
-Última actualización: 2026-11-23 · Producción: **https://dnigrowth.com** (Worker `dni-growth`, versión `fe8d5379-60fa-4647-9244-8243fa7e88fa`; workers.dev redirige con 301 a dnigrowth.com) · Workers Paid, sin servicios de pago adicionales ([verificación de la cuenta](CLOUDFLARE_ACCOUNT_VERIFICATION.md)).
+Última actualización: 2026-11-23 · Producción: **https://dnigrowth.com** (Worker `dni-growth`, versión `5a3f4d61-cddb-4e71-b28a-ad71987f7101`; workers.dev redirige con 301 a dnigrowth.com) · Workers Paid, sin servicios de pago adicionales ([verificación de la cuenta](CLOUDFLARE_ACCOUNT_VERIFICATION.md)).
 
 Leyenda:
 - **VERIFICADO EN PRODUCCIÓN**: probado contra la URL pública con una respuesta comprobable.
@@ -8,7 +8,9 @@ Leyenda:
 - **BLOQUEADO POR PERMISOS**: necesita una acción, clave o aceptación del titular.
 - **NO IMPLEMENTADO**.
 
-Pruebas automáticas: lint, typecheck, **489 tests** (42 ficheros: core, API y web), build y escaneo de secretos en verde el 2026-11-23 (`pnpm -s verify`, código de salida 0; rama de la Fase 0 de la web pública, sin desplegar).
+Pruebas automáticas: lint, typecheck, **524 tests** (45 ficheros: core, API y web), build y escaneo de secretos en verde el 2026-11-23 (`pnpm -s verify`, código de salida 0), desplegado como `5a3f4d61`.
+
+Verificación en producción del 2026-11-23 (sesión de la administradora): **180 de 180** lecturas de la API en 4 organizaciones y en el panel de administración → 200; trabajos en segundo plano de 7 días (auditorías, sincronizaciones de Search Console y Analytics, muestreos GEO) todos completados; Stripe en modo prueba sincronizado e idempotente y Stripe Checkout abierto con «DNI Growth · Plan Pro 249,00 €» y «Growth anual 1.296 €» (sin pagar). Resumen por fases en [STATUS.md](STATUS.md).
 
 Pruebas E2E en producción del 2026-11-18 con la cuenta verificada de la titular (organización propia, plan Free), ejecutadas desde el navegador contra https://dnigrowth.com; cada fila indica la respuesta observada.
 
