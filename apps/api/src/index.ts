@@ -7,6 +7,7 @@ import { scheduleGa4Syncs } from "./lib/ga4";
 import { scheduleGscSyncs } from "./lib/gsc";
 import { drainEmailOutbox } from "./lib/mail";
 import { maybeSyncCatalog } from "./lib/openrouter";
+import { purgeProductEvents } from "./lib/product-events";
 import { deliverWebhooks, scanOverdueTasks } from "./lib/rules";
 import { log } from "./lib/util";
 
@@ -49,5 +50,7 @@ export default {
     await env.DB.prepare("DELETE FROM ai_quota_counters WHERE updated_at < ?").bind(new Date(Date.now() - 3 * 86400_000).toISOString()).run();
     // Expiry sweep of the AI response cache (all tenants by design: rows are only deleted, never read).
     await env.DB.prepare("DELETE FROM ai_response_cache WHERE expires_at < ?").bind(new Date().toISOString()).run();
+    // Retention of the cookieless product analytics (13 months).
+    await purgeProductEvents(env.DB).catch((e) => log("error", "product_events.purge_failed", { error: String(e).slice(0, 120) }));
   },
 } satisfies ExportedHandler<Env, JobMessage>;

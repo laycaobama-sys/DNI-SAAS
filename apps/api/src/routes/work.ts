@@ -4,6 +4,7 @@ import type { AppEnv } from "../env";
 import { auditStmt } from "../lib/audit";
 import { analysesThisMonth, creditBalance, ensureMonthlyGrant, ledgerStmt, orgPlan } from "../lib/billing";
 import { ApiError, assertUuid, notFound, parseBody } from "../lib/http";
+import { trackFromRequest } from "../lib/product-events";
 import { rateLimit } from "../lib/ratelimit";
 import { nowIso, uuid } from "../lib/util";
 import { dispatchOutbox } from "../jobs/queue";
@@ -119,6 +120,8 @@ work.post("/sites/analyze", requireScope("site:analyze"), async (c) => {
     throw e;
   }
   await dispatchOutbox(c.env, c.get("deps"), (p) => c.executionCtx.waitUntil(p), [outboxId]);
+  // Product funnel (no URL is stored: only that an analysis started in this organisation).
+  await trackFromRequest(c, "audit_started", { organizationId: t.orgId, props: { from: "app" } });
   return c.json({ jobId, brandId, siteId, state: "queued", creditsReserved: reserve }, 202);
 });
 

@@ -14,6 +14,7 @@ import type { AppEnv, Env } from "../env";
 import { auditStmt } from "../lib/audit";
 import { ApiError, parseBody } from "../lib/http";
 import { emailHtml, mailMode, sendMail } from "../lib/mail";
+import { trackFromRequest } from "../lib/product-events";
 import { rateLimit } from "../lib/ratelimit";
 import { createSession, destroySession } from "../lib/session";
 import { addSeconds, hashIp, nowIso, uuid } from "../lib/util";
@@ -71,6 +72,8 @@ auth.post("/register", async (c) => {
       auditStmt(c.env.DB, { organizationId: null, actorUserId: id, action: "user.register", entityType: "user", entityId: id, requestId: c.get("requestId") }),
     ]);
     await sendVerification(c.env, { id, email: input.email, name: input.name });
+    // Cookieless product event (no email, no user id). Only for a real new account: the response stays identical.
+    await trackFromRequest(c, "signup", { props: { method: "email" } });
   } else {
     await (dummyHash ??= hashPassword("dummy-password-0"));
   }
@@ -86,6 +89,7 @@ auth.post("/verify-email", async (c) => {
     c.env.DB.prepare("UPDATE users SET email_verified_at = COALESCE(email_verified_at, ?), updated_at = ? WHERE id = ?").bind(nowIso(), nowIso(), userId),
     auditStmt(c.env.DB, { organizationId: null, actorUserId: userId, action: "user.verify_email", entityType: "user", entityId: userId, requestId: c.get("requestId") }),
   ]);
+  await trackFromRequest(c, "onboarding_step", { props: { step: "email_verified" } });
   return c.json({ ok: true });
 });
 

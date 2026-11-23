@@ -18,6 +18,7 @@ import {
   setState,
   syncOpenRouterCatalog,
 } from "../lib/openrouter";
+import { productFunnel } from "../lib/product-events";
 import { rateLimit } from "../lib/ratelimit";
 import { addSeconds, nowIso, uuid } from "../lib/util";
 import { requirePlatform, requirePlatformAdmin, requireStepUp, requireUser } from "../middleware";
@@ -240,6 +241,26 @@ admin.get("/overview", async (c) => {
     leads30: leads?.n ?? 0,
     signups: signups.results,
     recent: recent.results,
+  });
+});
+
+/**
+ * Product funnel (own cookieless analytics, ADR 0021): counts per event for the last 7 and 30 days.
+ * Aggregates only: no rows, no organisation names, no visitor hashes leave the database.
+ */
+admin.get("/funnel", async (c) => {
+  const now = new Date();
+  const [d7, d30] = await Promise.all([productFunnel(c.env.DB, 7, now), productFunnel(c.env.DB, 30, now)]);
+  return c.json({
+    observedAt: nowIso(now),
+    measurement: "observed",
+    source: "Analítica de producto propia (tabla product_events en D1), sin cookies",
+    windows: [d7, d30],
+    caveats: [
+      "«Servidor» lo registra el propio backend (verificado); «Navegador» lo declara la página pública y puede faltar si el visitante bloquea scripts o sobrar si alguien lo envía a mano (limitado por IP).",
+      "«Visitantes-día» cuenta códigos diarios distintos: la misma persona en dos días cuenta dos veces. Sin la clave IP_HASH_SALT o con la señal de privacidad del navegador no se calcula.",
+      "Los eventos «sin instrumentar» todavía no se registran en ningún punto: un cero ahí no significa que nadie lo hiciera.",
+    ],
   });
 });
 

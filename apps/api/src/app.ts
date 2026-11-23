@@ -1,4 +1,4 @@
-import { Hono } from "hono";
+import { Hono, type Context } from "hono";
 import { FEATURE_STATUS_LABEL, FEATURES } from "@dni/core";
 import { bodyLimit } from "hono/body-limit";
 import type { AppEnv, Deps } from "./env";
@@ -27,6 +27,8 @@ import { geo } from "./routes/geo";
 import { reports } from "./routes/reports";
 import { searchConsole } from "./routes/searchConsole";
 import { registerPublicBlog, siteBlog } from "./routes/site-blog";
+import { eventsPublic } from "./routes/events";
+import { FALLBACK_404_HTML, SITE_CSP, SITE_SECURITY_HEADERS } from "./lib/site-headers";
 import { org, orgsPublic } from "./routes/orgs";
 import { work } from "./routes/work";
 
@@ -47,7 +49,7 @@ export function canonicalRedirect(url: URL, canon: URL): string | null {
   if (path.startsWith("/api/") && path !== "/api/v1/auth/google/start") return null;
   let clean = path;
   if (clean === "/index.html") clean = "/";
-  else if (/^\/(legal\/[a-z-]+|blog|blog\/[a-z0-9-]+)(\.html|\/)$/.test(clean)) clean = clean.replace(/(\.html|\/)$/, "");
+  else if (/^\/(legal\/[a-z-]+|blog|blog\/[a-z0-9-]+|seguridad)(\.html|\/)$/.test(clean)) clean = clean.replace(/(\.html|\/)$/, "");
   const offHost = url.host !== canon.host || url.protocol !== canon.protocol;
   if (!offHost && clean === path) return null;
   return `${canon.origin}${clean}${url.search}`;
@@ -79,9 +81,14 @@ export function createApp(deps: Deps) {
   app.route("/api/v1/webhooks", webhooks);
   app.route("/api/v1", orgsPublic);
   app.get("/api/v1/public/features", (c) =>
-    c.json({ items: FEATURES.map((f) => ({ ...f, statusLabel: FEATURE_STATUS_LABEL[f.status] })) }, 200, { "cache-control": "public, max-age=300" }),
+    c.json(
+      { items: FEATURES.map((f) => ({ key: f.key, label: f.label, status: f.status, statusLabel: FEATURE_STATUS_LABEL[f.status], summary: f.summary, ...(f.limit ? { limit: f.limit } : {}) })) },
+      200,
+      { "cache-control": "public, max-age=300" },
+    ),
   );
   app.route("/api/v1/public", crmPublic);
+  app.route("/api/v1/public", eventsPublic);
 
   // Every tenant route: authenticated user + active membership resolved from the path.
   const tenant = new Hono<AppEnv>();
@@ -163,8 +170,8 @@ export function createApp(deps: Deps) {
 
   // Non-API routes: static landing + SPA shell served from Workers Static Assets.
   app.get("*", async (c) => {
-    if (!c.env.ASSETS) return c.text("Not found", 404);
     const url = new URL(c.req.url);
+    if (!c.env.ASSETS) return notFoundPage(c);
     if (url.pathname === "/app" || url.pathname.startsWith("/app/")) {
       const res = await c.env.ASSETS.fetch(new Request(new URL("/app/", url), c.req.raw));
       const h = new Headers(res.headers);
@@ -173,14 +180,38 @@ export function createApp(deps: Deps) {
       h.set("x-frame-options", "DENY");
       h.set("x-content-type-options", "nosniff");
       h.set("referrer-policy", "strict-origin-when-cross-origin");
-      h.set(
-        "content-security-policy",
-        "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: https:; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'",
-      );
+      h.set("content-security-policy", SITE_CSP);
       return new Response(res.body, { status: res.status, headers: h });
     }
-    return c.env.ASSETS.fetch(c.req.raw);
+    // The 404 page itself is never a 200 page.
+    if (url.pathname === "/404" || url.pathname === "/404.html") return notFoundPage(c);
+    const res = await c.env.ASSETS.fetch(c.req.raw);
+    return res.status === 404 ? notFoundPage(c, res) : res;
   });
+
+  /**
+   * Custom 404 for unknown public pages (never /api, which answers problem+json, nor /app, the SPA):
+   * dist/404.html (also what Static Assets serve with not_found_handling «404-page»), status 404, noindex
+   * and the same security headers as every page.
+   */
+  async function notFoundPage(c: Context<AppEnv>, assetRes?: Response): Promise<Response> {
+    const read = async (get: () => Promise<Response | null | undefined> | undefined) => {
+      try {
+        const r = await get();
+        return r ? await r.text() : "";
+      } catch {
+        return "";
+      }
+    };
+    // The asset layer's own 404 body (not_found_handling «404-page»), else dist/404.html, else the inline copy.
+    const fromAssets = await read(async () => assetRes);
+    const built = fromAssets.includes("data-not-found") ? fromAssets : await read(() => c.env.ASSETS?.fetch(new Request(new URL("/404", c.req.url))));
+    const html = built.includes("data-not-found") ? built : FALLBACK_404_HTML;
+    return new Response(c.req.method === "HEAD" ? null : html, {
+      status: 404,
+      headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store", "x-robots-tag": "noindex", ...SITE_SECURITY_HEADERS },
+    });
+  }
 
   return app;
 }

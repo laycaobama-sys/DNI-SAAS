@@ -39,6 +39,7 @@ import { useAuth } from "./lib/auth";
 import { useApi, useTheme } from "./lib/hooks";
 import { cx, LegalLinks } from "./ui";
 import { MODULE_MIN_PLAN, PLAN_LABEL, menuShowsModule, requiredPlan } from "@dni/core/plan-access";
+import { menuStatusBadge } from "@dni/core/features";
 import { AdminBypassNotice, PlanLockedPanel, usePlanAccess } from "./planaccess";
 import { ErrorBoundary } from "./errorboundary";
 import { UsageBanner } from "./usage";
@@ -64,7 +65,8 @@ export const MODULES: Record<string, { label: string; description: string }> = {
 
 type NavItem = { to: string; label: string; icon: typeof Gauge; live?: boolean; end?: boolean; module: string };
 
-function navFor(orgId: string): Array<{ section: string; items: NavItem[] }> {
+/** Menu structure (exported for the test that keeps it in line with FEATURES in @dni/core/features). */
+export function navFor(orgId: string): Array<{ section: string; items: NavItem[] }> {
   const o = `/o/${orgId}`;
   const i = (path: string, label: string, icon: typeof Gauge, end?: boolean): NavItem => ({ to: path ? `${o}/${path}` : o, label, icon, live: true, end, module: path });
   return [
@@ -94,6 +96,21 @@ export function Logo({ className }: { className?: string }) {
     <span className={cx("inline-flex items-center gap-2 font-bold", className)}>
       <span className="grid h-7 place-items-center rounded-md border-[1.5px] border-accent px-1.5 text-[11px] font-extrabold tracking-[0.08em]">DNI</span>
       <span className="font-serif text-2xl font-normal italic">Growth</span>
+    </span>
+  );
+}
+
+/**
+ * «Parcial» / «En desarrollo» next to a menu item, from the same FEATURES registry as the public site and
+ * llms.txt. Fully available modules show nothing. The limit is in the tooltip and for screen readers.
+ */
+export function MenuStatus({ module }: { module: string }) {
+  const b = menuStatusBadge(module);
+  if (!b) return null;
+  return (
+    <span className="shrink-0 rounded border border-line px-1 text-[10px] text-mute" title={b.title} data-menu-status={module}>
+      {b.label}
+      <span className="sr-only">: {b.title}</span>
     </span>
   );
 }
@@ -242,6 +259,7 @@ export function AppShell() {
                   >
                     <it.icon className="size-4 shrink-0" aria-hidden />
                     <span className="min-w-0 flex-1 break-words">{it.label}</span>
+                    <MenuStatus module={it.module} />
                     {access.bypass && !access.includes(it.module) && <span className="shrink-0 rounded border border-dashed border-line px-1 text-[10px] text-mute" title={`Plan ${requiredPlan(it.module)}: visible por ser administrador`}>admin</span>}
                   </NavLink>
                 </li>

@@ -12,6 +12,22 @@
   };
   document.documentElement.classList.add("js");
 
+  /**
+   * Own product analytics: no cookies, no storage, no third parties. The server keeps the event name, the
+   * path without query string and a daily-rotating visitor hash (never the IP). Fire-and-forget.
+   */
+  const trackEvent = (event: string, props: Record<string, string> = {}) => {
+    try {
+      const body = JSON.stringify({ event, path: location.pathname, props });
+      const blob = new Blob([body], { type: "application/json" });
+      if (!(navigator.sendBeacon && navigator.sendBeacon("/api/v1/public/events", blob))) {
+        void fetch("/api/v1/public/events", { method: "POST", headers: { "content-type": "application/json" }, body, keepalive: true }).catch(() => undefined);
+      }
+    } catch {
+      /* analytics must never break the page */
+    }
+  };
+
   safe("mouseGradient", () => {
     const el = document.querySelector<HTMLElement>("[data-mouse-gradient]");
     if (!el) return;
@@ -75,23 +91,31 @@
     window.setTimeout(() => items.forEach(show), 6000);
   });
 
-  safe("countUp", () => {
-    const nums = Array.from(document.querySelectorAll<HTMLElement>("[data-count]"));
-    const run = (el: HTMLElement) => {
-      const target = Number(el.dataset.count ?? "0");
-      const suffix = el.dataset.suffix ?? "";
-      if (target === 0) return;
-      const start = performance.now();
-      const dur = 1400;
-      const tick = (t: number) => {
-        const p = Math.min(1, (t - start) / dur);
-        el.textContent = `${Math.round(target * (1 - Math.pow(1 - p, 3)))}${suffix}`;
-        if (p < 1) requestAnimationFrame(tick);
-      };
-      requestAnimationFrame(tick);
-    };
-    const io = new IntersectionObserver((entries) => entries.forEach((e) => e.isIntersecting && (run(e.target as HTMLElement), io.unobserve(e.target))), { threshold: 0.05 });
-    nums.forEach((n) => io.observe(n));
+  // 90-second demo: the section stays hidden (nothing downloaded) until data-video-src points to a real
+  // file in /demo/. The player keeps a 16:9 box (CSS aspect-ratio), so showing it causes no layout shift.
+  safe("demoVideo", () => {
+    const section = document.querySelector<HTMLElement>("[data-demo]");
+    const frame = section?.querySelector<HTMLElement>("[data-demo-frame]");
+    const src = section?.dataset.videoSrc?.trim() ?? "";
+    if (!section || !frame || !/^\/demo\/[\w.-]+\.(mp4|webm)$/.test(src)) return;
+    const video = document.createElement("video");
+    video.controls = true;
+    video.preload = "none";
+    video.playsInline = true;
+    video.width = 1280;
+    video.height = 720;
+    video.src = src;
+    video.setAttribute("aria-describedby", "demo-desc");
+    const poster = section.dataset.videoPoster?.trim() ?? "";
+    if (/^\/demo\/[\w.-]+\.(webp|jpg|png)$/.test(poster)) video.poster = poster;
+    const captions = section.dataset.videoCaptions?.trim() ?? "";
+    if (/^\/demo\/[\w.-]+\.vtt$/.test(captions)) {
+      const track = document.createElement("track");
+      Object.assign(track, { kind: "captions", src: captions, srclang: "es", label: "Español", default: true });
+      video.appendChild(track);
+    }
+    frame.appendChild(video);
+    section.hidden = false;
   });
 
   safe("accordion", () => {
@@ -118,6 +142,8 @@
       } catch {
         /* storage may be blocked */
       }
+      // Cookieless product event (no URL, no personal data): someone started an audit from the site.
+      trackEvent("audit_started", { from: "landing" });
       window.location.href = "/app/register";
     });
   });
