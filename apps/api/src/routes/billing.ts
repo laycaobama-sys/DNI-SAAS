@@ -733,7 +733,25 @@ export async function billingMaintenance(env: Env): Promise<{ downgraded: number
       `Tu prueba gratis termina el ${fmtDate(t.trial_end)} y ese día se hará el primer cobro (IVA aparte).`,
       "Si prefieres no continuar, cancela en un clic desde Facturación y no se te cobrará nada.",
     ]);
-  return { downgraded: expired.length, reminders: trials.length };
+  // Safety net: a subscription the customer already cancelled must end with its period even if Stripe's
+  // "deleted" event never arrives (lost webhook, or a test-mode subscription after switching to live keys).
+  // Two days of margin so the real webhook always wins.
+  const { results: ended } = await db
+    .prepare(
+      `SELECT organization_id FROM subscriptions WHERE provider = 'stripe' AND status IN ('active','trialing','past_due')
+       AND cancel_at_period_end = 1 AND current_period_end IS NOT NULL AND current_period_end < ?`,
+    )
+    .bind(new Date(Date.now() - 2 * DAY_MS).toISOString())
+    .all<{ organization_id: string }>();
+  for (const e of ended)
+    await db.batch([
+      db
+        .prepare("UPDATE subscriptions SET status = 'canceled', plan_code = 'free', cancel_at_period_end = 0, paused_until = NULL, payment_failed_at = NULL, grace_until = NULL, updated_at = ? WHERE organization_id = ? AND cancel_at_period_end = 1")
+        .bind(now, e.organization_id),
+      db.prepare("UPDATE organizations SET plan_code = 'free' WHERE id = ?").bind(e.organization_id),
+      auditStmt(db, { organizationId: e.organization_id, actorUserId: null, action: "billing.period_ended", entityType: "subscription", after: { reason: "cancelled_at_period_end_without_webhook" } }),
+    ]);
+  return { downgraded: expired.length + ended.length, reminders: trials.length };
 }
 
 function emailEntry(env: Env): ProviderManifestEntry {

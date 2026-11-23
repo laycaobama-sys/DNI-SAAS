@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { canonicalRedirect } from "../src/app";
+import { canonicalRedirect, PATH_ALIASES } from "../src/app";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 
 const canon = new URL("https://dnigrowth.com");
 const r = (u: string) => canonicalRedirect(new URL(u), canon);
@@ -38,5 +40,25 @@ describe("canonicalRedirect (duplicate-content guard)", () => {
     expect(r("https://dni-growth.example.workers.dev/google07bca8a276fd14a6.html")).toBeNull();
     expect(r("https://dni-growth.example.workers.dev/BingSiteAuth.xml")).toBeNull();
     expect(r("https://dni-growth.example.workers.dev/c2d713b310de907a6ead8590e603ff8c.txt")).toBeNull();
+  });
+});
+
+describe("legal and support aliases (links in Stripe's public business details)", () => {
+  it("send the URLs Stripe shows on Checkout and receipts to the real pages", () => {
+    expect(r("https://dnigrowth.com/terminos-y-condiciones")).toBe("https://dnigrowth.com/legal/condiciones");
+    expect(r("https://dnigrowth.com/politica-de-privacidad/")).toBe("https://dnigrowth.com/legal/privacidad");
+    expect(r("https://dnigrowth.com/soporte")).toBe("https://dnigrowth.com/#contacto");
+    expect(r("http://www.dnigrowth.com/privacidad.html")).toBe("https://dnigrowth.com/legal/privacidad");
+  });
+
+  it("every alias reaches the Worker and points to a page that exists", () => {
+    const wrangler = readFileSync(join(import.meta.dirname, "..", "wrangler.jsonc"), "utf8");
+    const web = join(import.meta.dirname, "..", "..", "web");
+    for (const [from, to] of Object.entries(PATH_ALIASES)) {
+      expect(wrangler).toContain(`"${from}"`);
+      const page = to.split("#")[0];
+      const file = page === "/" ? "index.html" : `${page.slice(1)}.html`;
+      expect(() => readFileSync(join(web, file))).not.toThrow();
+    }
   });
 });

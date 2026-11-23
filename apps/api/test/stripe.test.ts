@@ -316,6 +316,22 @@ describe("Subscription lifecycle via signed webhooks", () => {
     await webhook(h, subEvent("evt_4", "customer.subscription.updated", orgId, await price("pro"), t0 + 30, "active"));
     expect((await owner.get(`/api/v1/orgs/${orgId}/billing`)).json.plan.code).toBe("pro");
 
+    // Cancelled at period end but Stripe's "deleted" event never arrives (lost webhook, or a test-mode
+    // subscription after switching to live keys): it still ends, two days after the period, never before.
+    const endedAgo = async (days: number) => {
+      await h.db.prepare("UPDATE subscriptions SET cancel_at_period_end = 1, current_period_end = ? WHERE organization_id = ?").bind(new Date(Date.now() - days * 86_400_000).toISOString(), orgId).run();
+      await h.db.prepare("DELETE FROM platform_settings WHERE k = 'billing_maintenance_last'").run();
+      return (await billingMaintenance(h.env)).downgraded;
+    };
+    expect(await endedAgo(1)).toBe(0);
+    expect((await owner.get(`/api/v1/orgs/${orgId}/billing`)).json.plan.code).toBe("pro");
+    expect(await endedAgo(3)).toBe(1);
+    bill = (await owner.get(`/api/v1/orgs/${orgId}/billing`)).json;
+    expect(bill.plan.code).toBe("free");
+    expect(bill.subscription.status).toBe("canceled");
+    await webhook(h, subEvent("evt_4b", "customer.subscription.updated", orgId, await price("pro"), t0 + 35, "active"));
+    expect((await owner.get(`/api/v1/orgs/${orgId}/billing`)).json.plan.code).toBe("pro");
+
     // Cancellation (customer resolved by Stripe customer id, no metadata needed).
     expect((await webhook(h, { id: "evt_5", type: "customer.subscription.deleted", created: t0 + 40, livemode: false, data: { object: { id: "sub_1", customer: "cus_1" } } })).status).toBe(200);
     bill = (await owner.get(`/api/v1/orgs/${orgId}/billing`)).json;

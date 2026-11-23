@@ -43,9 +43,28 @@ const OWNERSHIP_FILE = /^\/(google[0-9a-f]+\.html|BingSiteAuth\.xml|[0-9a-f]{32}
  * (workers.dev or www host, http, /index.html, /x.html, /x/), or null when the URL is canonical.
  * The JSON API keeps answering on any host (health checks, webhooks).
  */
+/**
+ * Short or third-party links that must land on the real page: Stripe's public business details
+ * (shown on Checkout, receipts and invoices) point at /soporte, /politica-de-privacidad and
+ * /terminos-y-condiciones. Keep in sync with run_worker_first in wrangler.jsonc.
+ */
+export const PATH_ALIASES: Readonly<Record<string, string>> = {
+  "/terminos-y-condiciones": "/legal/condiciones",
+  "/terminos": "/legal/condiciones",
+  "/condiciones": "/legal/condiciones",
+  "/politica-de-privacidad": "/legal/privacidad",
+  "/privacidad": "/legal/privacidad",
+  "/aviso-legal": "/legal/aviso-legal",
+  "/garantia": "/legal/garantia",
+  "/soporte": "/#contacto",
+  "/contacto": "/#contacto",
+};
+
 export function canonicalRedirect(url: URL, canon: URL): string | null {
   const path = url.pathname;
   if (OWNERSHIP_FILE.test(path)) return null;
+  const alias = PATH_ALIASES[path.length > 1 ? path.replace(/(\.html|\/)$/, "") : path];
+  if (alias) return `${canon.origin}${alias}`;
   if (path.startsWith("/api/") && path !== "/api/v1/auth/google/start") return null;
   let clean = path;
   if (clean === "/index.html") clean = "/";
