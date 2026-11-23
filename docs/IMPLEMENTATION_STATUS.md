@@ -1,6 +1,6 @@
 # Estado de implementación — DNI Growth
 
-Última actualización: 2026-11-23 · Producción: **https://dnigrowth.com** (Worker `dni-growth`, versión `92dc1ff6-7a03-49bd-a414-7e6d2eb69f5b`; workers.dev redirige con 301 a dnigrowth.com) · Workers Paid, sin servicios de pago adicionales ([verificación de la cuenta](CLOUDFLARE_ACCOUNT_VERIFICATION.md)).
+Última actualización: 2026-11-23 · Producción: **https://dnigrowth.com** (Worker `dni-growth`, versión `fe8d5379-60fa-4647-9244-8243fa7e88fa`; workers.dev redirige con 301 a dnigrowth.com) · Workers Paid, sin servicios de pago adicionales ([verificación de la cuenta](CLOUDFLARE_ACCOUNT_VERIFICATION.md)).
 
 Leyenda:
 - **VERIFICADO EN PRODUCCIÓN**: probado contra la URL pública con una respuesta comprobable.
@@ -243,7 +243,7 @@ Migración aditiva 0017 aplicada en remoto el 2026-11-20 con copia previa `backu
 | Versión móvil | VERIFICADO EN PRODUCCIÓN | 375×812 y 768×1024 (navegador integrado): sin scroll horizontal (`scrollWidth` = ancho), campos a 16 px, menú como diálogo que bloquea el fondo y se cierra con Escape, botón de menú de 44 px; la tabla de planes se desplaza dentro de su caja; tema aplicado antes de pintar (`/theme-init.js` 200) |
 
 ## Recorrido hallazgo → borrador → exportación, fallos B1–B15 y blog propio (nuevo, [ADR 0020](adr/0020-recorrido-hallazgo-borrador-y-blog.md) · [mapa T01–T16](roadmap/ESTADO.md))
-Versión `92dc1ff6`; migración 0018 aditiva (`site_blog_posts`) aplicada con copia previa `backups/dni-growth-db-pre-0018-20261123-0229.sql`. Pruebas del 2026-11-23 en producción con la cuenta de la titular, en la organización «DNI Growth».
+Versión `fe8d5379` (verificación funcional sobre `92dc1ff6`, mismo código de la web); migración 0018 aditiva (`site_blog_posts`) aplicada con copia previa `backups/dni-growth-db-pre-0018-20261123-0229.sql`. Pruebas del 2026-11-23 en producción con la cuenta de la titular, en la organización «DNI Growth».
 
 | Elemento | Estado | Prueba |
 |---|---|---|
