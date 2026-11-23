@@ -3,7 +3,7 @@ import type { Role } from "@dni/core";
 export interface Env {
   DB: D1Database;
   ASSETS?: Fetcher;
-  JOBS_QUEUE?: Queue<JobMessage>;
+  JOBS_QUEUE?: Queue<QueueMessage>;
   ENVIRONMENT: "development" | "staging" | "production" | "test";
   APP_ORIGIN: string;
   /** Cloudflare Email Service `send_email` binding (requires an onboarded sending domain). */
@@ -74,6 +74,9 @@ export interface JobMessage {
   organizationId: string;
   outboxId: string;
 }
+
+/** Everything the jobs queue carries: organisation jobs, and free audits without an account (jobs/public-audit.ts). */
+export type QueueMessage = JobMessage | { kind: "public_audit"; auditId: string };
 
 export interface SessionUser {
   id: string;

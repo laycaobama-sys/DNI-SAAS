@@ -1,7 +1,7 @@
 import { AnalyticsPage } from "./pages/analytics";
 import { GeoPage } from "./pages/geo";
 import { SearchConsolePage } from "./pages/searchconsole";
-import { StrictMode, type ReactNode } from "react";
+import { StrictMode, useEffect, useState, type ReactNode } from "react";
 import { createRoot } from "react-dom/client";
 import { BrowserRouter, Navigate, Outlet, Route, Routes, useLocation, useParams } from "react-router";
 import "./styles.css";
@@ -13,6 +13,8 @@ import { AdminConsolePage } from "./pages/admin";
 import { Spinner } from "./ui";
 import { ForgotPage, InvitePage, LoginPage, RegisterPage, ResetPage, VerifyPage } from "./pages/auth";
 import { DashboardPage, OnboardingPage } from "./pages/dashboard";
+import { WelcomePage } from "./pages/welcome";
+import { claimPendingAudit, pendingAudit } from "./lib/pending-audit";
 import { AnalyzePage, JobPage, JobsPage } from "./pages/analyze";
 import { AdvisorPage, CreativePage } from "./pages/ai";
 import { AiHubPage } from "./pages/aihub";
@@ -47,7 +49,14 @@ function RequireAuth({ children }: { children: ReactNode }) {
 function Home() {
   const { me } = useAuth();
   const first = me?.memberships[0];
-  return <Navigate to={first ? `/o/${first.id}` : "/onboarding"} replace />;
+  const [claimed, setClaimed] = useState<null | boolean>(() => (first && pendingAudit() ? null : false));
+  // Someone who already had an account and audited their web from the public site: link it to their first organisation.
+  useEffect(() => {
+    if (claimed !== null || !first) return;
+    void claimPendingAudit(first.id).then((url) => setClaimed(!!url));
+  }, [claimed, first]);
+  if (claimed === null) return <FullSpinner />;
+  return <Navigate to={first ? (claimed ? `/o/${first.id}/bienvenida` : `/o/${first.id}`) : "/onboarding"} replace />;
 }
 
 function OrgGuard() {
@@ -74,6 +83,7 @@ function App() {
       <Route path="/o/:orgId" element={<RequireAuth><AppShell /></RequireAuth>}>
         <Route element={<OrgGuard />}>
           <Route index element={<DashboardPage />} />
+          <Route path="bienvenida" element={<WelcomePage />} />
           <Route path="analyze" element={<AnalyzePage />} />
           <Route path="jobs" element={<JobsPage />} />
           <Route path="jobs/:jobId" element={<JobPage />} />

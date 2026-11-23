@@ -131,20 +131,52 @@
 
   safe("urlForm", () => {
     const form = document.querySelector<HTMLFormElement>("[data-url-form]");
-    form?.addEventListener("submit", (e) => {
-      e.preventDefault();
-      const input = form.querySelector<HTMLInputElement>("input[name=url]");
-      const url = (input?.value ?? "").trim().slice(0, 2048);
-      if (!url) return input?.focus();
-      // The URL is only carried to the signup screen; validation happens server-side (SSRF policy).
+    const status = document.querySelector<HTMLElement>("[data-url-status]");
+    // Without the free audit (network error): carry the URL to the signup screen, as before.
+    const toSignup = (url: string) => {
       try {
         sessionStorage.setItem("dni.pendingUrl", url);
       } catch {
         /* storage may be blocked */
       }
-      // Cookieless product event (no URL, no personal data): someone started an audit from the site.
       trackEvent("audit_started", { from: "landing" });
       window.location.href = "/app/register";
+    };
+    // «Auditar mi web» buttons scroll to the form: put the cursor in the field too.
+    const focusField = () => window.setTimeout(() => form?.querySelector<HTMLInputElement>("input[name=url]")?.focus({ preventScroll: true }), 350);
+    document.querySelectorAll<HTMLAnchorElement>('a[href="#auditar"]').forEach((a) => a.addEventListener("click", focusField));
+    if (location.hash === "#auditar") focusField();
+    form?.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const input = form.querySelector<HTMLInputElement>("input[name=url]");
+      const btn = form.querySelector<HTMLButtonElement>("button[type=submit]");
+      const url = (input?.value ?? "").trim().slice(0, 500);
+      if (!url) return input?.focus();
+      if (btn) btn.disabled = true;
+      if (status) status.textContent = "Preparando tu auditoría…";
+      try {
+        // Free audit without an account: validated server-side (public URLs only), limited per visitor.
+        const res = await fetch("/api/v1/public/audits", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ url }) });
+        const body = (await res.json().catch(() => ({}))) as { page?: string; title?: string; code?: string };
+        if (res.ok && body.page && body.page.startsWith("/auditoria/")) {
+          window.location.href = body.page;
+          return;
+        }
+        if (status) {
+          status.textContent = body.title ?? "No se pudo empezar la auditoría. Revisa la dirección e inténtalo de nuevo.";
+          if (res.status === 429) {
+            const a = document.createElement("a");
+            a.href = "/app/register";
+            a.textContent = " Crear mi cuenta gratis";
+            status.appendChild(a);
+          }
+        }
+        input?.focus();
+      } catch {
+        toSignup(url);
+        return;
+      }
+      if (btn) btn.disabled = false;
     });
   });
 

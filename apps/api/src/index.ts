@@ -1,7 +1,9 @@
 import { createDohResolver } from "@dni/core";
 import { createApp } from "./app";
-import type { Deps, Env, JobMessage } from "./env";
+import type { Deps, Env, JobMessage, QueueMessage } from "./env";
 import { processJobMessage } from "./jobs/consumer";
+import { isPublicAuditMessage, processPublicAudit, publicAuditMaintenance } from "./jobs/public-audit";
+import { sendLifecycleEmails } from "./lib/lifecycle";
 import { dispatchOutbox, recoverStuckJobs } from "./jobs/queue";
 import { scheduleGa4Syncs } from "./lib/ga4";
 import { scheduleGscSyncs } from "./lib/gsc";
@@ -25,14 +27,20 @@ export default {
   fetch: app.fetch,
 
   /** Cloudflare Queues consumer: retries with backoff, DLQ configured in wrangler.jsonc. */
-  async queue(batch: MessageBatch<JobMessage>, env: Env) {
+  async queue(batch: MessageBatch<QueueMessage>, env: Env) {
     for (const msg of batch.messages) {
       try {
-        const outcome = await processJobMessage(env, msg.body, deps);
+        if (isPublicAuditMessage(msg.body)) {
+          // Free audit without an account: idempotent claim inside; failures are stored on the row.
+          await processPublicAudit(env, deps, msg.body.auditId);
+          msg.ack();
+          continue;
+        }
+        const outcome = await processJobMessage(env, msg.body as JobMessage, deps);
         if (outcome.action === "retry") msg.retry({ delaySeconds: outcome.delaySeconds });
         else msg.ack();
       } catch (e) {
-        log("error", "queue.message_failed", { jobId: msg.body?.jobId, error: String(e) });
+        log("error", "queue.message_failed", { jobId: (msg.body as Partial<JobMessage> | undefined)?.jobId, error: String(e) });
         msg.retry({ delaySeconds: 60 });
       }
     }
@@ -55,7 +63,11 @@ export default {
     await env.DB.prepare("DELETE FROM ai_quota_counters WHERE updated_at < ?").bind(new Date(Date.now() - 3 * 86400_000).toISOString()).run();
     // Expiry sweep of the AI response cache (all tenants by design: rows are only deleted, never read).
     await env.DB.prepare("DELETE FROM ai_response_cache WHERE expires_at < ?").bind(new Date().toISOString()).run();
+    // Free audits without an account: lost messages re-sent, anonymous rows deleted after 30 days.
+    await publicAuditMaintenance(env, deps, (p) => ctx.waitUntil(p)).catch((e) => log("error", "public_audit.maintenance_failed", { error: String(e).slice(0, 120) }));
+    // Help emails 24 h and 72 h after signup (once each, never to users who opted out).
+    await sendLifecycleEmails(env).catch((e) => log("error", "lifecycle.cron_failed", { error: String(e).slice(0, 120) }));
     // Retention of the cookieless product analytics (13 months).
     await purgeProductEvents(env.DB).catch((e) => log("error", "product_events.purge_failed", { error: String(e).slice(0, 120) }));
   },
-} satisfies ExportedHandler<Env, JobMessage>;
+} satisfies ExportedHandler<Env, QueueMessage>;

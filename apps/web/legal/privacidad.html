@@ -41,6 +41,7 @@
       <h3>Datos de terceros que obtenemos a petición tuya</h3>
       <ul>
         <li><strong>Contenido público de webs</strong>: al auditar una URL, nuestro rastreador «DNIGrowthBot» lee solo HTML público, respeta robots.txt y no inicia sesión en ningún sitio.</li>
+        <li id="auditoria-gratuita"><strong>Auditoría gratuita sin cuenta</strong>: si escribes una web en la portada sin registrarte, guardamos la dirección, el resultado de la revisión (hasta 5 páginas públicas) y un resumen criptográfico (hash) no reversible de tu IP para limitar abusos; no guardamos la IP ni ningún dato tuyo. Cualquiera que tenga el enlace de la auditoría puede verla, así que compártelo solo si quieres. Si después creas una cuenta, la auditoría pasa a tu organización y borramos ese hash.</li>
         <li><strong>Datos de Google</strong>: solo si conectas tu cuenta; ver la sección 3.</li>
       </ul>
       <p><strong>Formularios de nuestros clientes.</strong> Las empresas que usan DNI Growth pueden poner formularios de captación en sus propias webs. Los datos que dejes en ellos los decide y gestiona esa empresa, que es la responsable del tratamiento; DNI Growth solo los guarda y procesa por su cuenta como encargado del tratamiento, y no los usa para nada más. Para ejercer tus derechos sobre esos datos, dirígete a la empresa de la web donde escribiste.</p>
@@ -64,6 +65,8 @@
           <tr><td>Crear y gestionar tu cuenta, tus organizaciones y permisos</td><td>Cuenta, organizaciones y equipo</td><td>Ejecución del contrato (art. 6.1.b RGPD)</td></tr>
           <tr><td>Prestar las funciones que pides: auditorías, plan, contenido, asesor y estudio creativo con IA, paneles de Google</td><td>Contenido de trabajo, contenido público de webs, datos de Google</td><td>Ejecución del contrato; para datos de Google, además, tu autorización expresa en Google</td></tr>
           <tr><td>Correos de servicio: verificar el correo, restablecer la contraseña, invitaciones y avisos de la cuenta</td><td>Nombre y correo</td><td>Ejecución del contrato</td></tr>
+          <tr><td>Dos correos de ayuda para terminar la configuración (24 y 72 horas después de crear la cuenta, solo si te queda algún paso)</td><td>Nombre, correo y pasos de configuración pendientes</td><td>Interés legítimo en ayudarte a usar el servicio que has contratado (art. 6.1.f); puedes darte de baja con un clic desde el propio correo</td></tr>
+          <tr><td>Auditoría gratuita sin cuenta</td><td>Dirección de la web, resultado y hash de la IP</td><td>Interés legítimo en ofrecer la revisión que pides y proteger el servicio de abusos (art. 6.1.f)</td></tr>
           <tr><td>Responder a tu mensaje del formulario de contacto</td><td>Datos del formulario de contacto</td><td>Tu consentimiento (art. 6.1.a) y, si pides información sobre el servicio, medidas precontractuales (art. 6.1.b)</td></tr>
           <tr><td>Enviarte novedades de DNI Growth, solo si marcas la casilla opcional</td><td>Nombre y correo</td><td>Consentimiento (art. 6.1.a), que puedes retirar en cualquier momento</td></tr>
           <tr><td>Seguridad, prevención de abusos y fraude, límites de uso y registro de auditoría</td><td>Sesiones, IP en hash, registro de actividad</td><td>Interés legítimo en proteger el servicio y a sus usuarios (art. 6.1.f)</td></tr>
@@ -100,6 +103,7 @@
         <li>Enlaces de verificación de correo y de restablecimiento de contraseña: caducan en poco tiempo y son de un solo uso. Estados temporales de inicio de sesión con Google: 10 minutos.</li>
         <li>Contadores de límites de uso: entre 1 y 3 días.</li>
         <li>Estadística de uso sin cookies: 13 meses; después se borra automáticamente.</li>
+        <li>Auditorías gratuitas sin cuenta: 30 días; después se borran automáticamente, salvo que las hayas vinculado a tu organización al registrarte.</li>
         <li>Registro de auditoría: mientras exista la organización, porque sirve para seguridad y para demostrar quién autorizó cada acción.</li>
         <li>Datos de facturación: el plazo que exija la normativa fiscal y mercantil.</li>
       </ul>
@@ -113,6 +117,8 @@
           <tr><td><code>dni_oauth_state</code></td><td>Cookie propia, HttpOnly, segura</td><td>Proteger el inicio de sesión y las conexiones con Google</td><td>10 minutos</td></tr>
           <tr><td><code>dni.theme</code></td><td>Almacenamiento local</td><td>Recordar el tema claro u oscuro</td><td>Hasta que lo borres</td></tr>
           <tr><td><code>dni.pendingUrl</code></td><td>Almacenamiento de sesión</td><td>Recordar la URL que ibas a auditar mientras te registras</td><td>Hasta cerrar la pestaña</td></tr>
+          <tr><td><code>dni.pendingAudit</code></td><td>Almacenamiento local</td><td>Recordar tu auditoría gratuita mientras creas la cuenta, para pasarla a tu organización</td><td>Hasta que la vinculas o la borras</td></tr>
+          <tr><td><code>dni.wantedPlan</code></td><td>Almacenamiento local</td><td>Recordar el plan que elegiste en la página de precios</td><td>Hasta que abres Facturación en la aplicación o lo borras</td></tr>
         </tbody>
       </table></div>
       <p>No usamos cookies de analítica, publicidad ni redes sociales. Si en el futuro se añadieran, pediríamos tu consentimiento antes. La <a href="#analitica">estadística de uso</a> no usa cookies ni guarda nada en tu navegador.</p>

@@ -27,6 +27,7 @@ import { geo } from "./routes/geo";
 import { reports } from "./routes/reports";
 import { searchConsole } from "./routes/searchConsole";
 import { registerPublicBlog, siteBlog } from "./routes/site-blog";
+import { activationRoutes, publicAudits, registerAuditPage } from "./routes/public-audit";
 import { eventsPublic } from "./routes/events";
 import { FALLBACK_404_HTML, SITE_CSP, SITE_SECURITY_HEADERS } from "./lib/site-headers";
 import { org, orgsPublic } from "./routes/orgs";
@@ -109,6 +110,7 @@ export function createApp(deps: Deps) {
   app.route("/api/v1/public", crmPublic);
   app.route("/api/v1/public", eventsPublic);
   app.route("/api/v1/public", billingPublic);
+  app.route("/api/v1/public", publicAudits);
 
   // Every tenant route: authenticated user + active membership resolved from the path.
   const tenant = new Hono<AppEnv>();
@@ -122,6 +124,7 @@ export function createApp(deps: Deps) {
   tenant.route("/", usage);
   tenant.route("/", content);
   tenant.route("/", siteBlog);
+  tenant.route("/", activationRoutes);
   tenant.route("/", searchConsole);
   tenant.route("/", analytics);
   tenant.route("/", geo);
@@ -187,6 +190,8 @@ export function createApp(deps: Deps) {
 
   // Public blog fed by Content Studio and the dynamic sitemap (ADR 0020).
   registerPublicBlog(app);
+  // Free audit without an account: /auditoria/{id} (ADR 0023).
+  registerAuditPage(app, (c) => notFoundPage(c));
 
   // Non-API routes: static landing + SPA shell served from Workers Static Assets.
   app.get("*", async (c) => {

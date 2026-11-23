@@ -1,0 +1,55 @@
+/* /auditoria/{id}: free audit result, rendered by the Worker into auditoria.html (routes/public-audit.ts). */
+.audit { max-width: 860px; }
+.audit h1 { font-size: clamp(34px, 6vw, 64px); overflow-wrap: anywhere; }
+.audit h2 { font-size: 22px; margin-top: 44px; }
+.audit-eyebrow { color: var(--accent) !important; font-size: 13px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; margin: 0 0 12px; }
+.audit-host { display: block; font-size: .62em; color: #d4d4dc; }
+.audit-global { white-space: nowrap; }
+.audit-global small { font-size: .45em; color: #9a9aa6; margin-left: 4px; }
+.audit-lead { font-size: 18px; color: #d4d4dc !important; max-width: 640px; }
+.audit-micro { font-size: 14px; color: #9a9aa6 !important; }
+
+.audit-scores { list-style: none; padding: 0 !important; margin: 28px 0 0; display: grid; gap: 12px; grid-template-columns: repeat(auto-fill, minmax(min(100%, 140px), 1fr)); }
+.audit-score { margin: 0 !important; border: 1px solid #2a2a33; border-radius: 16px; padding: 16px 18px; background: #141416; display: grid; gap: 4px; }
+.audit-score.is-main { border-color: rgba(180, 255, 77, .45); }
+.audit-score-label { font-size: 14px; color: #c4c4cc; }
+.audit-score-value { font-size: 15px; color: #9a9aa6; }
+.audit-score-value strong { font-size: 34px; color: #f5f5f4; font-variant-numeric: tabular-nums; }
+.audit-score-band { font-size: 13px; font-weight: 600; }
+.audit-score[data-band="bien"] .audit-score-band { color: #86efac; }
+.audit-score[data-band="mejorable"] .audit-score-band { color: #fcd34d; }
+.audit-score[data-band="urgente"] .audit-score-band { color: #fca5a5; }
+.audit-bar { display: block; height: 6px; border-radius: 999px; background: #26262b; overflow: hidden; margin-top: 6px; }
+.audit-bar span { display: block; height: 100%; border-radius: 999px; background: var(--accent); min-width: 2%; }
+
+.audit-findings { padding: 0 !important; margin: 16px 0 0; list-style: none; counter-reset: f; display: grid; gap: 14px; }
+.audit-findings[start] { counter-reset: none; }
+.audit-finding { margin: 0 !important; border: 1px solid #2a2a33; border-left: 3px solid #3a3a44; border-radius: 16px; padding: 18px 20px; background: #141416; }
+.audit-finding[data-severity="critical"], .audit-finding[data-severity="high"] { border-left-color: #f87171; }
+.audit-finding[data-severity="medium"] { border-left-color: #fbbf24; }
+.audit-finding h3 { margin: 0 0 4px; font-size: 18px; color: #f5f5f4; }
+.audit-finding p { margin: 8px 0 0; }
+.audit-meta { font-size: 13px; color: #9a9aa6 !important; margin-top: 0 !important; }
+.audit-urls { font-size: 13px; color: #9a9aa6 !important; overflow-wrap: anywhere; }
+
+.audit-locked { margin-top: 24px; padding: 22px 22px 8px; border: 1px dashed rgba(180, 255, 77, .5); border-radius: 18px; background: linear-gradient(180deg, rgba(180, 255, 77, .06), transparent); }
+.audit-locked-title { font-size: 22px; color: #f5f5f4 !important; font-weight: 600; margin: 0 0 4px; }
+
+.audit-share-row { display: flex; flex-wrap: wrap; gap: 10px; }
+.audit-share-row .btn { text-decoration: none !important; color: #f5f5f4 !important; }
+.audit .btn-accent { color: var(--accent-ink) !important; text-decoration: none !important; }
+.audit-form { display: flex; gap: 8px; max-width: 560px; padding: 6px; border-radius: 999px; background: #141416; border: 1px solid var(--line); }
+.audit-form input { flex: 1; min-width: 0; background: transparent; border: 0; color: var(--ink); font: 500 16px var(--sans); padding: 0 16px; outline: none; }
+.audit-form:focus-within { border-color: var(--accent); }
+@media (max-width: 560px) { .audit-form { flex-direction: column; border-radius: 20px; } .audit-form input { min-height: 46px; } }
+
+.audit-vs table td, .audit-vs table th { font-variant-numeric: tabular-nums; }
+.audit-win { font-size: 12px; font-weight: 700; color: var(--accent); margin-left: 4px; }
+.audit-method { margin-top: 44px; padding-top: 16px; border-top: 1px solid #2a2a33; }
+.audit-method summary { cursor: pointer; color: #e8e8ee; font-weight: 600; min-height: 44px; display: flex; align-items: center; }
+.audit-method p { font-size: 14px; }
+
+.audit-loader { margin: 28px 0; height: 6px; max-width: 420px; border-radius: 999px; background: #26262b; overflow: hidden; }
+.audit-loader span { display: block; width: 40%; height: 100%; border-radius: 999px; background: var(--accent); animation: audit-slide 1.4s ease-in-out infinite; }
+@keyframes audit-slide { 0% { transform: translateX(-100%); } 100% { transform: translateX(260%); } }
+@media (prefers-reduced-motion: reduce) { .audit-loader span { animation: none; width: 100%; opacity: .5; } }

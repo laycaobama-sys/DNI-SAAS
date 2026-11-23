@@ -7,6 +7,8 @@ import { useApi } from "../lib/hooks";
 import { Badge, Button, Card, EmptyState, ErrorState, JOB_STATE, MetricCard, Notice, PageHeader, SeverityBadge, Skeleton, TextField, UnavailableCard } from "../ui";
 import { Logo } from "../shell";
 import { wantedPlan } from "./billing";
+import { claimPendingAudit } from "../lib/pending-audit";
+import { ActivationCard } from "./welcome";
 
 const LABELS: Record<string, string> = {
   brands: "Marcas",
@@ -28,8 +30,10 @@ export function OnboardingPage() {
     setError(null);
     try {
       const r = await post<{ id: string }>("/orgs", { name });
+      // A free audit done before signing up becomes this organisation's (full report + prefilled analysis).
+      await claimPendingAudit(r.id);
       await refresh();
-      nav(`/o/${r.id}/analyze`);
+      nav(`/o/${r.id}/bienvenida`);
     } catch (err) {
       setError(err as ApiError);
     } finally {
@@ -40,7 +44,7 @@ export function OnboardingPage() {
     <div className="grid min-h-full place-items-center px-4 py-12">
       <div className="w-full max-w-lg">
         <Logo className="mb-8" />
-        <p className="text-xs font-semibold uppercase tracking-[0.14em] text-accent-text">Paso 1 de 3</p>
+        <p className="text-xs font-semibold uppercase tracking-[0.14em] text-accent-text">Antes de empezar</p>
         <h1 className="mt-2 font-serif text-5xl leading-none">Crea tu espacio de trabajo</h1>
         <p className="mt-3 text-mute">
           Hola {me?.user?.name}. Una organización agrupa tus marcas, tu equipo y tus datos — aislados del resto de clientes.
@@ -124,6 +128,7 @@ export function DashboardPage() {
           </div>
         ) : null;
       })()}
+      <ActivationCard orgId={orgId!} />
       <ErrorState error={error} onRetry={reload} />
       {loading && !data && (
         <div className="grid gap-4 [grid-template-columns:repeat(auto-fill,minmax(min(100%,12.5rem),1fr))]">

@@ -5,6 +5,7 @@ import { api, ApiError, post } from "../lib/api";
 import { useAuth } from "../lib/auth";
 import { Logo } from "../shell";
 import { rememberWantedPlan, wantedPlan } from "./billing";
+import { pendingAudit, rememberPendingAudit } from "../lib/pending-audit";
 import { Button, ErrorState, LegalLinks, Notice, TextField } from "../ui";
 
 function AuthLayout({ title, subtitle, children, footer }: { title: string; subtitle?: ReactNode; children: ReactNode; footer?: ReactNode }) {
@@ -163,9 +164,12 @@ export function RegisterPage() {
   const { busy, error, fieldErrors, run } = useSubmit();
   const [regParams] = useSearchParams();
   const planParam = regParams.get("plan");
+  const auditParam = regParams.get("audit");
   useEffect(() => {
     rememberWantedPlan(planParam);
-  }, [planParam]);
+    rememberPendingAudit(auditParam);
+  }, [planParam, auditParam]);
+  const hasAudit = !!auditParam || !!pendingAudit();
   const wanted = wantedPlan();
   const [form, setForm] = useState({ name: "", email: "", password: "" });
   const [done, setDone] = useState<null | "sent" | "not_configured">(null);
@@ -203,7 +207,7 @@ export function RegisterPage() {
   return (
     <AuthLayout
       title="Crea tu cuenta"
-      subtitle={pendingUrl ? `Después analizaremos ${pendingUrl}.` : wanted ? `La cuenta es gratis. Después podrás activar ${wanted.name} desde Facturación.` : "Audita tu web gratis. Sin tarjeta."}
+      subtitle={hasAudit ? "Gratis y sin tarjeta. Al entrar verás el informe completo de tu web y tu plan de 30 días." : pendingUrl ? `Después analizaremos ${pendingUrl}.` : wanted ? `La cuenta es gratis. Después podrás activar ${wanted.name} desde Facturación.` : "Audita tu web gratis. Sin tarjeta."}
       footer={<>¿Ya tienes cuenta? <Link className="text-accent-text hover:underline" to="/login">Entrar</Link></>}
     >
       {opts?.google && (

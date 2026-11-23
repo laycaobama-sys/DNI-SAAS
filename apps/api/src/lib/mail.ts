@@ -209,7 +209,7 @@ export async function drainEmailOutbox(env: Env, limit = 25): Promise<number> {
 }
 
 /** Minimal, accessible HTML wrapper (text version is always sent too). */
-export function emailHtml(title: string, paragraphs: string[], cta?: { label: string; url: string }): string {
+export function emailHtml(title: string, paragraphs: string[], cta?: { label: string; url: string }, opts: { unsubscribeUrl?: string } = {}): string {
   const esc = (s: string) => s.replace(/[&<>"]/g, (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[ch]!);
   return `<!doctype html><html lang="es"><body style="margin:0;background:#f4f4f2;font-family:Inter,Arial,sans-serif;color:#111">
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr><td align="center" style="padding:32px 16px">
@@ -218,6 +218,6 @@ export function emailHtml(title: string, paragraphs: string[], cta?: { label: st
 <h1 style="font-size:22px;margin:0 0 16px">${esc(title)}</h1>
 ${paragraphs.map((p) => `<p style="font-size:15px;line-height:1.6;margin:0 0 12px">${esc(p)}</p>`).join("")}
 ${cta ? `<p style="margin:24px 0"><a href="${esc(cta.url)}" style="display:inline-block;background:#b4ff4d;color:#0b0b0c;text-decoration:none;font-weight:700;padding:12px 20px;border-radius:999px">${esc(cta.label)}</a></p><p style="font-size:12px;color:#666;word-break:break-all">${esc(cta.url)}</p>` : ""}
-<p style="font-size:12px;color:#888;margin-top:24px">Has recibido este correo por una acción en DNI Growth. Si no has sido tú, ignóralo.</p>
+${opts.unsubscribeUrl ? `<p style="font-size:12px;color:#888;margin-top:24px">Te escribimos porque creaste una cuenta en DNI Growth. <a href="${esc(opts.unsubscribeUrl)}" style="color:#666">No quiero recibir más consejos de configuración</a>.</p>` : `<p style="font-size:12px;color:#888;margin-top:24px">Has recibido este correo por una acción en DNI Growth. Si no has sido tú, ignóralo.</p>`}
 </td></tr></table></td></tr></table></body></html>`;
 }

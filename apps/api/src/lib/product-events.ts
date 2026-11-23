@@ -46,7 +46,8 @@ export const PRODUCT_EVENT_INFO: Record<ProductEvent, { label: string; stage: "f
  * console, so a zero is never mistaken for «nobody did it».
  */
 export const INSTRUMENTED: Partial<Record<ProductEvent, string>> = {
-  audit_started: "servidor: análisis creado en la app · navegador: formulario de la portada",
+  audit_started: "servidor: auditoría gratuita sin cuenta y análisis creado en la app · navegador: portada sin conexión con la API",
+  audit_teaser_viewed: "navegador: página /auditoria/{id} con el resultado",
   signup: "servidor: registro con correo o con Google",
   onboarding_step: "servidor: correo verificado y organización creada",
   gsc_connected: "servidor: conexión de Search Console completada",

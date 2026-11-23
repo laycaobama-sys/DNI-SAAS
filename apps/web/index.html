@@ -95,7 +95,7 @@
       </nav>
       <div class="nav-cta">
         <a class="link-quiet" href="/app/login">Entrar</a>
-        <a class="btn btn-accent" href="/app/register">Auditar mi web</a>
+        <a class="btn btn-accent" href="#auditar">Auditar mi web</a>
       </div>
     </header>
 
@@ -111,12 +111,13 @@
           <p class="hero-sub">
             Revisamos tu web, te decimos qué arreglar primero y te ayudamos a hacerlo. Después ves con tus propios datos de Google si ha funcionado. Nada se publica ni se gasta sin tu permiso.
           </p>
-          <form class="hero-form" action="/app/register" method="get" data-url-form>
+          <form id="auditar" class="hero-form" action="/app/register" method="get" data-url-form>
             <label class="sr-only" for="hero-url">Dirección de tu web</label>
             <input id="hero-url" name="url" type="text" inputmode="url" autocomplete="url" placeholder="tunegocio.es" required maxlength="2048" />
             <button class="btn btn-accent" type="submit">Auditar gratis</button>
           </form>
-          <p class="hero-micro">Gratis y sin tarjeta · Solo leemos tu web pública · No cambiamos nada</p>
+          <p class="hero-status" data-url-status role="status" aria-live="polite"></p>
+          <p class="hero-micro">Gratis y sin registro · Revisamos hasta 5 páginas públicas · No cambiamos nada</p>
         </div>
         <a class="hero-scroll" href="#beneficios" aria-label="Seguir leyendo">↓</a>
       </section>
@@ -328,7 +329,7 @@
 
       <section class="contact" aria-labelledby="cta-title">
         <p class="kicker reveal">¿Empezamos?</p>
-        <h2 id="cta-title" class="contact-title reveal"><a class="underline-link" href="/app/register">Audita tu web hoy →</a></h2>
+        <h2 id="cta-title" class="contact-title reveal"><a class="underline-link" href="#auditar">Audita tu web hoy →</a></h2>
         <div id="contacto" class="contact-box reveal">
           <h3 class="contact-sub">¿Prefieres hablar con nosotros?</h3>
           <p class="contact-lead">Cuéntanos qué necesitas y te respondemos por email. Sin llamadas comerciales no pedidas.</p>

@@ -68,6 +68,8 @@ export default defineConfig({
         blog: resolve(import.meta.dirname, "blog.html"),
         seguridad: resolve(import.meta.dirname, "seguridad.html"),
         precios: resolve(import.meta.dirname, "precios.html"),
+        // Template of /auditoria/{id} (free audit result), filled by the Worker (apps/api/src/routes/public-audit.ts).
+        auditoria: resolve(import.meta.dirname, "auditoria.html"),
         // dist/404.html: served by Static Assets (not_found_handling "404-page") and by the Worker fallback.
         notFound: resolve(import.meta.dirname, "404.html"),
         app: resolve(import.meta.dirname, "app/index.html"),
