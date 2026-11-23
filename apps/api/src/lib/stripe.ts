@@ -55,6 +55,11 @@ function encode(params: Params): string {
   return f.toString();
 }
 
+async function bodyFingerprint(body: string): Promise<string> {
+  const digest = new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(body)));
+  return Array.from(digest.slice(0, 8), (b) => b.toString(16).padStart(2, "0")).join("");
+}
+
 /** Minimal Stripe REST client (form-encoded), with idempotency keys on every POST. */
 export async function stripeApi<T>(env: Env, deps: Deps, method: "GET" | "POST" | "DELETE", path: string, params: Params = {}, idempotencyKey?: string): Promise<T> {
   if (!env.STRIPE_SECRET_KEY) throw new StripeApiError(503, "not_configured");
@@ -63,7 +68,9 @@ export async function stripeApi<T>(env: Env, deps: Deps, method: "GET" | "POST" 
   const headers: Record<string, string> = { authorization: `Bearer ${env.STRIPE_SECRET_KEY}`, "stripe-version": STRIPE_API_VERSION };
   if (method === "POST") {
     headers["content-type"] = "application/x-www-form-urlencoded";
-    if (idempotencyKey) headers["idempotency-key"] = idempotencyKey;
+    // Stripe rejects a key reused with different parameters (idempotency_error) for 24 h, so the key carries a
+    // fingerprint of the body: identical requests still collapse into one, changed ones (a renamed product) go through.
+    if (idempotencyKey) headers["idempotency-key"] = `${idempotencyKey}:${await bodyFingerprint(qs)}`;
   }
   const res = await deps.fetchImpl(url, { method, headers, body: method === "POST" ? qs : undefined, signal: AbortSignal.timeout(20_000) });
   const json = (await res.json().catch(() => ({}))) as { error?: { code?: string; type?: string; param?: string } } & T;

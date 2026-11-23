@@ -5,7 +5,7 @@
 import { hmacSha256Hex, PLAN_OFFERS } from "@dni/core";
 import { describe, expect, it } from "vitest";
 import { createHarness } from "./helpers";
-import { RETENTION_COUPON_NAME, WEBHOOK_EVENTS, maybeAutoSyncStripe, productNameFor } from "../src/lib/stripe";
+import { RETENTION_COUPON_NAME, WEBHOOK_EVENTS, maybeAutoSyncStripe, productNameFor, stripeApi } from "../src/lib/stripe";
 import { billingMaintenance } from "../src/routes/billing";
 
 const WHSEC = "whsec_fixture_secret";
@@ -655,5 +655,24 @@ describe("Stripe product names", () => {
   it("read well on Checkout and invoices", () => {
     expect(productNameFor("Growth")).toBe("DNI Growth · Plan Growth");
     for (const o of PLAN_OFFERS) expect(productNameFor(o.name)).not.toMatch(/Growth Growth/);
+  });
+});
+
+describe("Stripe idempotency keys", () => {
+  it("collapse identical requests and never block one whose parameters changed", async () => {
+    const seen: string[] = [];
+    const deps = {
+      fetchImpl: async (_u: string, init?: RequestInit) => {
+        seen.push((init?.headers as Record<string, string>)["idempotency-key"]);
+        return new Response("{}", { status: 200, headers: { "content-type": "application/json" } });
+      },
+    };
+    const env = { STRIPE_SECRET_KEY: TEST_KEY };
+    await stripeApi(env as never, deps as never, "POST", "/products", { id: "p", name: "A" }, "product:p:v1");
+    await stripeApi(env as never, deps as never, "POST", "/products", { id: "p", name: "A" }, "product:p:v1");
+    await stripeApi(env as never, deps as never, "POST", "/products", { id: "p", name: "B" }, "product:p:v1");
+    expect(seen[0]).toMatch(/^product:p:v1:[0-9a-f]{16}$/);
+    expect(seen[1]).toBe(seen[0]);
+    expect(seen[2]).not.toBe(seen[0]);
   });
 });
