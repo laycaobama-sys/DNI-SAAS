@@ -235,7 +235,7 @@ export function AuditDetailPage() {
                       </div>
                       <p className="mt-1 text-sm text-mute">{o.fix}</p>
                       <p className="mt-2 text-xs text-mute">
-                        Impacto {o.impact}/5 · Esfuerzo {o.effort}/5{o.estimateHours ? ` · ~${o.estimateHours} h estimadas` : ""} · {o.affectedCount ? `${o.affectedCount} URL(s)` : "todo el sitio"}
+                        Impacto {o.impact}/5 · Esfuerzo {o.effort}/5{o.estimateHours ? ` · ~${String(o.estimateHours).replace(".", ",")} h estimadas` : ""} · {o.affectedCount ? `${o.affectedCount} URL(s)` : "todo el sitio"}
                         {chips.length > 0 && ` · ${chips.join(", ")}`}
                       </p>
                       {o.affectedUrls?.length > 0 && (
@@ -522,7 +522,7 @@ export function BrandPage() {
           <Notice key={w} tone="warn">{w}</Notice>
         ))}
       </div>
-      <div className="grid gap-6 xl:grid-cols-[1fr_420px]">
+      <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_420px]">
         <Card title="Hechos extraídos" subtitle={`${p.facts.filter((f: any) => f.status !== "rejected").length} aceptados · fuente: auditoría ${p.sourceCrawlId?.slice(0, 8) ?? "—"}`}>
           <ul className="divide-y divide-line">
             {p.facts.map((f: any, idx: number) => (
@@ -724,7 +724,7 @@ export function PlanPage() {
                     </div>
                     <p className="mt-1 text-xs text-mute">{t.description}</p>
                     <div className="mt-2 flex flex-wrap items-center gap-1.5 text-xs text-mute">
-                      <Badge>{CHANNEL[t.channel] ?? t.channel}</Badge>~{t.estimate_hours} h estimadas
+                      <Badge>{CHANNEL[t.channel] ?? t.channel}</Badge>~{String(t.estimate_hours).replace(".", ",")} h estimadas
                       {t.requires_approval && <Badge tone="warn">Requiere aprobación</Badge>}
                     </div>
                     {t.status === "blocked" ? (

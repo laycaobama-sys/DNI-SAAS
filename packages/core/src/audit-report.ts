@@ -56,7 +56,7 @@ export function auditReportMarkdown(r: AuditReportInput): string {
     "",
     ...r.opportunities.flatMap((o, i) => [
       `### ${i + 1}. ${o.title}`,
-      `- Gravedad: ${SEV[o.severity] ?? o.severity} · alcance: ${o.affectedCount ? `${o.affectedCount} URL(s)` : "todo el sitio"}${o.estimateHours ? ` · esfuerzo estimado: ~${o.estimateHours} h` : ""}${o.legalOnly ? " · solo páginas legales (baja prioridad)" : ""}`,
+      `- Gravedad: ${SEV[o.severity] ?? o.severity} · alcance: ${o.affectedCount ? `${o.affectedCount} URL(s)` : "todo el sitio"}${o.estimateHours ? ` · esfuerzo estimado: ~${String(o.estimateHours).replace(".", ",")} h` : ""}${o.legalOnly ? " · solo páginas legales (baja prioridad)" : ""}`,
       `- Qué hacer: ${o.fix}`,
       ...(o.affectedUrls?.length ? [`- Evidencia: ${o.affectedUrls.slice(0, 5).join(", ")}${o.affectedUrls.length > 5 ? " …" : ""}`] : []),
       "",

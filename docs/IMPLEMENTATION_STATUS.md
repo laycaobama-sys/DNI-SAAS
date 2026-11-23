@@ -1,6 +1,6 @@
 # Estado de implementación — DNI Growth
 
-Última actualización: 2026-11-20 · Producción: **https://dnigrowth.com** (Worker `dni-growth`, versión `170a65b4-1c3d-4a36-bf3e-c3c36764f7bc`; workers.dev redirige con 301 a dnigrowth.com) · Workers Paid, sin servicios de pago adicionales ([verificación de la cuenta](CLOUDFLARE_ACCOUNT_VERIFICATION.md)).
+Última actualización: 2026-11-23 · Producción: **https://dnigrowth.com** (Worker `dni-growth`, versión `92dc1ff6-7a03-49bd-a414-7e6d2eb69f5b`; workers.dev redirige con 301 a dnigrowth.com) · Workers Paid, sin servicios de pago adicionales ([verificación de la cuenta](CLOUDFLARE_ACCOUNT_VERIFICATION.md)).
 
 Leyenda:
 - **VERIFICADO EN PRODUCCIÓN**: probado contra la URL pública con una respuesta comprobable.
@@ -8,7 +8,7 @@ Leyenda:
 - **BLOQUEADO POR PERMISOS**: necesita una acción, clave o aceptación del titular.
 - **NO IMPLEMENTADO**.
 
-Pruebas automáticas: lint, typecheck, **420 tests** (33 ficheros, core + API), build y escaneo de secretos en verde el 2026-11-20 (`pnpm -s verify`, código de salida 0).
+Pruebas automáticas: lint, typecheck, **453 tests** (38 ficheros: core, API y web), build y escaneo de secretos en verde el 2026-11-23 (`pnpm -s verify`, código de salida 0).
 
 Pruebas E2E en producción del 2026-11-18 con la cuenta verificada de la titular (organización propia, plan Free), ejecutadas desde el navegador contra https://dnigrowth.com; cada fila indica la respuesta observada.
 
@@ -96,7 +96,7 @@ Pruebas E2E en producción del 2026-11-18 con la cuenta verificada de la titular
 | Flujo borrador → revisión → aprobado, con auditoría | VERIFICADO EN PRODUCCIÓN (owner) · LOCAL (otros roles, devolver, archivar) | submit 200 → approve 200, estado `approved`, 2 versiones |
 | Exportación MD/HTML saneado con aviso de borrador | VERIFICADO EN PRODUCCIÓN | borrador con «BORRADOR NO APROBADO»; aprobado: MD 200 sin aviso y con la edición, HTML 200 sin `<script>` |
 | Revisión con IA (1 crédito) | VERIFICADO SOLO EN LOCAL | `content.test.ts` |
-| Publicación en CMS | NO IMPLEMENTADO | requiere conectores de CMS del titular |
+| Publicación en CMS | PARCIAL | blog propio de dnigrowth.com real (`/blog`, instantánea de la versión aprobada, `site-blog.test.ts`); CMS de clientes (WordPress y demás) no implementado: requiere sus credenciales y un entorno de pruebas |
 
 ## F3 — Google Search Console (nuevo, [ADR 0010](adr/0010-search-console-solo-lectura.md))
 
@@ -242,10 +242,33 @@ Migración aditiva 0017 aplicada en remoto el 2026-11-20 con copia previa `backu
 | Operaciones (trabajos atascados, fallos, outbox, webhooks, recuentos) y auditoría con email enmascarado | VERIFICADO EN PRODUCCIÓN | `/admin/ops`: 5 orgs, 3 usuarios, 0 atascados; trabajos 7 días (ga4_sync 3, geo_sample 5, gsc_sync 3, site_analysis 3); `/admin/audit` 200. R2/métricas del Worker: NO IMPLEMENTADO (requiere token) |
 | Versión móvil | VERIFICADO EN PRODUCCIÓN | 375×812 y 768×1024 (navegador integrado): sin scroll horizontal (`scrollWidth` = ancho), campos a 16 px, menú como diálogo que bloquea el fondo y se cierra con Escape, botón de menú de 44 px; la tabla de planes se desplaza dentro de su caja; tema aplicado antes de pintar (`/theme-init.js` 200) |
 
+## Recorrido hallazgo → borrador → exportación, fallos B1–B15 y blog propio (nuevo, [ADR 0020](adr/0020-recorrido-hallazgo-borrador-y-blog.md) · [mapa T01–T16](roadmap/ESTADO.md))
+Versión `92dc1ff6`; migración 0018 aditiva (`site_blog_posts`) aplicada con copia previa `backups/dni-growth-db-pre-0018-20261123-0229.sql`. Pruebas del 2026-11-23 en producción con la cuenta de la titular, en la organización «DNI Growth».
+
+| Elemento | Estado | Prueba |
+|---|---|---|
+| Auditoría con tipo de página, peso (las legales al final), horas estimadas y «Potencial orgánico» (derivada) | VERIFICADO EN PRODUCCIÓN | auditoría de dnigrowth.com: 6 páginas en 16 s, salud 96/100, potencial 55/100 «medio»; las 2 mejoras «Solo páginas legales» quedan en los puestos 4 y 5; «~0,25 h estimadas» |
+| og:image real (formato y tamaño) | VERIFICADO EN PRODUCCIÓN | con la nueva PNG 1200×630 la auditoría no genera `og_image_format`; con SVG sí (`journey.test.ts`) |
+| Respuestas no HTML fuera de las páginas | VERIFICADO SOLO EN LOCAL | `journey.test.ts` (feed RSS omitido como `not_html`; llms.txt revisado aparte) |
+| Informe de auditoría y brief por hallazgo (MD/HTML, todos los planes) | VERIFICADO EN PRODUCCIÓN | `/crawls/e3eab7d6…/export?format=html` 200 `text/html`, adjunto, CSP `default-src 'none'`, sin `<script>`; MD 200; brief `site_sparse` 200 con «BORRADOR NO APROBADO» |
+| Borrador de corrección desde un hallazgo (sin IA, 0 créditos, idempotente) | VERIFICADO EN PRODUCCIÓN | «Crear borrador de corrección» → `/content/438a4f06…` con origen, evidencia y panel «Quedan 3 campo(s) por completar o verificar. Impide aprobar.» |
+| Comprobaciones antes de aprobar y confirmación auditada | VERIFICADO SOLO EN LOCAL | `journey.test.ts` (422 `draft_checks_failed` → 422 `draft_checks_ack_required` → 200 con `acknowledgedChecks` en el registro), `content.test.ts` |
+| Borrador manual sin IA | VERIFICADO SOLO EN LOCAL | `journey.test.ts` (0 créditos, sin proveedor) |
+| B1 Asesor: abrir y cambiar de conversación sin pantalla en blanco | VERIFICADO EN PRODUCCIÓN | dos conversaciones abiertas y salida a Auditorías: sin `role="alert"` y 0 errores en consola; `advisor.test.tsx` con `scrollIntoView` que devuelve Promise |
+| B2 Contención de fallos por módulo | VERIFICADO SOLO EN LOCAL | `advisor.test.tsx` (Reintentar, vuelta al Command Center, sin datos del error) |
+| B13 Auditar un dominio de una marca existente | VERIFICADO EN PRODUCCIÓN | «Este dominio ya pertenece a la marca DNI Growth: la auditoría se guardará allí»; evento «El perfil de marca ya estaba confirmado: no se sobrescribe» |
+| Sin desbordamiento horizontal en borradores y auditoría | VERIFICADO EN PRODUCCIÓN | 1024 px y 375 px: `scrollWidth` = ancho visible (antes 896 > 737 por la tabla de evidencia) |
+| `/blog` funcional, alimentado por Content Studio | VERIFICADO EN PRODUCCIÓN | `/blog` 200 con «Todavía no hemos publicado artículos» y JSON-LD `Blog`; `/blog/no-existe` 404 `noindex`; `/blog.html` y `/blog/` → 301 `/blog`; publicar/retirar solo aprobados de la organización del sitio: `site-blog.test.ts` |
+| Sitemap dinámico | VERIFICADO EN PRODUCCIÓN | `/sitemap.xml` 200 con 6 URLs (incluye `/blog`); los artículos publicados se añaden con `lastmod` (`site-blog.test.ts`) |
+| RSS del blog | VERIFICADO EN PRODUCCIÓN | `/blog/feed.xml` 200 `application/rss+xml` |
+| og:image PNG 1200×630 | VERIFICADO EN PRODUCCIÓN | `/og-dni-growth.png` 200 `image/png` 214 556 B; `og:image:width/height/alt` y `twitter:image` en la portada |
+| `llms.txt` al día | VERIFICADO EN PRODUCCIÓN | 200, incluye informe, borradores desde hallazgos, Content Studio y blog |
+| Sin códigos internos en la interfaz ni en integraciones | VERIFICADO SOLO EN LOCAL | `ui-guards.test.tsx`; `/integrations` sin campo de fase |
+
 ## Marca DNI Growth (producción)
 | Elemento | Estado | Prueba |
 |---|---|---|
-| Organización y marca «DNI Growth» (dnigrowth.com) | VERIFICADO EN PRODUCCIÓN | org `9fe0d8cc…`, auditoría completada (5 páginas, salud 94/100) |
+| Organización y marca «DNI Growth» (dnigrowth.com) | VERIFICADO EN PRODUCCIÓN | org `9fe0d8cc…`, auditoría del 2026-11-23: 6 páginas, salud 96/100, potencial orgánico 55/100; borrador de corrección `438a4f06…` desde «title_too_long» pendiente de revisión |
 | Perfil de marca revisado y confirmado | VERIFICADO EN PRODUCCIÓN | versión 2 confirmada: rechazados la variante de nombre con eslogan, 5 titulares H2 que no eran servicios y el teléfono; público, tono, objetivo «Leads / contactos» y afirmación prohibida «Garantizar posiciones en Google o menciones en motores de IA»; sin competidores inventados |
 | Avisos del perfil que ya se resolvieron | VERIFICADO SOLO EN LOCAL | el aviso «varias variantes del nombre» y «Información no encontrada» se ocultan cuando ya están resueltos (antes seguían visibles tras rechazar/rellenar) |
 

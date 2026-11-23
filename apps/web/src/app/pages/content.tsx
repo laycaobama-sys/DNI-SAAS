@@ -280,7 +280,7 @@ export function ContentListPage() {
         title="Contenidos"
         subtitle="Genera borradores con tus datos reales, revísalos, apruébalos y expórtalos. La IA marca con [VERIFICAR] todo lo que una persona debe comprobar."
       />
-      <div className="grid gap-6 lg:grid-cols-[380px_1fr]">
+      <div className="grid gap-6 xl:grid-cols-[380px_minmax(0,1fr)]">
         {canWrite ? (
           <Card title="Nuevo borrador">
             {fromGeo && (
@@ -489,8 +489,8 @@ export function ContentDetailPage() {
       )}
       {error && <ErrorState error={error} onRetry={error.code === "version_conflict" ? () => void res.reload() : undefined} />}
 
-      <div className="grid gap-6 lg:grid-cols-[1fr_300px]">
-        <section className="rounded-3xl border border-line bg-surface p-4 sm:p-6" aria-label="Contenido">
+      <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_300px]">
+        <section className="min-w-0 rounded-3xl border border-line bg-surface p-4 sm:p-6" aria-label="Contenido">
           <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
             <div className="inline-flex rounded-full border border-line p-1 text-sm" role="tablist" aria-label="Modo">
               {(["preview", "edit"] as const).map((m) => (

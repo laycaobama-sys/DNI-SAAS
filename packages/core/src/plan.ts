@@ -107,6 +107,9 @@ export function isLegacyPhaseBlock(task: { status: string; blocked_reason?: stri
   return task.status === "blocked" && !!task.blocked_reason && LEGACY_PHASE_BLOCK_RE.test(task.blocked_reason);
 }
 
+/** Channel names as the interface shows them (exports never carry internal codes). */
+export const CHANNEL_ES: Record<string, string> = { technical: "Técnico", brand: "Marca", content: "Contenido", geo: "GEO", paid: "Publicidad", measurement: "Medición" };
+
 export function planToMarkdown(
   plan: { title: string; createdAt: string; origin: string },
   tasks: Array<PlanTaskDraft & { id?: string }>,
@@ -125,7 +128,7 @@ export function planToMarkdown(
     lines.push(`## Semana ${w}`, "");
     for (const t of wt) {
       const box = t.status === "done" ? "[x]" : "[ ]";
-      lines.push(`- ${box} **${t.title}** · ${t.channel} · ~${t.estimateHours} h (estimado)${t.status === "blocked" ? ` · BLOQUEADO: ${t.blockedReason}` : ""}`);
+      lines.push(`- ${box} **${t.title}** · ${CHANNEL_ES[t.channel] ?? "General"} · ~${String(t.estimateHours).replace(".", ",")} h (estimado)${t.status === "blocked" ? ` · BLOQUEADO: ${t.blockedReason}` : ""}`);
       lines.push(`  ${t.description}`);
     }
     lines.push("");
