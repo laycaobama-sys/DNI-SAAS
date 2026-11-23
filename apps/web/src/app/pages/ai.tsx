@@ -17,7 +17,7 @@ type AiStatus = {
   groq?: boolean;
   budgetExhausted?: boolean;
 };
-type Msg = { id: string; role: "user" | "assistant"; content: string; provider?: string | null; model?: string | null; servedModel?: string | null; fallback?: boolean; cached?: boolean; credits?: number; created_at?: string };
+type Msg = { id: string; role: "user" | "assistant"; content: string; provider?: string | null; model?: string | null; servedModel?: string | null; fallback?: boolean; cached?: boolean; credits?: number; created_at?: string; check?: { ok: boolean; warnings: string[]; citedUrls: string[] } };
 
 function StatusNotice({ s }: { s: AiStatus | null }) {
   if (!s) return null;
@@ -72,8 +72,13 @@ export function AdvisorPage() {
   const [error, setError] = useState<ApiError | null>(null);
   const endRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => setMessages(convId ? (conv.data?.messages ?? []) : []), [convId, conv.data]);
-  useEffect(() => endRef.current?.scrollIntoView({ behavior: "smooth", block: "end" }), [messages.length, busy]);
+  useEffect(() => {
+    setMessages(convId ? (conv.data?.messages ?? []) : []);
+  }, [convId, conv.data]);
+  // Llaves obligatorias: scrollIntoView puede devolver una Promise y React la trataría como "cleanup".
+  useEffect(() => {
+    endRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
+  }, [messages.length, busy]);
 
   const [retryQ, setRetryQ] = useState<string | null>(null);
   const ask = async (e?: FormEvent, preset?: string, allowFallback = false) => {
@@ -178,6 +183,16 @@ export function AdvisorPage() {
                       Generado por IA DNI Growth
                       {m.cached && " · respuesta reutilizada (sin gastar cupo)"} · revisa antes de aplicar
                     </p>
+                  )}
+                  {m.role === "assistant" && m.check && !m.check.ok && (
+                    <div className="mt-3 rounded-xl border border-warn/40 bg-warn/5 p-3 text-xs" role="note">
+                      <p className="font-semibold">Revisión automática contra tu auditoría</p>
+                      <ul className="mt-1 list-disc space-y-1 pl-4 text-mute">
+                        {m.check.warnings.map((w) => (
+                          <li key={w}>{w}</li>
+                        ))}
+                      </ul>
+                    </div>
                   )}
                 </div>
               </div>

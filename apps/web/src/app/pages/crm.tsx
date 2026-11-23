@@ -108,7 +108,7 @@ export function CrmPage() {
   if (access.role && !access.can("crm:read"))
     return (
       <>
-        <PageHeader eyebrow="F5 · CRM" title="CRM / Leads" />
+        <PageHeader eyebrow="Captación · CRM" title="CRM / Leads" />
         <Notice tone="warn" title="Sin acceso">
           Los contactos son datos personales: solo los ven propietario, administración y responsable de marketing.
         </Notice>
@@ -117,7 +117,7 @@ export function CrmPage() {
   return (
     <>
       <PageHeader
-        eyebrow="F5 · CRM"
+        eyebrow="Captación · CRM"
         title="CRM / Leads"
         subtitle="Contactos de tus formularios, sin duplicados, con su consentimiento, de dónde vienen y en qué punto están."
         actions={

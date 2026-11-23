@@ -40,25 +40,26 @@ import { useApi, useTheme } from "./lib/hooks";
 import { cx, LegalLinks } from "./ui";
 import { MODULE_MIN_PLAN, PLAN_LABEL, menuShowsModule, requiredPlan } from "@dni/core/plan-access";
 import { AdminBypassNotice, PlanLockedPanel, usePlanAccess } from "./planaccess";
+import { ErrorBoundary } from "./errorboundary";
 import { UsageBanner } from "./usage";
-import { ShieldAlert, ShieldCheck } from "lucide-react";
+import { ChevronDown, Lock, ShieldAlert, ShieldCheck } from "lucide-react";
 
-export const MODULES: Record<string, { label: string; phase: string; description: string }> = {
-  "seo-tecnico": { label: "SEO técnico", phase: "F2", description: "Rastreos programados, histórico, hreflang, enlaces rotos y Core Web Vitals con datos de campo." },
-  keywords: { label: "Keywords y competencia", phase: "F2", description: "Investigación por país e idioma con proveedor licenciado. Sin proveedor no mostramos volúmenes ni dificultad." },
-  "ai-visibility": { label: "AI Visibility (GEO/AEO)", phase: "F3", description: "Biblioteca de prompts y muestreo en motores de IA solo mediante APIs permitidas, con fecha, idioma y versión." },
-  content: { label: "Content Studio", phase: "F2", description: "Briefs con fuentes, editor versionado, revisión factual, aprobación y publicación en tu CMS." },
-  authority: { label: "Backlinks / Authority", phase: "F2", description: "Menciones y relaciones editoriales legítimas. Nunca granjas ni intercambios masivos de enlaces." },
-  creative: { label: "Creative Studio", phase: "F4", description: "Banners y carruseles con brand kit, capas, safe areas y exportación por formato." },
-  video: { label: "Video Studio", phase: "F4", description: "Storyboard, voz con licencia, subtítulos y render asíncrono con coste reservado." },
-  ads: { label: "Ads Manager", phase: "F6", description: "Borradores sin gasto, aprobación explícita, Spend Guardian con límites y kill switch." },
-  landings: { label: "Landing Pages", phase: "F5", description: "Constructor por bloques, dominio verificado, consentimiento y formularios anti-spam." },
-  experiments: { label: "Experiments / CRO", phase: "F7", description: "Tests A/B con hipótesis, muestra mínima y advertencias de significancia." },
-  crm: { label: "CRM / Leads", phase: "F5", description: "Leads deduplicados, pipeline, tareas y consentimiento por finalidad." },
-  analytics: { label: "Analytics & Revenue", phase: "F3–F7", description: "Search Console, GA4, gasto y ingresos verificados con atribución explícita." },
-  agents: { label: "AI Agent Center", phase: "F1+", description: "Historial de cada trabajo de los agentes: entrada, salida, coste y quién lo autorizó." },
-  automations: { label: "Automatizaciones", phase: "F5", description: "Flujos con aprobación, límites, horario de silencio y registro." },
-  agency: { label: "Agency / White Label", phase: "F8", description: "Subclientes aislados, portal de cliente y marca propia." },
+export const MODULES: Record<string, { label: string; description: string }> = {
+  "seo-tecnico": { label: "SEO técnico", description: "Rastreos programados, histórico, hreflang, enlaces rotos y Core Web Vitals con datos de campo." },
+  keywords: { label: "Keywords y competencia", description: "Investigación por país e idioma con proveedor licenciado. Sin proveedor no mostramos volúmenes ni dificultad." },
+  "ai-visibility": { label: "AI Visibility (GEO/AEO)", description: "Biblioteca de prompts y muestreo en motores de IA solo mediante APIs permitidas, con fecha, idioma y versión." },
+  content: { label: "Content Studio", description: "Briefs con fuentes, editor versionado, revisión factual, aprobación y publicación en tu CMS." },
+  authority: { label: "Backlinks / Authority", description: "Menciones y relaciones editoriales legítimas. Nunca granjas ni intercambios masivos de enlaces." },
+  creative: { label: "Creative Studio", description: "Banners y carruseles con brand kit, capas, safe areas y exportación por formato." },
+  video: { label: "Video Studio", description: "Storyboard, voz con licencia, subtítulos y render asíncrono con coste reservado." },
+  ads: { label: "Ads Manager", description: "Borradores sin gasto, aprobación explícita, Spend Guardian con límites y kill switch." },
+  landings: { label: "Landing Pages", description: "Constructor por bloques, dominio verificado, consentimiento y formularios anti-spam." },
+  experiments: { label: "Experiments / CRO", description: "Tests A/B con hipótesis, muestra mínima y advertencias de significancia." },
+  crm: { label: "CRM / Leads", description: "Leads deduplicados, pipeline, tareas y consentimiento por finalidad." },
+  analytics: { label: "Analytics & Revenue", description: "Search Console, GA4, gasto y ingresos verificados con atribución explícita." },
+  agents: { label: "AI Agent Center", description: "Historial de cada trabajo de los agentes: entrada, salida, coste y quién lo autorizó." },
+  automations: { label: "Automatizaciones", description: "Flujos con aprobación, límites, horario de silencio y registro." },
+  agency: { label: "Agency / White Label", description: "Subclientes aislados, portal de cliente y marca propia." },
 };
 
 type NavItem = { to: string; label: string; icon: typeof Gauge; live?: boolean; end?: boolean; module: string };
@@ -97,6 +98,36 @@ export function Logo({ className }: { className?: string }) {
   );
 }
 
+/** Modules outside the customer's plan: one collapsed group at the end, never mixed with what they can use. */
+function LockedModules({ groups, plan, bypass, filter }: { groups: Array<{ section: string; items: NavItem[] }>; plan: string; bypass: boolean; filter: string }) {
+  if (bypass) return null;
+  const q = norm(filter.trim());
+  const locked = groups
+    .flatMap((g) => g.items.map((it) => ({ ...it, section: g.section })))
+    .filter((it) => !menuShowsModule(plan, it.module, false))
+    .filter((it) => !q || norm(it.label + " " + it.section).includes(q));
+  if (!locked.length) return null;
+  return (
+    <details className="group/locked mb-4" open={!!q}>
+      <summary className="flex cursor-pointer list-none items-center justify-between rounded-lg px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.12em] text-mute hover:bg-surface-2 [&::-webkit-details-marker]:hidden">
+        <span>Disponible en otros planes ({locked.length})</span>
+        <ChevronDown className="size-3.5 transition group-open/locked:rotate-180" aria-hidden />
+      </summary>
+      <ul className="mt-1">
+        {locked.map((it) => (
+          <li key={it.label}>
+            <NavLink to={it.to} title={`${it.label}: incluido desde el plan ${PLAN_LABEL[requiredPlan(it.module)]}`} className="flex items-center gap-2.5 rounded-lg px-3 py-1.5 text-sm leading-snug text-mute/80 transition hover:bg-surface-2 hover:text-ink">
+              <Lock className="size-4 shrink-0" aria-hidden />
+              <span className="min-w-0 flex-1 break-words">{it.label}</span>
+              <span className="shrink-0 text-[10px] font-semibold">{PLAN_LABEL[requiredPlan(it.module)]}</span>
+            </NavLink>
+          </li>
+        ))}
+      </ul>
+    </details>
+  );
+}
+
 export function AppShell() {
   const { orgId = "" } = useParams();
   const { me, refresh } = useAuth();
@@ -106,7 +137,9 @@ export function AppShell() {
   const [filter, setFilter] = useState("");
   const loc = useLocation();
   const nav = useNavigate();
-  useEffect(() => setOpen(false), [loc.pathname]);
+  useEffect(() => {
+    setOpen(false);
+  }, [loc.pathname]);
   // Mobile drawer: the page behind must not scroll or jump while it is open; Escape closes it.
   useEffect(() => {
     if (!open) return;
@@ -216,6 +249,7 @@ export function AppShell() {
             </ul>
           </div>
         ))}
+        <LockedModules groups={navFor(orgId)} plan={access.plan} bypass={access.bypass} filter={filter} />
       </nav>
       {!access.bypass && access.plan !== "agency" && (
         <div className="px-3 pb-3">
@@ -304,7 +338,9 @@ export function AppShell() {
             <>
               {!support && <UsageBanner orgId={orgId} />}
               {gated && <AdminBypassNotice module={pageModule} onViewAsClient={() => access.setViewAsClient(true)} />}
-              <Outlet />
+              <ErrorBoundary key={loc.pathname} homeHref={`/app/o/${orgId}`}>
+                <Outlet />
+              </ErrorBoundary>
             </>
           )}
         </main>

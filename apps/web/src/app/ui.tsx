@@ -206,11 +206,10 @@ const MEASUREMENT_LABEL: Record<string, string> = { observed: "Observado", deriv
 export function MetricCard({ m }: { m: { metric: string; label?: string; value: number | null; unit: string; measurement: string; source: string; observedAt: string; limitations?: string[] } }) {
   const [open, setOpen] = useState(false);
   return (
-    <div className="rounded-2xl border border-line bg-surface p-4">
-      <div className="flex items-start justify-between gap-2">
-        <p className="text-sm text-mute">{m.label ?? m.metric}</p>
-        <Badge tone={m.measurement === "observed" ? "ok" : m.measurement === "demo" ? "warn" : "info"}>{MEASUREMENT_LABEL[m.measurement] ?? m.measurement}</Badge>
-      </div>
+    <div className="min-w-0 rounded-2xl border border-line bg-surface p-4">
+      {/* The badge sits on its own line so long labels never push it against the edge (B14). */}
+      <Badge tone={m.measurement === "observed" ? "ok" : m.measurement === "demo" ? "warn" : "info"}>{MEASUREMENT_LABEL[m.measurement] ?? m.measurement}</Badge>
+      <p className="mt-2 text-sm leading-snug text-mute">{m.label ?? m.metric}</p>
       <p className="mt-2 font-serif text-4xl leading-none tabular-nums">
         {typeof m.value === "number" ? m.value.toLocaleString("es-ES") : "—"}
         <span className="ml-1 font-sans text-sm text-mute">{m.unit}</span>

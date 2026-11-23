@@ -20,6 +20,14 @@ export default defineConfig({
           testTimeout: 30000,
         },
       },
+      {
+        test: {
+          name: "web",
+          root: "./apps/web",
+          include: ["test/**/*.test.{ts,tsx}"],
+          environment: "happy-dom",
+        },
+      },
     ],
   },
 });

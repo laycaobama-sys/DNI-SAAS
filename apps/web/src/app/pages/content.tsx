@@ -1,7 +1,7 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router";
-import { Archive, CheckCircle2, Download, FileText, RotateCcw, Save, Send, ShieldCheck, Sparkles } from "lucide-react";
-import { api, ApiError, fmtDate, patch, post, timeAgo } from "../lib/api";
+import { AlertTriangle, Archive, CheckCircle2, Download, FileText, Globe, PenLine, RotateCcw, Save, Send, ShieldCheck, Sparkles } from "lucide-react";
+import { api, ApiError, del, fmtDate, patch, post, timeAgo } from "../lib/api";
 import { useApi } from "../lib/hooks";
 import { useAuth } from "../lib/auth";
 import { Badge, Button, Card, EmptyState, ErrorState, Notice, PageHeader, Select, Skeleton, Textarea, TextField, cx } from "../ui";
@@ -25,7 +25,12 @@ type Item = {
   createdAt: string;
   updatedAt: string;
   measurement: string;
+  brief?: {
+    origin?: string;
+    finding?: { ruleKey: string; title: string; severity: string; crawlId: string; origin: string; observedAt: string; urls: string[]; measurement: string; source: string };
+  };
 };
+type DraftCheck = { key: string; level: "blocking" | "needs_ack"; message: string; samples: string[] };
 type Version = { version: number; title: string; created_at: string; source: "ai" | "human" };
 
 const STATUS: Record<Item["status"], { label: string; tone: "neutral" | "warn" | "ok" | "info" }> = {
@@ -39,32 +44,172 @@ const APPROVE_ROLES = ["owner", "admin", "marketing_manager"];
 
 const asError = (e: unknown) => (e instanceof ApiError ? e : new ApiError(0, "error", "Error inesperado"));
 
-/** Read-only markdown preview rendered as plain React text (no HTML from the model is injected). */
-function Preview({ md }: { md: string }) {
+type Block =
+  | { t: "h"; level: number; text: string }
+  | { t: "ul" | "ol"; items: string[] }
+  | { t: "code"; text: string }
+  | { t: "table"; rows: string[][] }
+  | { t: "quote" | "p"; text: string }
+  | { t: "hr" };
+
+/** Splits Markdown into blocks. Nothing is ever turned into HTML: every block renders as React text. */
+export function mdBlocks(md: string): Block[] {
+  const out: Block[] = [];
+  const lines = md.replace(/\r\n/g, "\n").split("\n");
+  const cells = (row: string) =>
+    row
+      .trim()
+      .replace(/^\||\|$/g, "")
+      .split(/(?<!\\)\|/)
+      .map((c) => c.trim().replace(/\\\|/g, "|"));
+  for (let i = 0; i < lines.length; ) {
+    const line = lines[i]!;
+    if (!line.trim()) {
+      i++;
+      continue;
+    }
+    if (/^\s*```/.test(line)) {
+      const body: string[] = [];
+      i++;
+      while (i < lines.length && !/^\s*```/.test(lines[i]!)) body.push(lines[i++]!);
+      i++;
+      out.push({ t: "code", text: body.join("\n") });
+      continue;
+    }
+    const h = /^(#{1,6})\s+(.*)$/.exec(line.trim());
+    if (h) {
+      out.push({ t: "h", level: h[1]!.length, text: h[2]! });
+      i++;
+      continue;
+    }
+    if (/^\s*(-{3,}|\*{3,})\s*$/.test(line)) {
+      out.push({ t: "hr" });
+      i++;
+      continue;
+    }
+    const grab = (re: RegExp) => {
+      const got: string[] = [];
+      while (i < lines.length && re.test(lines[i]!)) got.push(lines[i++]!);
+      return got;
+    };
+    if (/^\s*\|/.test(line)) {
+      const rows = grab(/^\s*\|/)
+        .filter((r) => !/^\s*\|?\s*:?-{2,}/.test(r))
+        .map(cells);
+      out.push({ t: "table", rows });
+      continue;
+    }
+    if (/^\s*>/.test(line)) {
+      out.push({ t: "quote", text: grab(/^\s*>/).map((l) => l.replace(/^\s*>\s?/, "")).join(" ") });
+      continue;
+    }
+    if (/^\s*[-*•]\s+/.test(line)) {
+      out.push({ t: "ul", items: grab(/^\s*([-*•]\s+|\s{2,}\S)/).map((l) => l.replace(/^(\s*)[-*•]\s+/, "$1")) });
+      continue;
+    }
+    if (/^\s*\d+[.)]\s+/.test(line)) {
+      out.push({ t: "ol", items: grab(/^\s*(\d+[.)]\s+|\s{2,}\S)/).map((l) => l.replace(/^(\s*)\d+[.)]\s+/, "$1")) });
+      continue;
+    }
+    out.push({ t: "p", text: grab(/^(?!\s*(```|#{1,6}\s|[-*•]\s|\d+[.)]\s|>|\|)).+/).join("\n") });
+  }
+  return out;
+}
+
+/** Inline text: drops Markdown emphasis, shows links as «text (url)» and highlights what is left to fill in. */
+function Inline({ text }: { text: string }) {
+  const clean = text
+    .replace(/\*\*|__/g, "")
+    .replace(/`([^`]+)`/g, "$1")
+    .replace(/!?\[([^\]]*)\]\(([^)\s]+)\)/g, (_m, t: string, u: string) => (t ? `${t} (${u})` : u));
   return (
-    <div className="space-y-2 text-sm leading-relaxed">
-      {md.split(/\n{2,}/).map((block, i) => {
-        const h = /^(#{1,4})\s+(.*)$/.exec(block.trim());
-        if (h && !block.trim().includes("\n"))
-          return (
-            <p key={i} className={cx("font-semibold", h[1]!.length === 1 ? "text-xl" : h[1]!.length === 2 ? "text-lg" : "text-base")}>
-              {h[2]}
-            </p>
-          );
-        const lines = block.split("\n");
-        if (lines.every((l) => /^\s*([-*•]|\d+[.)])\s+/.test(l)))
-          return (
-            <ul key={i} className="list-disc space-y-1 pl-5">
-              {lines.map((l, j) => (
-                <li key={j}>{l.replace(/^\s*([-*•]|\d+[.)])\s+/, "").replace(/\*\*/g, "")}</li>
-              ))}
-            </ul>
-          );
-        return (
-          <p key={i} className={cx("whitespace-pre-wrap", /\[VERIFICAR/.test(block) && "rounded-lg bg-warn/10 px-2 py-1")}>
-            {block.replace(/\*\*/g, "").replace(/^#{1,4}\s+/gm, "")}
-          </p>
-        );
+    <>
+      {clean.split(/(\[(?:VERIFICAR|COMPLETAR)[^\]]*\])/g).map((part, i) =>
+        /^\[(VERIFICAR|COMPLETAR)/.test(part) ? (
+          <mark key={i} className="rounded bg-warn/15 px-1 text-ink">
+            {part}
+          </mark>
+        ) : (
+          part
+        ),
+      )}
+    </>
+  );
+}
+
+/** Read-only markdown preview rendered as plain React text (no HTML from the model or the editor is injected). */
+export function Preview({ md }: { md: string }) {
+  return (
+    <div className="space-y-3 text-sm leading-relaxed">
+      {mdBlocks(md).map((b, i) => {
+        switch (b.t) {
+          case "h":
+            return (
+              <p key={i} role="heading" aria-level={Math.min(b.level + 1, 6)} className={cx("font-semibold", b.level === 1 ? "text-xl" : b.level === 2 ? "pt-2 text-lg" : "text-base")}>
+                <Inline text={b.text} />
+              </p>
+            );
+          case "ul":
+          case "ol": {
+            const L = b.t;
+            return (
+              <L key={i} className={cx("space-y-1 pl-5", L === "ul" ? "list-disc" : "list-decimal")}>
+                {b.items.map((l, j) => (
+                  <li key={j} className={cx(/^\s{2,}/.test(l) && "ml-4 list-[circle]")}>
+                    <Inline text={l.trim().replace(/^([-*•]|\d+[.)])\s+/, "")} />
+                  </li>
+                ))}
+              </L>
+            );
+          }
+          case "code":
+            return (
+              <pre key={i} className="overflow-x-auto rounded-xl bg-surface-2 p-3 font-mono text-xs">
+                <code>{b.text}</code>
+              </pre>
+            );
+          case "table":
+            return (
+              <div key={i} className="overflow-x-auto rounded-xl border border-line">
+                <table className="w-full min-w-[480px] text-xs">
+                  <thead className="bg-surface-2 text-left">
+                    <tr>
+                      {b.rows[0]?.map((c, j) => (
+                        <th key={j} className="px-3 py-2 font-medium">
+                          <Inline text={c} />
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {b.rows.slice(1).map((r, j) => (
+                      <tr key={j} className="border-t border-line align-top">
+                        {r.map((c, k) => (
+                          <td key={k} className="break-words px-3 py-2">
+                            <Inline text={c} />
+                          </td>
+                        ))}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            );
+          case "quote":
+            return (
+              <blockquote key={i} className="border-l-4 border-line pl-3 text-mute">
+                <Inline text={b.text} />
+              </blockquote>
+            );
+          case "hr":
+            return <hr key={i} className="border-line" />;
+          default:
+            return (
+              <p key={i} className="whitespace-pre-wrap">
+                <Inline text={b.text} />
+              </p>
+            );
+        }
       })}
     </div>
   );
@@ -100,6 +245,25 @@ export function ContentListPage() {
     try {
       const { brandId, ...rest } = form;
       const r = await post<Item>(`/orgs/${orgId}/content`, { ...rest, ...(brandId ? { brandId } : {}) });
+      nav(`/o/${orgId}/content/${r.id}`);
+    } catch (err) {
+      setError(asError(err));
+    } finally {
+      setBusy(false);
+    }
+  };
+  /** Structured blank draft: no AI, no credits — works with the AI quota spent or switched off. */
+  const createManual = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      const r = await post<Item>(`/orgs/${orgId}/content/manual`, {
+        kind: form.kind,
+        title: form.title,
+        keyword: form.keyword,
+        audience: form.audience,
+        ...(form.brandId ? { brandId: form.brandId } : {}),
+      });
       nav(`/o/${orgId}/content/${r.id}`);
     } catch (err) {
       setError(asError(err));
@@ -167,11 +331,24 @@ export function ContentListPage() {
                       Ver créditos
                     </Link>
                   )}
+                  {["insufficient_credits", "ai_daily_quota", "ai_unavailable", "selected_model_failed"].includes(error.code) && (
+                    <p className="mt-2 text-sm text-mute">Mientras tanto puedes usar «Escribir a mano»: crea el borrador con su estructura, sin IA ni créditos.</p>
+                  )}
                 </div>
               )}
               <Button variant="primary" type="submit" loading={busy} disabled={form.title.trim().length < 3} className="w-full">
                 <Sparkles className="size-4" aria-hidden /> {busy ? "Redactando… (puede tardar 30 s)" : "Generar borrador"}
               </Button>
+              <Button type="button" disabled={busy || form.title.trim().length < 3} onClick={() => void createManual()} className="w-full">
+                <PenLine className="size-4" aria-hidden /> Escribir a mano (sin IA ni créditos)
+              </Button>
+              <p className="text-xs text-mute">
+                ¿Ya tienes una auditoría? Crea borradores de corrección desde sus{" "}
+                <Link to={`/o/${orgId}/audits`} className="font-semibold text-accent-text hover:underline">
+                  mejoras prioritarias
+                </Link>
+                , con la evidencia incluida.
+              </p>
             </form>
           </Card>
         ) : (
@@ -228,7 +405,11 @@ export function ContentDetailPage() {
   const role = me?.memberships.find((m) => m.id === orgId)?.role ?? "";
   const canWrite = WRITE_ROLES.includes(role);
   const canApprove = APPROVE_ROLES.includes(role);
-  const res = useApi<Item & { versions: Version[] }>(`/orgs/${orgId}/content/${contentId}`);
+  const res = useApi<Item & { versions: Version[]; checks?: DraftCheck[] }>(`/orgs/${orgId}/content/${contentId}`);
+  const [ack, setAck] = useState(false);
+  const site = useApi<{ available: boolean; post: { slug: string; status: "published" | "unpublished"; url: string; contentVersion: number; publishedAt: string; updatedAt: string } | null }>(
+    `/orgs/${orgId}/content/${contentId}/site-blog`,
+  );
   const [body, setBody] = useState("");
   const [title, setTitle] = useState("");
   const [mode, setMode] = useState<"preview" | "edit">("preview");
@@ -249,6 +430,12 @@ export function ContentDetailPage() {
   const it = res.data;
   const dirty = body !== (it.bodyMd ?? "") || title !== it.title;
   const base = `/orgs/${orgId}/content/${contentId}`;
+  const origin = it.brief?.origin;
+  const finding = it.brief?.finding;
+  const checks = it.checks ?? [];
+  const blocking = checks.filter((x) => x.level === "blocking");
+  const needsAck = checks.filter((x) => x.level === "needs_ack");
+  const originTitle = origin === "audit_finding" ? "Borrador creado desde un hallazgo de tu auditoría" : origin === "manual" ? "Borrador escrito a mano" : "Borrador generado por IA";
 
   const act = async (key: string, fn: () => Promise<unknown>) => {
     setBusy(key);
@@ -290,9 +477,10 @@ export function ContentDetailPage() {
         subtitle={`${it.kindLabel} · versión ${it.version} · actualizado ${fmtDate(it.updatedAt)}`}
         actions={<Badge tone={STATUS[it.status].tone}>{STATUS[it.status].label}</Badge>}
       />
-      <Notice tone={it.status === "approved" ? "ok" : "info"} title={it.status === "approved" ? `Aprobado ${fmtDate(it.approvedAt)}` : "Borrador generado por IA"}>
+      <Notice tone={it.status === "approved" ? "ok" : "info"} title={it.status === "approved" ? `Aprobado ${fmtDate(it.approvedAt)}` : originTitle}>
         {it.status === "approved" ? "Aprobado por una persona del equipo. Si lo editas, vuelve a borrador." : it.measurement}
         {it.provider && " Generado con IA DNI Growth."}
+        {it.status !== "approved" && blocking.length > 0 && " Antes de aprobarlo hay que completar los campos marcados en amarillo."}
       </Notice>
       {it.reviewNote && it.status === "draft" && (
         <Notice tone="warn" title="Cambios solicitados">
@@ -331,6 +519,54 @@ export function ContentDetailPage() {
         </section>
 
         <aside className="space-y-4">
+          {it.status !== "approved" && it.status !== "archived" && (
+            <Card title="Comprobaciones antes de aprobar" subtitle="Automáticas, sin IA. Se recalculan cada vez que guardas.">
+              {checks.length === 0 ? (
+                <p className="flex items-center gap-2 text-sm text-ok">
+                  <CheckCircle2 className="size-4" aria-hidden /> Sin campos pendientes, promesas de resultados, cifras sin fuente ni precios sin verificar.
+                </p>
+              ) : (
+                <ul className="space-y-3 text-sm">
+                  {checks.map((x) => (
+                    <li key={x.key} className={cx("rounded-xl border p-3", x.level === "blocking" ? "border-danger/40" : "border-warn/40")}>
+                      <p className="flex items-start gap-2 font-medium">
+                        <AlertTriangle className={cx("mt-0.5 size-4 shrink-0", x.level === "blocking" ? "text-danger" : "text-warn")} aria-hidden />
+                        <span>
+                          {x.message} <span className="text-xs font-normal text-mute">{x.level === "blocking" ? "Impide aprobar." : "Requiere tu confirmación."}</span>
+                        </span>
+                      </p>
+                      {x.samples.length > 0 && (
+                        <ul className="mt-2 space-y-1 pl-6 text-xs text-mute">
+                          {x.samples.map((s) => (
+                            <li key={s} className="break-words">
+                              «{s}»
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </Card>
+          )}
+          {finding && (
+            <Card title="Hallazgo de origen" subtitle={`Observado el ${fmtDate(finding.observedAt)} · medida observada`}>
+              <p className="text-sm font-medium">{finding.title}</p>
+              <ul className="mt-2 space-y-1 text-xs text-mute">
+                {finding.urls.slice(0, 5).map((u) => (
+                  <li key={u} className="break-all">
+                    {u}
+                  </li>
+                ))}
+                {finding.urls.length > 5 && <li>y {finding.urls.length - 5} URL(s) más</li>}
+                {finding.urls.length === 0 && <li>Todo el sitio ({finding.origin})</li>}
+              </ul>
+              <Link to={`/o/${orgId}/audits/${finding.crawlId}`} className="mt-3 inline-block text-sm font-semibold text-accent-text hover:underline">
+                Ver la auditoría →
+              </Link>
+            </Card>
+          )}
           <Card title="Flujo de aprobación">
             <div className="space-y-2">
               {canWrite && it.status === "draft" && (
@@ -338,11 +574,25 @@ export function ContentDetailPage() {
                   <Send className="size-4" aria-hidden /> Enviar a revisión
                 </Button>
               )}
+              {canWrite && it.status === "draft" && blocking.length > 0 && <p className="text-xs text-mute">Puedes enviarlo a revisión, pero no se podrá aprobar hasta resolver lo marcado como «Impide aprobar».</p>}
               {canApprove && it.status === "in_review" && (
                 <>
-                  <Button className="w-full" variant="primary" loading={busy === "approve"} onClick={() => void act("approve", () => post(`${base}/approve`, { note }))}>
+                  {needsAck.length > 0 && blocking.length === 0 && (
+                    <label className="flex items-start gap-2 rounded-xl border border-warn/40 p-3 text-sm">
+                      <input type="checkbox" className="mt-1" checked={ack} onChange={(e) => setAck(e.target.checked)} />
+                      <span>He revisado las cifras y precios señalados y son correctos. Quedará registrado en el historial.</span>
+                    </label>
+                  )}
+                  <Button
+                    className="w-full"
+                    variant="primary"
+                    disabled={blocking.length > 0 || (needsAck.length > 0 && !ack)}
+                    loading={busy === "approve"}
+                    onClick={() => void act("approve", () => post(`${base}/approve`, { note, acknowledgeChecks: needsAck.length > 0 && ack }).then(() => setAck(false)))}
+                  >
                     <CheckCircle2 className="size-4" aria-hidden /> Aprobar
                   </Button>
+                  {blocking.length > 0 && <p className="text-xs text-mute">No se puede aprobar todavía: devuélvelo a borrador con una nota para que se complete.</p>}
                   <label className="block text-sm">
                     <span className="sr-only">Nota para el equipo</span>
                     <Textarea maxLength={1000} value={note} onChange={(e) => setNote(e.target.value)} placeholder="Qué hay que cambiar (obligatorio para devolver)" />
@@ -369,6 +619,41 @@ export function ContentDetailPage() {
                 <div className="mt-3 rounded-2xl border border-line bg-surface-2 p-3">
                   <Preview md={review} />
                 </div>
+              )}
+            </Card>
+          )}
+          {site.data?.available && it.kind === "blog_article" && (
+            <Card title="Blog de dnigrowth.com" subtitle="Publica la versión aprobada. Las ediciones posteriores no cambian la página pública hasta que vuelvas a publicar.">
+              {site.data.post?.status === "published" && (
+                <p className="mb-3 text-sm">
+                  Publicado:{" "}
+                  <a href={site.data.post.url} target="_blank" rel="noopener noreferrer" className="break-all font-semibold text-accent-text hover:underline">
+                    {site.data.post.url.replace(/^https?:\/\//, "")}
+                  </a>
+                  {site.data.post.contentVersion !== it.version && <span className="block text-xs text-warn">La página muestra la versión {site.data.post.contentVersion}; la actual es la {it.version}.</span>}
+                </p>
+              )}
+              {it.status === "approved" && canApprove ? (
+                <div className="space-y-2">
+                  <Button
+                    className="w-full"
+                    variant="primary"
+                    loading={busy === "publish"}
+                    onClick={() =>
+                      window.confirm("Se publicará en dnigrowth.com/blog, visible para cualquiera y para los buscadores. ¿Publicar?") &&
+                      void act("publish", () => post(`${base}/site-blog`).then(() => site.reload()))
+                    }
+                  >
+                    <Globe className="size-4" aria-hidden /> {site.data.post?.status === "published" ? "Actualizar publicación" : "Publicar en el blog"}
+                  </Button>
+                  {site.data.post?.status === "published" && (
+                    <Button className="w-full" variant="ghost" loading={busy === "unpublish"} onClick={() => window.confirm("¿Retirar el artículo del blog? Dejará de ser visible.") && void act("unpublish", () => del(`${base}/site-blog`).then(() => site.reload()))}>
+                      Retirar del blog
+                    </Button>
+                  )}
+                </div>
+              ) : (
+                <p className="text-sm text-mute">{it.status === "approved" ? "Solo propietario, administración o marketing pueden publicar." : "Apruébalo primero: solo se publica contenido aprobado por una persona."}</p>
               )}
             </Card>
           )}

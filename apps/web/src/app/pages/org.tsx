@@ -5,7 +5,7 @@ import { api, ApiError, del, fmtDate, patch, post, timeAgo } from "../lib/api";
 import { useAuth } from "../lib/auth";
 import { useApi } from "../lib/hooks";
 import { MODULES } from "../shell";
-import { AI_DAILY_REQUESTS, AI_IMAGES_DAILY, AI_USER_DAILY_REQUESTS, PLAN_PITCH } from "@dni/core/plan-access";
+import { AI_DAILY_REQUESTS, AI_IMAGES_DAILY, AI_USER_DAILY_REQUESTS, PLAN_PITCH, planIncludes } from "@dni/core/plan-access";
 import { UsageMeters, useUsage } from "../usage";
 import { PlanModulesTable } from "../planaccess";
 import { Entitlements } from "./agency";
@@ -231,7 +231,19 @@ function OrgSettings({ orgId }: { orgId: string }) {
   );
 }
 
-const ENTRY_LABEL: Record<string, string> = { grant: "Asignación mensual", reserve: "Reserva", release: "Liberación", settle: "Consumo", adjustment: "Ajuste" };
+const ENTRY_LABEL: Record<string, string> = { grant: "Asignación", reserve: "Reserva", release: "Liberación", settle: "Consumo", adjustment: "Ajuste" };
+/** Ledger categories are stored as internal codes; customers only ever see these labels. */
+export const LEDGER_CONCEPT: Record<string, string> = {
+  monthly_allowance: "Créditos incluidos en el plan",
+  plan_upgrade: "Créditos por cambio de plan",
+  platform_adjustment: "Ajuste del equipo de DNI Growth",
+  site_analysis: "Auditoría web",
+  ai_advisor: "Pregunta al Asesor",
+  ai_content: "Borrador de contenido con IA",
+  ai_content_review: "Revisión de contenido con IA",
+  ai_image: "Imagen con IA",
+};
+export const ledgerConcept = (c: string) => LEDGER_CONCEPT[c] ?? "Otro movimiento";
 const SUB_STATUS: Record<string, string> = { active: "activa", trialing: "en prueba", past_due: "con pago pendiente", canceled: "cancelada", incomplete: "incompleta" };
 
 const ACCESS_LABEL: Record<string, string> = {
@@ -433,11 +445,11 @@ export function BillingPage() {
                 <li>
                   {l.brands} marca(s) · {l.seats} usuario(s)
                 </li>
-                {l.landingPages !== undefined && <li>{l.landingPages} landings · {l.leadForms ?? 1} formularios</li>}
-                {l.automationRules !== undefined && <li>{l.automationRules} reglas de automatización</li>}
-                {l.videoProjects !== undefined && <li>{l.videoProjects} proyectos de vídeo</li>}
-                {l.trackedPrompts !== undefined && <li>{l.trackedPrompts} preguntas GEO</li>}
-                {l.clientOrgs ? <li>{l.clientOrgs} clientes (agencia) y marca blanca</li> : null}
+                {l.landingPages !== undefined && planIncludes(p.code, "landings") && <li>{l.landingPages} landings · {l.leadForms ?? 1} formularios</li>}
+                {l.automationRules !== undefined && planIncludes(p.code, "automations") && <li>{l.automationRules} reglas de automatización</li>}
+                {l.videoProjects !== undefined && planIncludes(p.code, "video") && <li>{l.videoProjects} proyectos de vídeo</li>}
+                {l.trackedPrompts !== undefined && planIncludes(p.code, "ai-visibility") && <li>{l.trackedPrompts} preguntas GEO</li>}
+                {l.clientOrgs && planIncludes(p.code, "agency") ? <li>{l.clientOrgs} clientes (agencia) y marca blanca</li> : null}
                 <li>{AI_DAILY_REQUESTS[p.code as keyof typeof AI_DAILY_REQUESTS] ?? 10} consultas de IA al día ({AI_USER_DAILY_REQUESTS[p.code as keyof typeof AI_USER_DAILY_REQUESTS] ?? 10} por persona)</li>
                 {(AI_IMAGES_DAILY[p.code as keyof typeof AI_IMAGES_DAILY] ?? 0) > 0 && <li>{AI_IMAGES_DAILY[p.code as keyof typeof AI_IMAGES_DAILY]} imágenes con IA al día</li>}
               </ul>
@@ -454,7 +466,7 @@ export function BillingPage() {
 
       <section className="mb-6" aria-labelledby="plan-modules-title">
         <h2 id="plan-modules-title" className="mb-1 font-serif text-2xl">Qué módulos incluye cada plan</h2>
-        <p className="mb-3 text-sm text-mute">Los módulos fuera de tu plan aparecen con candado en el menú. Tus datos se conservan si cambias de plan.</p>
+        <p className="mb-3 text-sm text-mute">Los módulos fuera de tu plan aparecen con candado en el menú, en «Disponible en otros planes». Tus datos se conservan si cambias de plan.</p>
         <PlanModulesTable current={data.plan.code} />
       </section>
 
@@ -484,10 +496,10 @@ export function BillingPage() {
                     <td className="py-2">
                       {e.job_id ? (
                         <Link className="hover:underline" to={`/o/${orgId}/jobs/${e.job_id}`}>
-                          {e.category}
+                          {ledgerConcept(e.category)}
                         </Link>
                       ) : (
-                        e.category
+                        ledgerConcept(e.category)
                       )}
                     </td>
                     <td className={`py-2 text-right tabular-nums ${e.amount < 0 ? "text-danger" : "text-ok"}`}>
@@ -538,7 +550,7 @@ export function IntegrationsPage() {
                 <div>
                   <p className="font-medium">{p.name}</p>
                   <p className="text-xs text-mute">
-                    {p.category} · fase {p.phase}
+                    {p.category}
                   </p>
                 </div>
                 <Badge tone={PROVIDER_STATUS[p.status]?.tone}>{PROVIDER_STATUS[p.status]?.label ?? p.status}</Badge>
@@ -568,7 +580,81 @@ const ACTION_LABEL: Record<string, string> = {
   "billing.checkout_start": "Pago iniciado",
   "billing.subscription_sync": "Suscripción sincronizada",
   "billing.subscription_canceled": "Suscripción cancelada",
+  "billing.portal_open": "Portal de facturación abierto",
+  "ads.campaign_archive": "Campaña archivada",
+  "ads.campaign_draft": "Borrador de campaña guardado",
+  "ads.campaign_submit": "Campaña enviada a aprobación",
+  "ads.spend_guardian_update": "Límites de gasto actualizados",
+  "advisor.message": "Consulta al Asesor IA",
+  "agency.client_create": "Cliente de agencia creado",
+  "ai.catalog_sync": "Catálogo de modelos de IA actualizado",
+  "ai.openrouter_reset_halt": "Motor de IA reactivado",
+  "ai.preferences_update": "Preferencias de IA actualizadas",
+  "ai.provider_test": "Prueba de motor de IA",
+  "audit.export": "Informe de auditoría exportado",
+  "automation.rule_create": "Automatización creada",
+  "automation.rule_delete": "Automatización eliminada",
+  "automation.secret_rotate": "Clave de automatización renovada",
+  "brand.profile_created": "Perfil de marca extraído",
+  "content.create_manual": "Borrador manual creado",
+  "content.edit": "Contenido editado",
+  "content.from_finding": "Borrador creado desde un hallazgo",
+  "content.generate": "Borrador generado con IA",
+  "content.submit": "Contenido enviado a revisión",
+  "content.approve": "Contenido aprobado",
+  "content.reject": "Contenido devuelto a borrador",
+  "content.archive": "Contenido archivado",
+  "content.export": "Contenido exportado",
+  "content.ai_review": "Revisión de contenido con IA",
+  "creative.image_generate": "Imagen generada",
+  "crm.export": "Leads exportados",
+  "geo.prompt_archive": "Pregunta GEO archivada",
+  "geo.prompt_restore": "Pregunta GEO restaurada",
+  "geo.prompt_update": "Pregunta GEO editada",
+  "geo.prompts_create": "Preguntas GEO creadas",
+  "geo.sample_run": "Muestreo GEO ejecutado",
+  "integration.connect": "Integración conectada",
+  "integration.disconnect": "Integración desconectada",
+  "integration.gsc_property_deselect": "Propiedad de Search Console quitada",
+  "integration.gsc_property_select": "Propiedad de Search Console elegida",
+  "integration.gsc_sync": "Search Console sincronizado",
+  "landing.create": "Landing creada",
+  "landing.experiment_promote_b": "Variante B aplicada",
+  "landing.experiment_start": "Test A/B iniciado",
+  "landing.experiment_stop": "Test A/B detenido",
+  "landing.publish": "Landing publicada",
+  "landing.unpublish": "Landing despublicada",
+  "landing.update": "Landing editada",
+  "lead.captured": "Lead recibido",
+  "lead.create": "Lead creado",
+  "lead.erase": "Datos de lead suprimidos",
+  "lead.update": "Lead actualizado",
+  "lead_form.create": "Formulario creado",
+  "lead_form.update": "Formulario editado",
+  "media.delete": "Archivo eliminado",
+  "media.upload": "Archivo subido",
+  "org.branding_reset": "Marca blanca restablecida",
+  "org.branding_update": "Marca blanca actualizada",
+  "org.delete": "Organización eliminada",
+  "org.rename": "Organización renombrada",
+  "org.restore": "Organización restaurada",
+  "plan.created": "Plan de 30 días creado",
+  "platform.plan_assign": "Plan asignado por la plataforma",
+  "report.export": "Informe exportado",
+  "seo.issue_status": "Estado de hallazgo actualizado",
+  "user.link_google": "Cuenta de Google vinculada",
+  "user.link_google_verified": "Vinculación con Google verificada",
+  "user.login": "Inicio de sesión",
+  "user.login_failed": "Inicio de sesión fallido",
+  "user.login_google": "Inicio de sesión con Google",
+  "user.password_reset": "Contraseña restablecida",
+  "user.register": "Cuenta creada",
+  "user.register_google": "Cuenta creada con Google",
+  "user.verify_email": "Email verificado",
 };
+/** Unknown actions get a readable label from their area; the exact code stays in the technical detail. */
+const AREA_LABEL: Record<string, string> = { content: "Contenido", ads: "Anuncios", ai: "IA", geo: "GEO", lead: "Leads", landing: "Landings", org: "Organización", user: "Cuenta", integration: "Integraciones", billing: "Facturación", member: "Equipo", platform: "Plataforma" };
+const actionLabel = (a: string) => ACTION_LABEL[a] ?? `${AREA_LABEL[a.split(".")[0] ?? ""] ?? "Actividad"}: acción registrada`;
 
 export function AuditLogPage() {
   const { orgId } = useParams();
@@ -589,7 +675,7 @@ export function AuditLogPage() {
             {data.items.map((a: any) => (
               <li key={a.id} className="py-3">
                 <button className="flex w-full flex-wrap items-center gap-2 text-left text-sm" onClick={() => setOpen(open === a.id ? null : a.id)} aria-expanded={open === a.id}>
-                  <span className="font-medium">{ACTION_LABEL[a.action] ?? a.action}</span>
+                  <span className="font-medium">{actionLabel(a.action)}</span>
                   <span className="text-mute">· {a.actor_name ?? "Sistema"}</span>
                   <span className="ml-auto text-xs text-mute" title={fmtDate(a.created_at)}>
                     {timeAgo(a.created_at)}
@@ -621,7 +707,7 @@ export function ModulePage() {
   if (!m) return <NotFoundPage />;
   return (
     <>
-      <PageHeader eyebrow={`Módulo · fase ${m.phase}`} title={m.label} />
+      <PageHeader eyebrow="Módulo" title={m.label} />
       <div className="max-w-2xl space-y-4">
         <div className="rounded-2xl border border-dashed border-line p-8">
           <Lock className="mb-4 size-8 text-mute" aria-hidden />

@@ -491,7 +491,9 @@ function AddPrompts({ base, data, onDone }: { base: string; data: Library; onDon
   const [suggIn, setSuggIn] = useState({ sector: "", place: "" });
   const [picked, setPicked] = useState<Set<number>>(new Set());
 
-  useEffect(() => setMsg(null), [form.text]);
+  useEffect(() => {
+    setMsg(null);
+  }, [form.text]);
   const lines = form.text.split("\n").map((l) => l.trim()).filter(Boolean);
   const rows = lines.length * form.engines.length;
 

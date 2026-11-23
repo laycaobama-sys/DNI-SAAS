@@ -1,8 +1,12 @@
-import { useMemo, useState } from "react";
-import { Link, useParams } from "react-router";
-import { ArrowRight, Check, Download, ExternalLink, FileSearch, Lock, Plus, Trash2, X } from "lucide-react";
+import { useMemo, useState, type ReactNode } from "react";
+import { Link, useNavigate, useParams } from "react-router";
+import { ArrowRight, Check, Download, ExternalLink, FilePlus2, FileSearch, Lock, Plus, Trash2, X } from "lucide-react";
+import { PAGE_TYPE_LABEL, type PageType } from "@dni/core/organic";
+import { PLAN_LABEL, requiredPlan } from "@dni/core/plan-access";
 import { ApiError, fmtDate, patch, post, put, timeAgo } from "../lib/api";
+import { useAuth } from "../lib/auth";
 import { useApi } from "../lib/hooks";
+import { usePlanAccess } from "../planaccess";
 import { Badge, Button, Card, cx, EmptyState, ErrorState, Input, Notice, PageHeader, Select, SEVERITY, SeverityBadge, Spinner, Textarea } from "../ui";
 
 export function AuditsPage() {
@@ -36,16 +40,72 @@ export function AuditsPage() {
   );
 }
 
+const CATEGORY_LABEL: Record<string, string> = {
+  content: "Contenido",
+  geo: "GEO / IA",
+  indexability: "Indexación",
+  metadata: "Metadatos",
+  performance: "Rendimiento",
+  security: "Seguridad",
+  social: "Redes sociales",
+  structure: "Estructura",
+};
+const SKIP_REASON: Record<string, string> = {
+  robots_disallow: "bloqueadas por robots.txt",
+  not_html: "no son páginas HTML (feeds, archivos)",
+  redirect_offsite: "redirigen fuera del dominio",
+  fetch_failed: "no respondieron",
+};
+const LEVEL_TONE: Record<string, "danger" | "warn" | "ok"> = { bajo: "danger", medio: "warn", alto: "ok" };
+const CONTENT_WRITE_ROLES = ["owner", "admin", "marketing_manager", "editor"];
+
+const pageTypeChips = (types: Record<string, number> | undefined) =>
+  Object.entries(types ?? {})
+    .filter(([, n]) => n > 0)
+    .map(([t, n]) => `${PAGE_TYPE_LABEL[t as PageType] ?? "Página"}${n > 1 ? ` ×${n}` : ""}`);
+
+function DownloadLink({ href, children }: { href: string; children: ReactNode }) {
+  return (
+    <a className="inline-flex min-h-9 items-center gap-1.5 rounded-full border border-line px-3 text-xs font-semibold hover:bg-surface-2" href={href}>
+      <Download className="size-3.5" aria-hidden /> {children}
+    </a>
+  );
+}
+
 export function AuditDetailPage() {
-  const { orgId, crawlId } = useParams();
+  const { orgId = "", crawlId = "" } = useParams();
+  const nav = useNavigate();
+  const { me } = useAuth();
+  const access = usePlanAccess(orgId);
+  const role = me?.memberships.find((m) => m.id === orgId)?.role ?? "";
+  const canDraft = CONTENT_WRITE_ROLES.includes(role) && access.unlocked("content");
   const { data, error, loading, reload } = useApi<any>(`/orgs/${orgId}/crawls/${crawlId}`);
   const [sev, setSev] = useState("all");
   const [tab, setTab] = useState<"opps" | "issues" | "pages">("opps");
   const [openIssue, setOpenIssue] = useState<string | null>(null);
+  const [drafting, setDrafting] = useState<string | null>(null);
+  const [draftErr, setDraftErr] = useState<{ rule: string; error: ApiError } | null>(null);
   const issues = useMemo(() => (data?.issues ?? []).filter((i: any) => sev === "all" || i.severity === sev), [data, sev]);
   if (loading && !data) return <Spinner />;
   if (error) return <ErrorState error={error} onRetry={reload} />;
   const c = data.crawl;
+  const pot = data.potential;
+  const apiBase = `/api/v1/orgs/${orgId}/crawls/${crawlId}`;
+  const skippedBy = (c.skipped as Array<{ reason: string }>).reduce<Record<string, number>>((acc, s) => ({ ...acc, [s.reason]: (acc[s.reason] ?? 0) + 1 }), {});
+
+  const createDraft = async (ruleKey: string) => {
+    setDrafting(ruleKey);
+    setDraftErr(null);
+    try {
+      const r = await post<{ id: string }>(`/orgs/${orgId}/content/from-finding`, { crawlId, ruleKey });
+      nav(`/o/${orgId}/content/${r.id}`);
+    } catch (e) {
+      setDraftErr({ rule: ruleKey, error: e instanceof ApiError ? e : new ApiError(0, "error", "No se ha podido crear el borrador.") });
+    } finally {
+      setDrafting(null);
+    }
+  };
+
   return (
     <>
       <PageHeader
@@ -54,7 +114,17 @@ export function AuditDetailPage() {
         subtitle={`${c.pages_count} páginas analizadas de un máximo de ${c.pages_limit}. ${c.verification_status === "verified" ? "Propiedad verificada." : "Propiedad no verificada: solo análisis público de solo lectura."}`}
         actions={
           <>
-            <Link className="inline-flex min-h-10 items-center rounded-full border border-line px-4 text-sm font-semibold hover:bg-surface-2" to={`/o/${orgId}/brands/${c.brand_id}`}>Marca</Link>
+            <a className="inline-flex min-h-10 items-center gap-2 rounded-full border border-line px-4 text-sm font-semibold hover:bg-surface-2" href={`${apiBase}/export?format=html`}>
+              <Download className="size-4" aria-hidden /> Informe HTML
+            </a>
+            <a className="inline-flex min-h-10 items-center gap-2 rounded-full border border-line px-4 text-sm font-semibold hover:bg-surface-2" href={`${apiBase}/export?format=md`}>
+              <Download className="size-4" aria-hidden /> Markdown
+            </a>
+            {c.brand_id && (
+              <Link className="inline-flex min-h-10 items-center rounded-full border border-line px-4 text-sm font-semibold hover:bg-surface-2" to={`/o/${orgId}/brands/${c.brand_id}`}>
+                Marca
+              </Link>
+            )}
             {data.planId && (
               <Link className="inline-flex min-h-10 items-center gap-2 rounded-full bg-accent px-4 text-sm font-semibold text-accent-ink" to={`/o/${orgId}/plans/${data.planId}`}>
                 Plan de 30 días <ArrowRight className="size-4" />
@@ -63,30 +133,77 @@ export function AuditDetailPage() {
           </>
         }
       />
-      <div className="mb-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
+      <div className="mb-6 grid gap-4 [grid-template-columns:repeat(auto-fill,minmax(min(100%,12.5rem),1fr))]">
         <div className="rounded-2xl border border-line bg-surface p-4">
           <p className="text-sm text-mute">Salud técnica</p>
-          <p className="mt-1 font-serif text-5xl tabular-nums">{c.health_score}<span className="font-sans text-sm text-mute">/100</span></p>
+          <p className="mt-1 font-serif text-5xl tabular-nums">
+            {c.health_score ?? "—"}
+            <span className="font-sans text-sm text-mute">/100</span>
+          </p>
           <p className="mt-2 text-xs text-mute">{c.health_method}</p>
         </div>
+        {pot && (
+          <div className="rounded-2xl border border-line bg-surface p-4">
+            <p className="text-sm text-mute">Potencial orgánico</p>
+            <p className="mt-1 font-serif text-5xl tabular-nums">
+              {pot.score}
+              <span className="font-sans text-sm text-mute">/100</span>
+            </p>
+            <p className="mt-2 flex flex-wrap items-center gap-1.5 text-xs text-mute">
+              <Badge tone={LEVEL_TONE[pot.level] ?? "neutral"}>{pot.level}</Badge> medida derivada del rastreo
+            </p>
+          </div>
+        )}
         {[
           ["robots.txt", c.robots_found],
           ["Sitemap XML", c.sitemap_found],
           ["HTTPS", c.served_over_https],
           ["llms.txt (opcional)", c.llms_txt_found],
         ].map(([k, v]) => (
-            <div key={k as string} className="rounded-2xl border border-line bg-surface p-4">
-              <p className="text-sm text-mute">{k}</p>
-              <p className={cx("mt-2 flex items-center gap-2 text-lg font-semibold", v ? "text-ok" : "text-danger")}>{v ? <Check className="size-5" /> : <X className="size-5" />} {v ? "Detectado" : "No detectado"}</p>
-              {k === "Sitemap XML" && v ? <p className="text-xs text-mute">{c.sitemap_url_count} URLs</p> : null}
-            </div>
-          ))}
+          <div key={k as string} className="rounded-2xl border border-line bg-surface p-4">
+            <p className="text-sm text-mute">{k}</p>
+            <p className={cx("mt-2 flex items-center gap-2 text-lg font-semibold", v ? "text-ok" : "text-danger")}>
+              {v ? <Check className="size-5" /> : <X className="size-5" />} {v ? "Detectado" : "No detectado"}
+            </p>
+            {k === "Sitemap XML" && v ? <p className="text-xs text-mute">{c.sitemap_url_count} URLs</p> : null}
+          </div>
+        ))}
       </div>
 
-      <div role="tablist" className="mb-4 inline-flex rounded-full border border-line bg-surface p-1 text-sm">
+      {pot && (
+        <details className="mb-6 rounded-2xl border border-line bg-surface p-4">
+          <summary className="cursor-pointer text-sm font-semibold">Cómo se calcula el potencial orgánico</summary>
+          <p className="mt-2 text-sm text-mute">{pot.method}</p>
+          <ul className="mt-3 grid gap-3 sm:grid-cols-2">
+            {pot.signals.map((s: any) => (
+              <li key={s.key} className="rounded-xl border border-line p-3">
+                <div className="flex items-baseline justify-between gap-2">
+                  <p className="text-sm font-medium">{s.label}</p>
+                  <p className="text-xs tabular-nums text-mute">
+                    {s.points}/{s.max} pts
+                  </p>
+                </div>
+                <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-surface-2" aria-hidden>
+                  <div className="h-full rounded-full bg-accent" style={{ width: `${Math.round((s.points / s.max) * 100)}%` }} />
+                </div>
+                <p className="mt-2 text-xs text-mute">
+                  Valor observado: <strong className="text-ink">{String(s.value)}</strong>. {s.detail}
+                </p>
+              </li>
+            ))}
+          </ul>
+          <ul className="mt-3 list-disc pl-4 text-xs text-mute">
+            {pot.caveats.map((x: string) => (
+              <li key={x}>{x}</li>
+            ))}
+          </ul>
+        </details>
+      )}
+
+      <div role="tablist" className="mb-4 inline-flex max-w-full flex-wrap rounded-3xl border border-line bg-surface p-1 text-sm">
         {(
           [
-            ["opps", `Top mejoras (${c.opportunities.length})`],
+            ["opps", `Mejoras prioritarias (${c.opportunities.length})`],
             ["issues", `Hallazgos (${data.issues.length})`],
             ["pages", `Páginas (${data.pages.length})`],
           ] as const
@@ -98,27 +215,76 @@ export function AuditDetailPage() {
       </div>
 
       {tab === "opps" && (
-        <ol className="space-y-3">
-          {c.opportunities.map((o: any, i: number) => (
-            <li key={o.ruleKey} className="rounded-2xl border border-line bg-surface p-5">
-              <div className="flex flex-wrap items-start gap-3">
-                <span className="font-serif text-3xl leading-none text-accent-text tabular-nums">{String(i + 1).padStart(2, "0")}</span>
-                <div className="min-w-0 flex-1">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <h3 className="font-semibold">{o.title}</h3>
-                    <SeverityBadge s={o.severity} />
-                    <Badge>{o.category}</Badge>
+        <>
+          <p className="mb-3 text-sm text-mute">
+            Cada mejora sale de lo observado en tu web. {canDraft ? "Convierte cualquiera en un borrador de corrección revisable: no usa IA ni créditos." : "Descarga el brief de cada mejora con su evidencia para pasárselo a quien edite la web."}
+          </p>
+          <ol className="space-y-3">
+            {c.opportunities.map((o: any, i: number) => {
+              const chips = pageTypeChips(o.pageTypes);
+              return (
+                <li key={o.ruleKey} className="rounded-2xl border border-line bg-surface p-5">
+                  <div className="flex flex-wrap items-start gap-3">
+                    <span className="font-serif text-3xl leading-none text-accent-text tabular-nums">{String(i + 1).padStart(2, "0")}</span>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <h3 className="font-semibold">{o.title}</h3>
+                        <SeverityBadge s={o.severity} />
+                        <Badge>{CATEGORY_LABEL[o.category] ?? "General"}</Badge>
+                        {o.legalOnly && <Badge tone="neutral">Solo páginas legales</Badge>}
+                      </div>
+                      <p className="mt-1 text-sm text-mute">{o.fix}</p>
+                      <p className="mt-2 text-xs text-mute">
+                        Impacto {o.impact}/5 · Esfuerzo {o.effort}/5{o.estimateHours ? ` · ~${o.estimateHours} h estimadas` : ""} · {o.affectedCount ? `${o.affectedCount} URL(s)` : "todo el sitio"}
+                        {chips.length > 0 && ` · ${chips.join(", ")}`}
+                      </p>
+                      {o.affectedUrls?.length > 0 && (
+                        <p className="mt-1 break-all text-xs text-mute">
+                          Evidencia:{" "}
+                          {o.affectedUrls.slice(0, 3).map((u: string, k: number) => (
+                            <span key={u}>
+                              {k > 0 && " · "}
+                              <a href={u} target="_blank" rel="noopener noreferrer nofollow" className="hover:underline">
+                                {new URL(u).pathname}
+                              </a>
+                            </span>
+                          ))}
+                          {o.affectedUrls.length > 3 && ` y ${o.affectedUrls.length - 3} más`}
+                        </p>
+                      )}
+                      {o.legalOnly && <p className="mt-1 text-xs text-mute">Afecta solo a páginas legales: corrígelo cuando hayas resuelto lo demás.</p>}
+                      <div className="mt-3 flex flex-wrap items-center gap-2">
+                        {canDraft && (
+                          <Button variant="primary" className="min-h-9 px-3 text-xs" loading={drafting === o.ruleKey} disabled={!!drafting} onClick={() => void createDraft(o.ruleKey)}>
+                            <FilePlus2 className="size-3.5" aria-hidden /> Crear borrador de corrección
+                          </Button>
+                        )}
+                        <DownloadLink href={`${apiBase}/findings/${o.ruleKey}/brief?format=md`}>Brief (Markdown)</DownloadLink>
+                        <DownloadLink href={`${apiBase}/findings/${o.ruleKey}/brief?format=html`}>Brief (HTML)</DownloadLink>
+                      </div>
+                      {draftErr && draftErr.rule === o.ruleKey && (
+                        <div className="mt-2">
+                          <ErrorState error={draftErr.error} />
+                        </div>
+                      )}
+                    </div>
                   </div>
-                  <p className="mt-1 text-sm text-mute">{o.fix}</p>
-                  <p className="mt-2 text-xs text-mute">
-                    Impacto {o.impact}/5 · Esfuerzo {o.effort}/5 · Certeza {Math.round(o.certainty * 100)}% · Puntuación {o.score} · {o.affectedCount ? `${o.affectedCount} URL(s)` : "todo el sitio"}
-                  </p>
-                </div>
-              </div>
-            </li>
-          ))}
-          {c.opportunities.length === 0 && <EmptyState title="No hemos encontrado mejoras prioritarias" />}
-        </ol>
+                </li>
+              );
+            })}
+            {c.opportunities.length === 0 && <EmptyState title="No hemos encontrado mejoras prioritarias" />}
+          </ol>
+          {!access.unlocked("content") && c.opportunities.length > 0 && (
+            <div className="mt-4">
+              <Notice title="Guardar, revisar y aprobar borradores">
+                El brief descargable está incluido en tu plan. Para guardar cada corrección como borrador editable, con revisión y aprobación del equipo, necesitas Content Studio (desde el plan {PLAN_LABEL[requiredPlan("content")]}).{" "}
+                <Link className="font-semibold text-accent-text hover:underline" to={`/o/${orgId}/billing`}>
+                  Ver planes
+                </Link>
+              </Notice>
+            </div>
+          )}
+        </>
       )}
 
       {tab === "issues" && (
@@ -126,7 +292,7 @@ export function AuditDetailPage() {
           title="Hallazgos con evidencia"
           actions={
             <label className="flex items-center gap-2 text-sm">
-              <span className="text-mute">Severidad</span>
+              <span className="text-mute">Gravedad</span>
               <Select value={sev} onChange={(e) => setSev(e.target.value)} className="w-36 py-1.5">
                 <option value="all">Todas</option>
                 {Object.entries(SEVERITY).map(([k, v]) => (
@@ -144,13 +310,24 @@ export function AuditDetailPage() {
                 <button className="flex w-full flex-wrap items-center gap-2 text-left" onClick={() => setOpenIssue(openIssue === i.id ? null : i.id)} aria-expanded={openIssue === i.id}>
                   <SeverityBadge s={i.severity} />
                   <span className="font-medium">{i.title}</span>
+                  {i.page_type && <Badge>{PAGE_TYPE_LABEL[i.page_type as PageType] ?? "Página"}</Badge>}
                   <span className="min-w-0 flex-1 truncate text-sm text-mute">{i.url ?? "Todo el sitio"}</span>
                 </button>
                 {openIssue === i.id && (
                   <div className="mt-3 space-y-2 rounded-xl bg-surface-2 p-3 text-sm">
                     <p>{i.fix}</p>
-                    <p className="text-xs text-mute">Regla: <code className="font-mono">{i.rule_key}</code></p>
-                    <pre className="overflow-x-auto whitespace-pre-wrap break-all rounded-lg bg-bg p-3 font-mono text-xs">{JSON.stringify(i.evidence, null, 2)}</pre>
+                    <p>
+                      <span className="text-mute">Observado:</span> {i.evidence_text}
+                    </p>
+                    {i.url && (
+                      <a href={i.url} target="_blank" rel="noopener noreferrer nofollow" className="inline-flex items-center gap-1 break-all text-xs text-accent-text hover:underline">
+                        Abrir la página <ExternalLink className="size-3" />
+                      </a>
+                    )}
+                    <details>
+                      <summary className="cursor-pointer text-xs text-mute">Datos técnicos del rastreo</summary>
+                      <pre className="mt-2 overflow-x-auto whitespace-pre-wrap break-all rounded-lg bg-bg p-3 font-mono text-xs">{JSON.stringify(i.evidence, null, 2)}</pre>
+                    </details>
                   </div>
                 )}
               </li>
@@ -162,10 +339,11 @@ export function AuditDetailPage() {
 
       {tab === "pages" && (
         <div className="overflow-x-auto rounded-2xl border border-line bg-surface">
-          <table className="w-full min-w-[760px] text-sm">
+          <table className="w-full min-w-[820px] text-sm">
             <thead className="border-b border-line text-left text-xs text-mute">
               <tr>
                 <th className="px-4 py-3 font-medium">URL</th>
+                <th className="px-4 py-3 font-medium">Tipo</th>
                 <th className="px-4 py-3 font-medium">HTTP</th>
                 <th className="px-4 py-3 font-medium">Título</th>
                 <th className="px-4 py-3 font-medium">H1</th>
@@ -181,6 +359,7 @@ export function AuditDetailPage() {
                       {new URL(p.final_url).pathname} <ExternalLink className="size-3 shrink-0" />
                     </a>
                   </td>
+                  <td className="px-4 py-3 text-xs text-mute">{PAGE_TYPE_LABEL[p.page_type as PageType] ?? "Página"}</td>
                   <td className="px-4 py-3 tabular-nums">{p.status_code}</td>
                   <td className="max-w-[240px] px-4 py-3">{p.title ?? <span className="text-danger">—</span>}</td>
                   <td className="max-w-[200px] px-4 py-3">{p.h1 ?? <span className="text-danger">—</span>}</td>
@@ -201,7 +380,15 @@ export function AuditDetailPage() {
               <li key={l}>{l}</li>
             ))}
           </ul>
-          {c.skipped.length > 0 && <p className="mt-1">{c.skipped.length} URL(s) omitidas (robots.txt, errores o redirecciones fuera del dominio).</p>}
+          {c.skipped.length > 0 && (
+            <p className="mt-1">
+              URLs omitidas:{" "}
+              {Object.entries(skippedBy)
+                .map(([r, n]) => `${n} ${SKIP_REASON[r] ?? "por otros motivos"}`)
+                .join(" · ")}
+              .
+            </p>
+          )}
         </Notice>
       </div>
     </>
@@ -236,7 +423,7 @@ export function BrandsPage() {
   );
 }
 
-const METHOD_LABEL: Record<string, string> = { "json-ld": "JSON-LD", meta: "Meta tag", "open-graph": "Open Graph", heading: "Encabezado", link: "Enlace", html: "HTML", title: "Título", user: "Añadido por ti" };
+const METHOD_LABEL: Record<string, string> = { "json-ld": "JSON-LD", meta: "Meta tag", "open-graph": "Open Graph", heading: "Encabezado", link: "Enlace", html: "HTML", title: "Título", css: "Hoja de estilos", user: "Añadido por ti" };
 
 export function BrandPage() {
   const { orgId, brandId } = useParams();

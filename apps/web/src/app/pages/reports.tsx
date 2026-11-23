@@ -192,7 +192,7 @@ export function ReportsPage() {
   return (
     <>
       <div className="print:hidden">
-        <PageHeader eyebrow="F3 · Informes" title="Informe de rendimiento" subtitle="Search Console, Analytics y visibilidad en IA en un solo informe, con la fuente, el periodo y el tipo de medida de cada cifra." />
+        <PageHeader eyebrow="Medición · Informes" title="Informe de rendimiento" subtitle="Search Console, Analytics y visibilidad en IA en un solo informe, con la fuente, el periodo y el tipo de medida de cada cifra." />
       </div>
       {brands.error && <ErrorState error={brands.error} onRetry={brands.reload} />}
       {brands.data && brands.data.items.length === 0 && <EmptyState title="Aún no hay marcas">Analiza tu web para crear la primera marca.</EmptyState>}

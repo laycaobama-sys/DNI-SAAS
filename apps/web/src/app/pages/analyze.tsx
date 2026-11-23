@@ -3,7 +3,16 @@ import { Link, useNavigate, useParams } from "react-router";
 import { ArrowRight, CheckCircle2, CircleDashed, ShieldCheck, XCircle } from "lucide-react";
 import { ApiError, fmtDate, post, timeAgo } from "../lib/api";
 import { useApi } from "../lib/hooks";
-import { Badge, Button, Card, EmptyState, ErrorState, JOB_STATE, Notice, PageHeader, Progress, Spinner, TextField } from "../ui";
+import { Badge, Button, Card, EmptyState, ErrorState, Field, JOB_STATE, Notice, PageHeader, Progress, Select, Spinner, TextField } from "../ui";
+
+type BrandRow = { id: string; name: string; domain: string | null; origin: string | null };
+const hostOf = (raw: string) => {
+  try {
+    return new URL(/^https?:\/\//i.test(raw.trim()) ? raw.trim() : `https://${raw.trim()}`).hostname.replace(/^www\./, "").toLowerCase();
+  } catch {
+    return "";
+  }
+};
 
 export function AnalyzePage() {
   const { orgId } = useParams();
@@ -16,7 +25,17 @@ export function AnalyzePage() {
     }
   });
   const [brandName, setBrandName] = useState("");
+  const [brandChoice, setBrandChoice] = useState<string>("auto");
   const [busy, setBusy] = useState(false);
+  const brands = useApi<{ items: BrandRow[] }>(`/orgs/${orgId}/brands`);
+  const ent = useApi<{ plan: { name: string }; rows: Array<{ key: string; used: number | null; limit: number }> }>(`/orgs/${orgId}/entitlements`);
+  const brandRow = ent.data?.rows.find((r) => r.key === "brands");
+  const atBrandLimit = !!brandRow && (brandRow.used ?? 0) >= brandRow.limit;
+  const host = hostOf(url);
+  const matching = brands.data?.items.find((b) => [b.domain, b.origin].some((d) => d && hostOf(d) === host));
+  // B13: decide BEFORE submitting where a new domain goes, instead of failing after the click.
+  const needsExisting = !!host && !matching && atBrandLimit && (brands.data?.items.length ?? 0) > 0;
+  const chosenBrand = brandChoice !== "auto" ? brandChoice : needsExisting ? brands.data!.items[0]!.id : null;
   const [error, setError] = useState<ApiError | null>(null);
   const idemKey = useMemo(() => crypto.randomUUID().replace(/-/g, ""), []);
 
@@ -25,7 +44,8 @@ export function AnalyzePage() {
     setBusy(true);
     setError(null);
     try {
-      const r = await post<{ jobId: string }>(`/orgs/${orgId}/sites/analyze`, { url, ...(brandName ? { brandName } : {}) }, { "idempotency-key": idemKey });
+      const target = matching ? null : chosenBrand;
+      const r = await post<{ jobId: string }>(`/orgs/${orgId}/sites/analyze`, { url, ...(target ? { brandId: target } : brandName ? { brandName } : {}) }, { "idempotency-key": idemKey });
       try {
         sessionStorage.removeItem("dni.pendingUrl");
       } catch {
@@ -46,7 +66,28 @@ export function AnalyzePage() {
         <Card>
           <form onSubmit={submit} className="space-y-4">
             <TextField label="URL del sitio" placeholder="tunegocio.es" inputMode="url" required maxLength={2048} value={url} onChange={(e) => setUrl(e.target.value)} hint="Solo sitios públicos (http/https). Bloqueamos direcciones internas y privadas." />
-            <TextField label="Nombre de la marca (opcional)" maxLength={120} value={brandName} onChange={(e) => setBrandName(e.target.value)} hint="Si lo dejas vacío usaremos el dominio. Podrás corregirlo al confirmar la marca." />
+            {matching ? (
+              <p className="text-sm text-mute">
+                Este dominio ya pertenece a la marca <strong className="text-ink">{matching.name}</strong>: la auditoría se guardará allí.
+              </p>
+            ) : (brands.data?.items.length ?? 0) > 0 && host ? (
+              <Field label="¿Dónde se guarda esta auditoría?" htmlFor="brand-choice" hint={needsExisting ? `Tu plan ${ent.data?.plan.name ?? ""} permite ${brandRow?.limit} marca(s) y ya las usas. La auditoría de otro dominio (por ejemplo, un competidor) se guarda en una marca existente y no cambia su perfil de marca.` : "Crea una marca nueva para este dominio o guárdalo en una existente (útil para auditar a un competidor)."}>
+                <Select id="brand-choice" value={brandChoice} onChange={(e) => setBrandChoice(e.target.value)}>
+                  <option value="auto" disabled={needsExisting}>{needsExisting ? "Nueva marca (no disponible en tu plan)" : `Nueva marca: ${host}`}</option>
+                  {brands.data!.items.map((b) => (
+                    <option key={b.id} value={b.id}>
+                      En la marca «{b.name}»
+                    </option>
+                  ))}
+                </Select>
+              </Field>
+            ) : null}
+            {!matching && !chosenBrand && (
+              <TextField label="Nombre de la marca (opcional)" maxLength={120} value={brandName} onChange={(e) => setBrandName(e.target.value)} hint="Si lo dejas vacío usaremos el dominio. Podrás corregirlo al confirmar la marca." />
+            )}
+            {needsExisting && brandChoice === "auto" && (
+              <Notice tone="info">Se guardará en «{brands.data!.items[0]!.name}». Puedes elegir otra marca arriba o <Link className="font-semibold underline" to={`/o/${orgId}/billing`}>ver planes con más marcas</Link>.</Notice>
+            )}
             {error && (
               <ErrorState error={error} />
             )}
@@ -62,7 +103,7 @@ export function AnalyzePage() {
         </Card>
         <Card title="Qué revisamos">
           <ul className="space-y-2 text-sm text-mute">
-            {["Indexabilidad: HTTP, noindex, canónicas, robots.txt, sitemap", "Metadatos: títulos, descripciones, duplicados", "Estructura: H1, idioma, viewport móvil", "GEO/AEO: JSON-LD, entidad de marca, llms.txt", "Contenido: alt de imágenes, contenido escaso", "Social: Open Graph"].map((t) => (
+            {["Indexabilidad: HTTP, noindex, canónicas, robots.txt, sitemap", "Metadatos: títulos, descripciones, duplicados", "Estructura: H1, idioma, viewport móvil", "GEO/AEO: JSON-LD, entidad de marca, llms.txt", "Contenido: alt de imágenes, contenido escaso, blog y potencial orgánico", "Social: Open Graph e imagen para compartir (formato y tamaño)", "Páginas legales: se revisan, pero apenas pesan en las prioridades"].map((t) => (
               <li key={t} className="flex gap-2">
                 <ShieldCheck className="mt-0.5 size-4 shrink-0 text-accent-text" aria-hidden /> {t}
               </li>

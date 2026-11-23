@@ -10,7 +10,7 @@ import { Logo } from "../shell";
 const LABELS: Record<string, string> = {
   brands: "Marcas",
   completed_audits: "Auditorías completadas",
-  health_score: "Salud técnica (última auditoría)",
+  health_score: "Salud técnica",
   credits_balance: "Créditos disponibles",
   analyses_used: "Auditorías usadas",
 };
@@ -115,7 +115,7 @@ export function DashboardPage() {
       />
       <ErrorState error={error} onRetry={reload} />
       {loading && !data && (
-        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
+        <div className="grid gap-4 [grid-template-columns:repeat(auto-fill,minmax(min(100%,12.5rem),1fr))]">
           {Array.from({ length: 5 }).map((_, i) => (
             <Skeleton key={i} className="h-36 rounded-2xl" />
           ))}
@@ -123,12 +123,12 @@ export function DashboardPage() {
       )}
       {data && (
         <div className="space-y-6">
-          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
+          <div className="grid gap-4 [grid-template-columns:repeat(auto-fill,minmax(min(100%,12.5rem),1fr))]">
             {data.metrics.map((m: any) => (
               <MetricCard key={m.metric} m={{ ...m, label: LABELS[m.metric] ?? m.metric }} />
             ))}
           </div>
-          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+          <div className="grid gap-4 [grid-template-columns:repeat(auto-fill,minmax(min(100%,15rem),1fr))]">
             {(data.kpis ?? []).map((k: any) =>
               k.metric ? (
                 <MetricCard key={k.key} m={k.metric} />
@@ -144,7 +144,7 @@ export function DashboardPage() {
             )}
           </div>
           {data.unavailable.length > 0 && (
-            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+            <div className="grid gap-4 [grid-template-columns:repeat(auto-fill,minmax(min(100%,15rem),1fr))]">
               {data.unavailable.map((u: any) => (
                 <UnavailableCard key={u.key} label={u.label} reason={u.reason} />
               ))}

@@ -77,7 +77,7 @@ export function LandingsPage() {
   return (
     <>
       <PageHeader
-        eyebrow="F5 · Landings · F7 · Tests A/B"
+        eyebrow="Captación · Landings y tests A/B"
         title="Landing pages"
         subtitle="Páginas por bloques con versiones, vista previa, publicación en tu dirección de DNI Growth, formulario del CRM y tests A/B con estadística honesta. Sin cookies de seguimiento."
       />

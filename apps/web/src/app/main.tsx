@@ -8,6 +8,7 @@ import "./styles.css";
 import { AuthProvider, useAuth } from "./lib/auth";
 import { useTheme } from "./lib/hooks";
 import { AppShell } from "./shell";
+import { ErrorBoundary } from "./errorboundary";
 import { AdminConsolePage } from "./pages/admin";
 import { Spinner } from "./ui";
 import { ForgotPage, InvitePage, LoginPage, RegisterPage, ResetPage, VerifyPage } from "./pages/auth";
@@ -117,7 +118,9 @@ createRoot(document.getElementById("root")!).render(
   <StrictMode>
     <BrowserRouter basename="/app">
       <AuthProvider>
-        <App />
+        <ErrorBoundary scope="app">
+          <App />
+        </ErrorBoundary>
       </AuthProvider>
     </BrowserRouter>
   </StrictMode>,
