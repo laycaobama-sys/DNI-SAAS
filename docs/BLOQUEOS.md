@@ -6,33 +6,31 @@ Reglas que siguen vigentes: nadie más que tú escribe claves, contraseñas o c�
 
 ---
 
-## 1. URGENTE · Stripe en real con la cuenta «DNI Growth-IA» (5 minutos)
+## 1. URGENTE · Stripe en real con la cuenta «DNI Growth-IA» (2 minutos, un solo paso)
 
-**Estado comprobado el 2026-11-23:**
-- Cuenta **DNI Growth-IA** (`acct_1TnSMAJepRhBoIxa`): sin suscripciones. Tiene 3 productos antiguos activos («RestoPanel Starter / Professional / Enterprise»).
-- La plataforma guarda hoy la clave de **prueba** de otra cuenta («DNI Growth», `acct_1Ucxx…`). Esa cuenta **no puede cobrar**: Stripe no pudo verificar la identidad y pide un documento que coincida con los datos. No hay que tocarla: la sustituye DNI Growth-IA.
+**Ya hecho y comprobado el 2026-11-23 (no tienes que tocarlo):**
+- La cuenta **DNI Growth-IA** (`acct_1TnSMAJepRhBoIxa`) está **activa**: en *Configuración → Estado de la cuenta* figuran «Pagos» y «Payouts» activos y «No hay tareas activas para completar».
+- Datos públicos ya son de DNI Growth: nombre comercial «DNI Growth», concepto en el extracto bancario «DNI GROWTH», web dnigrowth.com, soporte soporte@dnigrowth.com.
+- Los 3 productos antiguos de RestoPanel están **archivados** (tenían 0 suscripciones). Se archivan, no se borran: se pueden reactivar.
+- Los 2 webhooks antiguos que enviaban todos los eventos a resto-panel.com están **deshabilitados** (uno fallaba al 100 %). Así los pagos de DNI Growth no se envían a otro sistema.
+- Las direcciones legales que Stripe muestra en el pago y en los recibos (`/terminos-y-condiciones`, `/politica-de-privacidad`, `/soporte`) daban 404: ahora redirigen a las páginas reales.
+- En modo prueba se ha comprobado todo el circuito: catálogo sincronizado (4 planes × mensual/anual), cupón de retención, portal de cliente, webhook con 9 eventos y páginas de pago de Stripe con el precio correcto (Growth anual: 1.296 €, 108 €/mes, IVA calculado según la dirección).
 
-**Qué haces tú:**
-1. En Stripe, arriba a la izquierda, elige **DNI Growth-IA**. Comprueba que **no** está activado «Entorno de prueba».
-2. Ve a **Desarrolladores → Claves de API → Clave secreta → Revelar** y cópiala. Empieza por `sk_live_`.
-3. En tu ordenador abre PowerShell en la carpeta `DNI SAAS\apps\api` y ejecuta:
+**Lo único que falta, y solo puedes hacerlo tú** (la clave secreta nunca pasa por un chat):
+1. En Stripe, arriba a la izquierda, elige **DNI Growth-IA** (sin «Entorno de prueba»).
+2. **Desarrolladores → Claves de API → Clave secreta → Revelar** y cópiala. Empieza por `sk_live_`.
+3. En PowerShell, en la carpeta `DNI SAASappsapi`:
    ```powershell
    npx.cmd wrangler secret put STRIPE_SECRET_KEY
    ```
-   Pega la clave cuando te la pida y pulsa Intro. **No la pegues en ningún chat.**
+   Pega la clave cuando te la pida y pulsa Intro.
 
-**Qué hace la plataforma sola**, en el minuto siguiente, sin desplegar nada:
-- Lee el estado de la cuenta (`charges_enabled`).
-- Crea los 4 productos y los 8 precios: mensual y anual de Starter 49 €, Growth 129 €, Pro 249 € y Agency 449 €. Todos en euros y sin IVA.
-- Crea el IVA del 21 % (o usa Stripe Tax si lo activas), el cupón de retención (30 % durante 2 meses), el portal de cliente y el webhook firmado.
-- Todo queda registrado en el historial de auditoría.
-- Con `BILLING_ENABLED="auto"`, el botón de pago se abre al público **solo** si Stripe confirma que la cuenta puede cobrar. Si no, la app dice «Stripe todavía está verificando la cuenta» y no cobra nada.
+**Qué hace la plataforma sola en el minuto siguiente** (sin desplegar nada):
+- Lee el estado de la cuenta, crea los 4 productos («DNI Growth · Plan Starter/Growth/Pro/Agency») y los 8 precios (mensual y anual, en euros, IVA aparte), el IVA (Stripe Tax si está activo; si no, IVA español del 21 %), el cupón de retención, el portal de cliente y el webhook firmado. Todo queda en el historial de auditoría.
+- Con `BILLING_ENABLED="auto"`, en cuanto Stripe confirma que la cuenta puede cobrar, el pago se abre al público y /precios cambia a «Pagos activos con Stripe».
+- Comprobación: **Facturación → Stripe · administración** debe decir «DNI Growth-IA · puede cobrar».
 
-**Después (1 clic, en la app):** ve a **Facturación → Stripe · administración**.
-- Comprueba «Cuenta de Stripe: DNI Growth-IA · puede cobrar».
-- Pulsa **«Archivar 3 producto(s)»** para retirar los productos de RestoPanel. Se archivan, no se borran, y se pueden reactivar.
-
-Si Stripe pide algo más (documento, cuenta bancaria, datos fiscales), aparece en el aviso amarillo del inicio de su panel; solo tú puedes completarlo.
+Nota: tu organización «DNI GYM» tiene una suscripción Starter creada **en modo prueba** y ya cancelada (termina el 2026-12-18). Con la clave real, Stripe no enviará su aviso de fin; la plataforma la pasa sola a Free el 2026-12-20 (red de seguridad añadida el 2026-11-23). No hay que hacer nada.
 
 ## 2. URGENTE · Revisión legal antes del primer cobro real
 
@@ -52,27 +50,36 @@ El texto que acepta el cliente queda guardado con su versión (`termsVersion 202
 
 ## 4. EN CURSO · Google: verificación para leer Search Console y Analytics
 
-Enviada a revisión el 2026-11-19, con vídeo y justificación ([GOOGLE_VERIFICATION.md](GOOGLE_VERIFICATION.md)). Solo queda esperar el correo de Google. Si pide cambios, reenvíalo.
+Comprobado en Google Cloud (*Google Auth Platform → Centro de verificación*) el 2026-11-23:
+- **Marca: verificada** ✅ (se muestra a los usuarios).
+- **Acceso a datos: en revisión.** Superados «Requisitos de la página principal» y «Lineamientos de la marca» (19 nov). «Requisitos de la política de privacidad» está en revisión; después vienen «Funciones de la app», «Acceso a los datos adecuados» y «Permisos mínimos».
+- Google indica que tarda **de 4 a 6 semanas** y que el equipo de Confianza y Seguridad escribe por correo si necesita algo. **Vigila tu correo y responde tú** si piden cambios.
+- La política de privacidad ya incluye lo que Google exige (permiso `webmasters.readonly`, uso limitado, sin envío a la IA ni entrenamiento).
 
-Mientras tanto, la conexión funciona, pero cada cliente ve el aviso «app no verificada». La garantía de 90 días necesita Search Console conectado.
+Mientras tanto la conexión ya funciona: las sincronizaciones diarias de Search Console y Analytics se completan (11 y 7 en los últimos 7 días). Cada cliente nuevo ve el aviso «app no verificada» hasta que Google termine. La garantía de 90 días necesita Search Console conectado.
 
-## 5. EN CURSO · Meta: revisión de la app
+## 5. BLOQUEADO · Meta: tu cuenta de desarrollador pide confirmación
 
-Necesita la verificación del negocio en Meta Business y los vídeos de cada permiso ([GUIA_APROBACIONES_GOOGLE_META.md](GUIA_APROBACIONES_GOOGLE_META.md)). Hasta entonces, la publicación directa en Instagram y Facebook y los anuncios aparecen como «en desarrollo».
+El 2026-11-23, al abrir la revisión de la app, Meta muestra: «Confirmación de la cuenta requerida — Hemos detectado actividad inusual en esta cuenta de desarrollador». Solo tú puedes resolverlo (pide comprobar tu identidad):
+1. Entra en developers.facebook.com con tu cuenta y pulsa **Confirmar cuenta**. Sigue los pasos que te pida.
+2. Después, la revisión de la app necesita la verificación del negocio en Meta Business y los vídeos de cada permiso ([GUIA_APROBACIONES_GOOGLE_META.md](GUIA_APROBACIONES_GOOGLE_META.md)).
 
-No toques la «Clave secreta de la aplicación» en ningún chat.
+Hasta entonces, la publicación directa en Instagram y Facebook y los anuncios de Meta aparecen como «requiere aprobación externa» y no se venden como disponibles. No toques la «Clave secreta de la aplicación» en ningún chat.
 
 ## 6. Claves de API
 
 | Clave | Estado | Coste | Paso |
 |---|---|---|---|
-| Gemini (monitor GEO) | ✅ guardada, nivel gratuito | 0 € | — |
-| OpenRouter (modelos gratuitos) | ✅ guardada | 0 € | — |
+| Stripe (clave real de DNI Growth-IA) | ❌ falta | comisión por cobro | Ver punto 1 |
+| Gemini (monitor GEO y respaldo de IA) | ✅ guardada, nivel gratuito | 0 € | — |
+| OpenRouter (modelos gratuitos) | ✅ guardada, solo modelos gratis y gasto máximo 0 $ | 0 € | — |
 | Groq | ✅ guardada | 0 € | — |
-| Cloudflare Turnstile (anti-abuso de la auditoría sin registro) | ❌ falta | 0 € | Cloudflare → Turnstile → Añadir widget (`dnigrowth.com`, modo «Gestionado») → `npx.cmd wrangler secret put TURNSTILE_SECRET_KEY` |
-| PageSpeed Insights | ❌ falta | 0 € | console.cloud.google.com → proyecto dni-growth → APIs → «PageSpeed Insights API» → Credenciales → Clave restringida a esa API → `npx.cmd wrangler secret put PAGESPEED_API_KEY` |
-| Anthropic, OpenAI, Perplexity | ❌ no compradas | de pago | Tu presupuesto es 0 €. El seguimiento de ChatGPT, Claude y Perplexity aparece como «en desarrollo» y no se vende como disponible. |
-| DataForSEO u otro de volumen de búsqueda | ❌ no comprado | de pago | Igual: sin volumen de búsqueda licenciado no se muestran volúmenes. |
+| Google OAuth (Search Console y Analytics) | ✅ guardada | 0 € | — |
+| Cifrado de datos y sal de IP | ✅ guardadas | 0 € | — |
+| Cloudflare Turnstile y PageSpeed Insights | no hacen falta hoy | 0 € | El código actual no las usa; se pedirán solo cuando una función las necesite. |
+| Anthropic, OpenAI, Perplexity | ❌ no compradas | de pago | Tu presupuesto es 0 €. El seguimiento de ChatGPT, Claude y Perplexity no se vende como disponible. |
+| DataForSEO u otro de volumen de búsqueda | ❌ no comprado | de pago | Sin volumen de búsqueda licenciado no se muestran volúmenes. |
+| Google Ads (developer token) | ❌ sin solicitar | 0 € (requiere aprobación de Google) | Requiere una cuenta de administrador de Google Ads y la aprobación del token. |
 
 ## 7. Vincular tu cuenta al Control Center (TOTP)
 

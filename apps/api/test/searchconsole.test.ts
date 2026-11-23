@@ -293,7 +293,7 @@ describe("Search Console (F3): OAuth de solo lectura", () => {
     const g = (await owner.get(`/api/v1/orgs/${orgId}/search-console`)).json;
     expect(g.connection.status).toBe("disconnected");
     expect(g.report.totals.clicks).toBe(40);
-    const audit = await h.db.prepare("SELECT action FROM audit_logs WHERE organization_id = ? AND action LIKE 'integration.%' ORDER BY created_at").bind(orgId).all<{ action: string }>();
+    const audit = await h.db.prepare("SELECT action FROM audit_logs WHERE organization_id = ? AND action LIKE 'integration.%' ORDER BY created_at, rowid").bind(orgId).all<{ action: string }>();
     expect(audit.results.map((r) => r.action)).toEqual(["integration.connect", "integration.gsc_property_select", "integration.gsc_sync", "integration.disconnect"]);
     // Reconnect, then disconnect with purge.
     await connect(owner, orgId);

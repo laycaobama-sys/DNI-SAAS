@@ -1,5 +1,7 @@
 # Pendientes de la titular (2026-11-20)
 
+> Lista actualizada y ordenada por urgencia: **[BLOQUEOS.md](BLOQUEOS.md)** (2026-11-23). Este documento conserva el detalle histórico.
+
 Tareas que solo puedes hacer tú porque necesitan tu sesión (Cloudflare, Meta, Google). Ninguna cuesta dinero.
 
 ---

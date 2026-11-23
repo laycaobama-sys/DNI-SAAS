@@ -1,4 +1,5 @@
 import { gscReady } from "../lib/gsc";
+import { geoSamplingReady } from "../lib/geoGemini";
 import { Hono, type Context } from "hono";
 import {
   CANCEL_REASONS,
@@ -797,7 +798,15 @@ export function providerManifest(env: Env): ProviderManifestEntry[] {
     },
     { key: "keywords", name: "Proveedor de keywords/SERP", category: "SEO", status: "planned", note: "Sin proveedor no se muestran volúmenes ni dificultad." },
     { key: "wordpress", name: "WordPress", category: "CMS", status: "planned", note: "Publicación solo tras aprobación; export HTML/Markdown sin credenciales." },
-    { key: "geo_monitor", name: "Monitor de visibilidad en IA", category: "GEO", status: "planned", note: "Solo mediante APIs oficiales; muestreo, no cobertura total." },
+    {
+      key: "geo_monitor",
+      name: "Monitor de visibilidad en IA (Gemini, nivel gratuito)",
+      category: "GEO",
+      status: geoSamplingReady(env) ? "connected" : "not_configured",
+      note: geoSamplingReady(env)
+        ? "Muestreo con la API oficial de Gemini con cupo diario; es una muestra, no la cobertura de todas las búsquedas reales."
+        : "Falta GEMINI_API_KEY (gratuita) o el cupo diario está a 0.",
+    },
     { key: "meta_ads", name: "Meta Ads", category: "Publicidad", status: "blocked_external_approval", note: "Requiere app de Meta con ads_management/ads_read y revisión de la app." },
     { key: "google_ads", name: "Google Ads", category: "Publicidad", status: "blocked_external_approval", note: "Requiere developer token aprobado." },
     { key: "whatsapp", name: "WhatsApp Business", category: "CRM", status: "planned", note: "Plantillas aprobadas y opt-in obligatorio." },

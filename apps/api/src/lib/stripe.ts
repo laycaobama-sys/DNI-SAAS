@@ -195,6 +195,9 @@ export async function taxConfig(env: Env): Promise<{ mode: "automatic" | "manual
   return m === "automatic" ? { mode: "automatic", taxRateId: null } : { mode: "manual", taxRateId: mode ? await getSetting(env.DB, `stripe_tax_rate_es_${mode}`) : null };
 }
 
+/** Name shown on Stripe Checkout, invoices and the customer portal (never "DNI Growth Growth"). */
+export const productNameFor = (planName: string) => `DNI Growth · Plan ${planName}`;
+
 export async function syncStripeCatalog(env: Env, deps: Deps, appOrigin: string): Promise<CatalogSyncResult> {
   const mode = stripeMode(env);
   if (!mode) throw new StripeApiError(503, "not_configured");
@@ -208,10 +211,10 @@ export async function syncStripeCatalog(env: Env, deps: Deps, appOrigin: string)
     const productId = productIdFor(p.code);
     // Product with a deterministic id: creating it twice fails with resource_already_exists → we update it instead.
     try {
-      await stripeApi(env, deps, "POST", "/products", { id: productId, name: `DNI Growth ${p.name}`, "metadata[plan_code]": p.code, "metadata[managed_by]": "dni-growth", tax_code: "txcd_10103001" }, `product:${productId}:v1`);
+      await stripeApi(env, deps, "POST", "/products", { id: productId, name: productNameFor(p.name), "metadata[plan_code]": p.code, "metadata[managed_by]": "dni-growth", tax_code: "txcd_10103001" }, `product:${productId}:v1`);
     } catch (e) {
       if (!(e instanceof StripeApiError) || e.code !== "resource_already_exists") throw e;
-      await stripeApi(env, deps, "POST", `/products/${productId}`, { name: `DNI Growth ${p.name}`, active: true, "metadata[plan_code]": p.code, "metadata[managed_by]": "dni-growth" });
+      await stripeApi(env, deps, "POST", `/products/${productId}`, { name: productNameFor(p.name), active: true, "metadata[plan_code]": p.code, "metadata[managed_by]": "dni-growth" });
     }
     const monthly = await ensurePrice(env, deps, productId, p.code, "month", Math.round(p.price_eur_month * 100));
     const yearly = p.price_eur_year && p.price_eur_year > 0 ? await ensurePrice(env, deps, productId, p.code, "year", Math.round(p.price_eur_year * 100)) : null;
@@ -299,7 +302,7 @@ export async function syncStripeCatalog(env: Env, deps: Deps, appOrigin: string)
 /** Changes whenever a price, the webhook event list or the sync version changes → triggers an automatic re-sync. */
 async function catalogSignature(env: Env): Promise<string> {
   const { results } = await env.DB.prepare("SELECT code, price_eur_month, price_eur_year FROM plans WHERE active = 1 ORDER BY position").all<{ code: string; price_eur_month: number; price_eur_year: number | null }>();
-  return `v2|${WEBHOOK_EVENTS.join(",")}|${results.map((r) => `${r.code}:${r.price_eur_month}:${r.price_eur_year ?? 0}`).join(",")}`;
+  return `v3|${WEBHOOK_EVENTS.join(",")}|${results.map((r) => `${r.code}:${r.price_eur_month}:${r.price_eur_year ?? 0}`).join(",")}`;
 }
 
 /**

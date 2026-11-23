@@ -1,40 +1,56 @@
 # Cobros con Stripe: estado, cómo funciona y cuánto cuesta
 
-Cuenta de Stripe: **«DNI Growth»** (separada de «RestoPanel», decisión de la titular del 2026-11-18). Hoy se trabaja en su **entorno de prueba**: nadie paga dinero real.
+Última revisión: 2026-11-23. Decisiones de diseño en [ADR 0022](adr/0022-cobros-v2.md); pasos pendientes de la titular en [BLOQUEOS.md §1](BLOQUEOS.md).
 
-## 1. Cómo funciona (implementado y desplegado)
+## Estado
+
+| Pieza | Estado | Prueba |
+|---|---|---|
+| Cuenta real **DNI Growth-IA** (`acct_1TnSMAJepRhBoIxa`) | Activa: pagos y payouts activos, sin tareas pendientes | Panel de Stripe → Estado de la cuenta, 2026-11-23 |
+| Productos antiguos de RestoPanel en esa cuenta | Archivados (0 suscripciones) | Catálogo de productos → «Archivados» |
+| Webhooks antiguos hacia resto-panel.com | Deshabilitados | Workbench → Webhooks → «Deshabilitado» |
+| Datos públicos (nombre, extracto, web, soporte) | DNI Growth / «DNI GROWTH» / dnigrowth.com | Configuración → Datos de la empresa |
+| URL legales que muestra Stripe | Redirigen con 301 a `/legal/condiciones`, `/legal/privacidad` y `/#contacto` | `curl -I https://dnigrowth.com/terminos-y-condiciones` → 301 |
+| Clave en el Worker | **Prueba** (cuenta «DNI Growth», entorno de prueba) | Falta la clave real: la guarda la titular con `wrangler secret put` |
+| Catálogo en modo prueba | 4 planes × mensual y anual, cupón, portal y webhook (9 eventos) sincronizados | `POST /api/v1/admin/billing/stripe/sync` → 200; auditoría `platform.stripe_catalog_sync` 2026-11-23 17:32 |
+| Pago en modo prueba | Stripe Checkout abre con el precio correcto (Growth anual 1.296 €, 108 €/mes, IVA según dirección) | 3 sesiones creadas por la administradora en la organización «PRUEBA Stripe planes (modo test)»; ninguna pagada |
+
+## Planes (precios sin IVA)
+
+| Plan | Mensual | Anual (2 meses gratis) | Prueba | Garantía 90 días |
+|---|---|---|---|---|
+| Free | 0 € | — | — | — |
+| Starter | 49 € | 492 € (41 €/mes) | — | — |
+| Growth | 129 € | 1.296 € (108 €/mes) | 7 días | Sí |
+| Pro | 249 € | 2.496 € (208 €/mes) | — | Sí |
+| Agency | 449 € | 4.488 € (374 €/mes) | — | Sí |
+
+Fuente única: `packages/core/src/pricing.ts` (web pública, /precios, JSON-LD, app y Stripe salen de ahí).
+
+## Cómo funciona
+
 | Pieza | Qué hace |
 |---|---|
-| Clave | `STRIPE_SECRET_KEY` solo en los secretos de Cloudflare (la guarda la titular con `wrangler secret put`). Nunca se muestra ni se registra. |
-| Modo | `sk_test_…` → **solo administradores de la plataforma** pueden abrir el pago (prueba en producción sin que el público vea un pago ficticio). `BILLING_ENABLED="true"` → pagos abiertos a todos. `sk_live_…` sin `BILLING_ENABLED` → nada se puede cobrar. |
-| Catálogo | Botón «Sincronizar productos, precios y portal» (Facturación → panel de administración) o `POST /api/v1/admin/billing/stripe/sync`: crea productos con id fijo (`dni_growth_<plan>`), precios mensuales en EUR sin IVA con `lookup_key`, y el **portal de cliente**. Idempotente: repetirlo no duplica nada; si cambia un precio, crea uno nuevo y archiva el anterior (los clientes actuales conservan su precio). |
-| Webhook | La sincronización registra `https://dnigrowth.com/api/v1/webhooks/stripe` (eventos `checkout.session.completed`, `customer.subscription.created/updated/deleted`). Su secreto de firma, que Stripe entrega una sola vez, se guarda **cifrado** (AES-256-GCM con `DATA_ENC_KEY`) y nunca sale del servidor. Si la titular prefiere su propio endpoint, basta con `STRIPE_WEBHOOK_SECRET` y la plataforma no crea otro. |
-| Checkout | Stripe Checkout en español, dirección de facturación y NIF-IVA, códigos promocionales, email del usuario. **Una sola suscripción por organización** (409 si ya existe: los cambios van por el portal). |
-| Portal | «Gestionar suscripción»: cambiar de plan, tarjeta, facturas, cancelar al final del periodo. Si hay una cancelación programada, la app la muestra con la fecha en que se pasa a Free. |
-| Webhooks | Firma verificada sobre el cuerpo crudo, cada evento se procesa una vez, se ignoran eventos de modo cruzado (real/prueba) y eventos antiguos que llegan tarde; el plan se deduce del precio contratado; `past_due`/impago → plan Free hasta que se pague; créditos del plan una sola vez por mes. |
-| Pruebas | `apps/api/test/stripe.test.ts` (11) + `flow.test.ts` (4). En producción (entorno de prueba, 2026-11-18): pago con 4242, créditos una sola vez, 409 en el segundo checkout, portal, cancelar/renovar/cancelar reflejado en la app. |
+| Clave | `STRIPE_SECRET_KEY` solo en los secretos de Cloudflare. Nunca se muestra ni se registra. |
+| Acceso | `BILLING_ENABLED="auto"`: con clave de prueba solo las administradoras de la plataforma pueden abrir el pago; con clave real el pago se abre al público **solo** cuando Stripe confirma `charges_enabled`. Estado público en `GET /api/v1/public/pricing-status`. |
+| Sincronización automática | El cron, en el minuto siguiente a guardar una clave (y cada hora si cambian precios o eventos), crea o actualiza productos `dni_growth_<plan>` («DNI Growth · Plan X»), precios por `lookup_key` (mensual y anual), IVA, cupón de retención, portal de cliente y webhook firmado (secreto cifrado en D1). Idempotente: no duplica nada; un precio nuevo archiva el anterior y los clientes conservan el suyo. |
+| IVA | Stripe Tax si la cuenta lo tiene activo; si no, tipo fijo IVA España 21 % creado por la plataforma. Precios con IVA aparte. |
+| Checkout | Stripe Checkout en español, aceptación de condiciones obligatoria (versión guardada), dirección y NIF-IVA. Una suscripción por organización; la prueba de 7 días solo una vez por organización. |
+| Portal | Cambiar de plan o de periodo (las subidas al momento con prorrateo, las bajadas al final del periodo), tarjeta, facturas y cancelación al final del periodo. |
+| Retención honesta | Pausa de 1 a 3 meses, oferta del 30 % durante 2 meses solo si el motivo es el precio y una sola vez, bajada de plan; cancelar siempre a un clic. |
+| Impagos | 7 días de gracia con el plan intacto; después Free sin borrar nada; se recupera al pagar. |
+| Red de seguridad | Una suscripción cancelada al final del periodo pasa a Free 2 días después aunque no llegue el aviso de Stripe. |
+| Webhooks | Firma verificada sobre el cuerpo crudo, cada evento una sola vez, se ignoran los de otro modo (real/prueba) y los antiguos que llegan tarde. |
+| Pruebas | `apps/api/test/stripe.test.ts` (25), `billing` web (5), `pricing` core y web. |
 
-## 2. Lo que cuesta Stripe (sin cuota mensual)
-Stripe no cobra alta ni mensualidad: solo una comisión por cada pago. Tarifas públicas orientativas para España (compruébalas en stripe.com/es/pricing al activar):
+## Lo que cuesta Stripe (sin cuota mensual)
 
-| Concepto | Comisión aproximada | Ejemplo Starter (39 €) |
+Solo comisión por pago (tarifas públicas orientativas para España; compruébalas en stripe.com/es/pricing):
+
+| Concepto | Comisión aproximada | Ejemplo Growth mensual (129 €) |
 |---|---|---|
-| Tarjeta europea estándar | 1,5 % + 0,25 € | 0,84 € |
-| Tarjeta del Reino Unido | 2,5 % + 0,25 € | 1,23 € |
-| Tarjeta internacional | ~3,25 % + 0,25 € | 1,52 € |
-| Stripe Billing (suscripciones) | ~0,7 % | 0,27 € |
-| Stripe Tax (opcional, **no activado**) | ~0,5 % | 0,20 € |
+| Tarjeta europea estándar | 1,5 % + 0,25 € | 2,19 € |
+| Stripe Billing (suscripciones) | ~0,7 % | 0,90 € |
+| Stripe Tax (opcional) | ~0,5 % | 0,65 € |
 
-## 3. Antes de cobrar dinero real (decisión de la titular)
-1. Activar la cuenta «DNI Growth» en Stripe (datos fiscales y bancarios, KYC) — solo la titular.
-2. Textos legales definitivos con datos fiscales: condiciones de contratación, cancelación y reembolso (hoy el portal enlaza `/legal/privacidad` y `/legal/aviso-legal`, que son borradores).
-3. IVA: decidir Stripe Tax o gestor (hoy los precios son «sin IVA» y Stripe Tax no está activado).
-4. Guardar la clave real: `npx wrangler secret put STRIPE_SECRET_KEY` con `sk_live_…`, pulsar «Sincronizar» (crea el catálogo y el webhook reales) y, solo entonces, `BILLING_ENABLED="true"` en `wrangler.jsonc` + despliegue.
-
-## 4. Estrategia comercial sugerida (sin presupuesto)
-- Auditoría gratuita (Free: 3/mes) como gancho; Asesor IA e imágenes consumen créditos.
-- Empezar mostrando Starter (39 €) y Growth (89 €); Pro y Agency bajo petición.
-- Servicio «hecho por ti» (auditoría + plan explicado en una llamada) como ingreso rápido.
-- Garantía de 14 días en el primer mes (reembolso con un clic en Stripe).
-
-Ninguna cifra de ventas está garantizada: precios orientativos (`migrations/0003_seed_plans.sql`) y comisiones públicas que pueden cambiar.
+Margen detallado en [ECONOMIA.md](ECONOMIA.md).

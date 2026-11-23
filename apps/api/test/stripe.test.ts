@@ -5,7 +5,7 @@
 import { hmacSha256Hex, PLAN_OFFERS } from "@dni/core";
 import { describe, expect, it } from "vitest";
 import { createHarness } from "./helpers";
-import { RETENTION_COUPON_NAME, WEBHOOK_EVENTS, maybeAutoSyncStripe } from "../src/lib/stripe";
+import { RETENTION_COUPON_NAME, WEBHOOK_EVENTS, maybeAutoSyncStripe, productNameFor } from "../src/lib/stripe";
 import { billingMaintenance } from "../src/routes/billing";
 
 const WHSEC = "whsec_fixture_secret";
@@ -648,5 +648,12 @@ describe("Billing funnel events and guarantee continuity", () => {
 describe("Stripe catalogue limits", () => {
   it("keeps the retention coupon name within Stripe's 40-character limit", () => {
     expect(RETENTION_COUPON_NAME.length).toBeLessThanOrEqual(40);
+  });
+});
+
+describe("Stripe product names", () => {
+  it("read well on Checkout and invoices", () => {
+    expect(productNameFor("Growth")).toBe("DNI Growth · Plan Growth");
+    for (const o of PLAN_OFFERS) expect(productNameFor(o.name)).not.toMatch(/Growth Growth/);
   });
 });
