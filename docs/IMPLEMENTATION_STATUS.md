@@ -8,7 +8,7 @@ Leyenda:
 - **BLOQUEADO POR PERMISOS**: necesita una acción, clave o aceptación del titular.
 - **NO IMPLEMENTADO**.
 
-Pruebas automáticas: lint, typecheck, **453 tests** (38 ficheros: core, API y web), build y escaneo de secretos en verde el 2026-11-23 (`pnpm -s verify`, código de salida 0).
+Pruebas automáticas: lint, typecheck, **489 tests** (42 ficheros: core, API y web), build y escaneo de secretos en verde el 2026-11-23 (`pnpm -s verify`, código de salida 0; rama de la Fase 0 de la web pública, sin desplegar).
 
 Pruebas E2E en producción del 2026-11-18 con la cuenta verificada de la titular (organización propia, plan Free), ejecutadas desde el navegador contra https://dnigrowth.com; cada fila indica la respuesta observada.
 
@@ -264,6 +264,23 @@ Versión `fe8d5379` (verificación funcional sobre `92dc1ff6`, mismo código de 
 | og:image PNG 1200×630 | VERIFICADO EN PRODUCCIÓN | `/og-dni-growth.png` 200 `image/png` 214 556 B; `og:image:width/height/alt` y `twitter:image` en la portada |
 | `llms.txt` al día | VERIFICADO EN PRODUCCIÓN | 200, incluye informe, borradores desde hallazgos, Content Studio y blog |
 | Sin códigos internos en la interfaz ni en integraciones | VERIFICADO SOLO EN LOCAL | `ui-guards.test.tsx`; `/integrations` sin campo de fase |
+
+## Fase 0 de la web pública: una sola fuente, analítica sin cookies, portada, /seguridad y 404 (nuevo, [ADR 0021](adr/0021-analitica-producto-sin-cookies.md))
+Sin desplegar. Migración `0020_product_analytics.sql` aditiva, **no aplicada en remoto** (hacer copia previa de D1 antes de aplicarla).
+
+| Elemento | Estado | Prueba |
+|---|---|---|
+| `FEATURES` como única fuente: etiquetas de la portada, `llms.txt` (generado en el build) y marcas «Parcial» del menú | VERIFICADO SOLO EN LOCAL | `features.test.ts` (registro y `llms.txt`), `site-sources.test.tsx` (portada = registro, menú contiene cada módulo, `MenuStatus`) |
+| Misma CSP y cabeceras en `_headers` y en las páginas del Worker (blog, app, 404); sin `cloudflareinsights` porque no se carga | VERIFICADO SOLO EN LOCAL | `site-pages.test.ts` |
+| Analítica de producto sin cookies: `product_events` sin IP, `POST /api/v1/public/events` (lista cerrada, 2 KB, origen propio, 60/10 min por IP, bots no cuentan, GPC/DNT sin código de visitante), retención 13 meses | VERIFICADO SOLO EN LOCAL | `product-events.test.ts` |
+| Eventos del servidor: `signup` (correo y Google), `onboarding_step` (correo verificado, organización creada), `gsc_connected`, `audit_started` (sin contar repeticiones idempotentes) | VERIFICADO SOLO EN LOCAL | `product-events.test.ts`. Sin instrumentar todavía: `cms_connected`, `first_article_published`, `trial_started`, `subscribed`, `upgraded`, `canceled`, `paused`, `audit_teaser_viewed` |
+| `GET /api/v1/admin/funnel` (7/30 días, solo agregados, fuente y advertencias) y tarjeta «Embudo» en la consola | VERIFICADO SOLO EN LOCAL | `product-events.test.ts` (404 sin permiso, ventanas, eventos sin instrumentar, sin códigos de visitante en la respuesta) |
+| Visitantes-día en producción | BLOQUEADO POR PERMISOS | requiere `IP_HASH_SALT` (`wrangler secret put IP_HASH_SALT`); sin ella el código de visitante queda NULL |
+| Portada nueva (titular, 4 beneficios, «Ya funciona hoy» con el plan de cada función, módulos como sección secundaria, sin jerga) | VERIFICADO SOLO EN LOCAL | `site-sources.test.tsx`. Precios sin tocar |
+| Capturas reales y vídeo demo | NO IMPLEMENTADO | huecos preparados y ocultos; falta material real |
+| `/seguridad` («Seguridad y confianza») en el sitemap y con URL canónica; familia de marcas DNI solo allí | VERIFICADO SOLO EN LOCAL | `site-pages.test.ts`, `site-sources.test.tsx` |
+| 404 propia para rutas públicas desconocidas (404, `noindex`, misma CSP; `/api` y `/app` sin cambios) | VERIFICADO SOLO EN LOCAL | `site-pages.test.ts` |
+| Política de privacidad: apartado «Estadística de uso, sin cookies» | VERIFICADO SOLO EN LOCAL | `legal/privacidad.html`; al ser un cambio de la política hay que avisar a los usuarios según su apartado 13 |
 
 ## Marca DNI Growth (producción)
 | Elemento | Estado | Prueba |
