@@ -6,6 +6,7 @@ import { useAuth } from "../lib/auth";
 import { useApi } from "../lib/hooks";
 import { Badge, Button, Card, EmptyState, ErrorState, JOB_STATE, MetricCard, Notice, PageHeader, SeverityBadge, Skeleton, TextField, UnavailableCard } from "../ui";
 import { Logo } from "../shell";
+import { wantedPlan } from "./billing";
 
 const LABELS: Record<string, string> = {
   brands: "Marcas",
@@ -113,6 +114,16 @@ export function DashboardPage() {
           </Link>
         }
       />
+      {(() => {
+        const w = wantedPlan();
+        return w ? (
+          <div className="mb-4">
+            <Notice tone="info" title={`Elegiste el plan ${w.name}`}>
+              Cuando quieras, actívalo en <Link className="underline" to={`/o/${orgId}/billing#planes`}>Facturación</Link>. Mientras tanto, todo lo del plan Free funciona sin límite de tiempo.
+            </Notice>
+          </div>
+        ) : null;
+      })()}
       <ErrorState error={error} onRetry={reload} />
       {loading && !data && (
         <div className="grid gap-4 [grid-template-columns:repeat(auto-fill,minmax(min(100%,12.5rem),1fr))]">

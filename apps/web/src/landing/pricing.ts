@@ -12,6 +12,7 @@ async function paymentStatus() {
     const r = await fetch("/api/v1/public/pricing-status", { headers: { accept: "application/json" } });
     if (!r.ok) return;
     const s = (await r.json()) as { paymentsOpen: boolean };
+    if (s.paymentsOpen) for (const a of document.querySelectorAll<HTMLAnchorElement>("a[data-trial-label]")) a.textContent = a.dataset.trialLabel ?? a.textContent;
     el.textContent = s.paymentsOpen ? "Pagos activos con Stripe: puedes contratar desde tu cuenta." : "Los planes de pago se activan en cuanto Stripe termine de verificar la cuenta. Mientras tanto, el plan Free funciona sin límite de tiempo.";
   } catch {
     /* status line stays hidden */

@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { PlanPicker, SubscriptionPanel } from "../src/app/pages/billing";
+import { clearWantedPlan, PlanPicker, rememberWantedPlan, SubscriptionPanel, wantedPlan } from "../src/app/pages/billing";
 import { CANCEL_REASONS, RETENTION_DISCOUNT } from "@dni/core/pricing";
 
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
@@ -83,5 +83,18 @@ describe("subscription panel", () => {
     expect(screen.getByText("No hemos podido cobrar tu suscripción")).toBeTruthy();
     rerender(<SubscriptionPanel data={{ ...data, subscription: { ...sub, cancel_at_period_end: 1 } }} orgId="org1" reload={() => {}} openPortal={() => {}} portalBusy={false} />);
     expect(screen.getByRole("button", { name: "Seguir suscrito" })).toBeTruthy();
+  });
+});
+
+describe("plan chosen on the public prices", () => {
+  it("is remembered across signup only for paid catalogue plans and cleared on the billing page", () => {
+    clearWantedPlan();
+    rememberWantedPlan("free");
+    rememberWantedPlan("<script>");
+    expect(wantedPlan()).toBeNull();
+    rememberWantedPlan("growth");
+    expect(wantedPlan()).toEqual({ code: "growth", name: "Growth" });
+    clearWantedPlan();
+    expect(wantedPlan()).toBeNull();
   });
 });

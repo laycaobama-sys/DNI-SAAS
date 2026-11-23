@@ -10,7 +10,7 @@ import { UsageMeters, useUsage } from "../usage";
 import { PlanModulesTable } from "../planaccess";
 import { Entitlements } from "./agency";
 import { Badge, Button, Card, EmptyState, ErrorState, Input, Notice, PageHeader, Select, Spinner, TextField } from "../ui";
-import { GuaranteeCard, PlanPicker, SubscriptionPanel } from "./billing";
+import { clearWantedPlan, GuaranteeCard, PlanPicker, SubscriptionPanel } from "./billing";
 
 export const ROLE_LABELS: Record<string, string> = {
   owner: "Propietario",
@@ -398,6 +398,10 @@ export function BillingPage() {
   const [busyPlan, setBusyPlan] = useState<string | null>(null);
   const { me } = useAuth();
   const { hash } = useLocation();
+  // The plan picked on the public prices has done its job once the plans are on screen.
+  useEffect(() => {
+    if (data) clearWantedPlan();
+  }, [data]);
   // Deep links from warnings («#uso», «#planes») scroll once the content exists.
   useEffect(() => {
     if (!hash || !data) return;

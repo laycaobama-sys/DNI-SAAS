@@ -5,6 +5,32 @@ import { useApi } from "../lib/hooks";
 import { offerFor } from "@dni/core/pricing";
 import { Badge, Button, Card, ErrorState, Notice, Progress, Select, Textarea } from "../ui";
 
+const WANTED_KEY = "dni.wantedPlan";
+/** Plan picked on the public prices («/app/register?plan=growth»). Only paid catalogue codes are kept. */
+export function rememberWantedPlan(code: string | null): void {
+  try {
+    if (code && offerFor(code) && code !== "free") localStorage.setItem(WANTED_KEY, code);
+  } catch {
+    /* storage unavailable: nothing to remember */
+  }
+}
+export function wantedPlan(): { code: string; name: string } | null {
+  try {
+    const code = localStorage.getItem(WANTED_KEY);
+    const o = code ? offerFor(code) : undefined;
+    return o && o.code !== "free" ? { code: o.code, name: o.name } : null;
+  } catch {
+    return null;
+  }
+}
+export function clearWantedPlan(): void {
+  try {
+    localStorage.removeItem(WANTED_KEY);
+  } catch {
+    /* ignore */
+  }
+}
+
 const fmtDay = (iso: string | null | undefined) => (iso && !Number.isNaN(Date.parse(iso)) ? new Date(iso).toLocaleDateString("es-ES", { day: "numeric", month: "long", year: "numeric" }) : null);
 const eur = (n: number) => `${new Intl.NumberFormat("es-ES", { maximumFractionDigits: 0 }).format(n)} €`;
 

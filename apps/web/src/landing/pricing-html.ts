@@ -18,8 +18,9 @@ function priceBlock(o: PlanOffer): string {
 
 function cta(o: PlanOffer): string {
   if (o.monthly === 0) return `<a class="btn" href="/app/register">Crear cuenta gratis</a>`;
-  const label = o.trialDays > 0 ? `Probar ${o.trialDays} días gratis` : `Elegir ${esc(o.name)}`;
-  return `<a class="btn${o.highlight ? " btn-accent" : ""}" href="/app/register?plan=${o.code}">${label}</a>`;
+  // Neutral until the API confirms real payments are open (pricing.ts upgrades the label): never promise a trial that cannot start.
+  const trial = o.trialDays > 0 ? ` data-trial-label="Probar ${o.trialDays} días gratis"` : "";
+  return `<a class="btn${o.highlight ? " btn-accent" : ""}" href="/app/register?plan=${o.code}"${trial}>Empezar con ${esc(o.name)}</a>`;
 }
 
 /** Compact plan cards for the landing (#precios). */

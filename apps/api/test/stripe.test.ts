@@ -5,7 +5,7 @@
 import { hmacSha256Hex, PLAN_OFFERS } from "@dni/core";
 import { describe, expect, it } from "vitest";
 import { createHarness } from "./helpers";
-import { WEBHOOK_EVENTS, maybeAutoSyncStripe } from "../src/lib/stripe";
+import { RETENTION_COUPON_NAME, WEBHOOK_EVENTS, maybeAutoSyncStripe } from "../src/lib/stripe";
 import { billingMaintenance } from "../src/routes/billing";
 
 const WHSEC = "whsec_fixture_secret";
@@ -626,5 +626,11 @@ describe("Billing funnel events and guarantee continuity", () => {
     expect(g.status).toBe("requirements_missing");
     expect(g.requirements.find((r: { key: string }) => r.key === "days")).toMatchObject({ met: false, detail: expect.stringMatching(/pausó/) });
     expect((await owner.post(`/api/v1/orgs/${orgId}/billing/guarantee/claim`, {})).json.code).toBe("guarantee_not_available");
+  });
+});
+
+describe("Stripe catalogue limits", () => {
+  it("keeps the retention coupon name within Stripe's 40-character limit", () => {
+    expect(RETENTION_COUPON_NAME.length).toBeLessThanOrEqual(40);
   });
 });

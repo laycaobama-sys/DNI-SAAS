@@ -66,10 +66,12 @@ export async function stripeApi<T>(env: Env, deps: Deps, method: "GET" | "POST" 
     if (idempotencyKey) headers["idempotency-key"] = idempotencyKey;
   }
   const res = await deps.fetchImpl(url, { method, headers, body: method === "POST" ? qs : undefined, signal: AbortSignal.timeout(20_000) });
-  const json = (await res.json().catch(() => ({}))) as { error?: { code?: string; type?: string } } & T;
+  const json = (await res.json().catch(() => ({}))) as { error?: { code?: string; type?: string; param?: string } } & T;
   if (!res.ok) {
     const code = (json.error?.code ?? json.error?.type ?? "error").slice(0, 60);
-    log("warn", "stripe.api_error", { path: path.replace(/\/[a-z]{2,6}_[A-Za-z0-9]+/g, "/:id"), status: res.status, code });
+    // The parameter name (never its value) says which field Stripe rejected.
+    const param = (json.error?.param ?? "").slice(0, 80) || undefined;
+    log("warn", "stripe.api_error", { path: path.replace(/\/[a-z]{2,6}_[A-Za-z0-9]+/g, "/:id"), status: res.status, code, param });
     throw new StripeApiError(res.status, code);
   }
   return json;
@@ -235,8 +237,8 @@ export async function syncStripeCatalog(env: Env, deps: Deps, appOrigin: string)
       deps,
       "POST",
       "/coupons",
-      { id: RETENTION_DISCOUNT.couponId, percent_off: RETENTION_DISCOUNT.percentOff, duration: "repeating", duration_in_months: RETENTION_DISCOUNT.months, name: "Oferta de permanencia: 30 % durante 2 meses", "metadata[managed_by]": "dni-growth" },
-      `coupon:${RETENTION_DISCOUNT.couponId}`,
+      { id: RETENTION_DISCOUNT.couponId, percent_off: RETENTION_DISCOUNT.percentOff, duration: "repeating", duration_in_months: RETENTION_DISCOUNT.months, name: RETENTION_COUPON_NAME, "metadata[managed_by]": "dni-growth" },
+      `coupon:${RETENTION_DISCOUNT.couponId}:v2`,
     );
   } catch (e) {
     if (!(e instanceof StripeApiError) || e.code !== "resource_already_exists") throw e;
@@ -350,6 +352,9 @@ export async function archiveProducts(env: Env, deps: Deps, ids: string[]): Prom
 // ── Webhook endpoint managed by the platform ──────────────────────────────────────────────────────
 // The signing secret is returned by Stripe only once, at creation. We store it AES-256-GCM encrypted with
 // DATA_ENC_KEY (a Cloudflare secret), bound to the mode via AAD. It is never returned by any endpoint or logged.
+/** Stripe limits coupon names to 40 characters (longer names are rejected with invalid_request_error). */
+export const RETENTION_COUPON_NAME = "Permanencia: 30 % durante 2 meses";
+
 export const WEBHOOK_EVENTS = [
   "checkout.session.completed",
   "customer.subscription.created",
