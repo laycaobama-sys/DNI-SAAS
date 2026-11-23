@@ -330,7 +330,7 @@ describe("Agency, white label and entitlements", () => {
     expect((await owner.post(`${C}/agency/clients`, { name: "Nieto" })).status).toBe(403);
     const list = (await owner.get(`${O}/agency/clients`)).json;
     expect(list.clients).toHaveLength(1);
-    expect(list.usage).toEqual({ used: 1, limit: 50 });
+    expect(list.usage).toEqual({ used: 1, limit: 15 });
     // Someone else's agency never lists our clients.
     const eve = await h.signup("eve@x.es", "Eve");
     const evil = await h.createOrg(eve, "Evil", "agency");
@@ -343,7 +343,7 @@ describe("Agency, white label and entitlements", () => {
     const { h, owner, orgId, O } = await setup({}, "free");
     // Modules outside the plan list no limit at all (B11): `null` means "not included", never a fake allowance.
     const limit = async (k: string) => (await owner.get(`${O}/entitlements`)).json.rows.find((r: any) => r.key === k)?.limit ?? null;
-    const expected: Record<string, [number | null, number | null, number | null]> = { free: [null, null, null], starter: [5, null, null], growth: [20, 30, null], pro: [50, 100, null], agency: [200, 300, 50] };
+    const expected: Record<string, [number | null, number | null, number | null]> = { free: [null, null, null], starter: [5, null, null], growth: [20, 30, null], pro: [50, 100, null], agency: [200, 300, 15] };
     for (const [plan, [landings, rules, clients]] of Object.entries(expected)) {
       await h.db.prepare("UPDATE organizations SET plan_code = ? WHERE id = ?").bind(plan, orgId).run();
       expect([await limit("landingPages"), await limit("automationRules"), await limit("clientOrgs")]).toEqual([landings, rules, clients]);

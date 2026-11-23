@@ -21,7 +21,7 @@ import { auditStmt } from "../lib/audit";
 import { ensureMonthlyGrant, orgPlan, reserveCredits, usageLedgerStmt } from "../lib/billing";
 import { ApiError, assertUuid, parseBody } from "../lib/http";
 import { rateLimit } from "../lib/ratelimit";
-import { nowIso, parseJson, uuid } from "../lib/util";
+import { monthStartIso, nowIso, parseJson, uuid } from "../lib/util";
 import { requireScope } from "../middleware";
 import { advisorContext } from "./ai";
 
@@ -123,7 +123,18 @@ content.post("/content", requireScope("content:write"), async (c) => {
   const ctx = await advisorContext(db, t.orgId, input.brandId ?? null);
   const brandRow = input.brandId ? input.brandId : (await db.prepare("SELECT id FROM brands WHERE organization_id = ? ORDER BY created_at DESC LIMIT 1").bind(t.orgId).first<{ id: string }>())?.id ?? null;
 
-  await ensureMonthlyGrant(db, t.orgId, await orgPlan(db, t.orgId));
+  const plan = await orgPlan(db, t.orgId);
+  // Monthly article quota of the plan (AI drafts only; drafts written by people never count).
+  const articleCap = plan.limits.articlesPerMonth;
+  if (input.kind === "blog_article" && typeof articleCap === "number") {
+    const used = await db
+      .prepare("SELECT COUNT(*) AS n FROM content_items WHERE organization_id = ? AND kind = 'blog_article' AND provider IS NOT NULL AND created_at >= ?")
+      .bind(t.orgId, monthStartIso())
+      .first<{ n: number }>();
+    if ((used?.n ?? 0) >= articleCap)
+      throw new ApiError(402, "article_quota_reached", `Ya has generado los ${articleCap} artículos con IA que incluye tu plan este mes. Puedes escribir borradores a mano o subir de plan.`);
+  }
+  await ensureMonthlyGrant(db, t.orgId, plan);
   const id = uuid();
   if (!(await reserveCredits(db, { orgId: t.orgId, refId: id, amount: CONTENT_CREDITS, category: "ai_content" }))) throw new ApiError(402, "insufficient_credits", "No tienes créditos suficientes para esta acción.");
 

@@ -62,7 +62,20 @@ export const UpdateTaskInput = z.object({
   estimateHours: z.number().min(0).max(200).optional(),
 });
 
-export const CheckoutInput = z.object({ planCode: z.enum(["starter", "growth", "pro", "agency"]) });
+export const CheckoutInput = z.object({
+  planCode: z.enum(["starter", "growth", "pro", "agency"]),
+  interval: z.enum(["month", "year"]).default("month"),
+  /** Explicit acceptance of the terms and of the service starting now (loss of the 14-day withdrawal right). */
+  acceptTerms: z.literal(true, { error: "Acepta las condiciones de contratación para continuar." }),
+});
+export const PauseInput = z.strictObject({ months: z.union([z.literal(1), z.literal(2), z.literal(3)]) });
+export const CancelInput = z.strictObject({
+  reason: z.enum(["too_expensive", "missing_features", "not_using", "no_results", "switched_service", "temporary", "other"]),
+  comment: z.string().trim().max(500).optional(),
+  /** The retention offer the customer accepted instead of cancelling ("none" = cancel at period end). */
+  offer: z.enum(["discount", "pause", "none"]).default("none"),
+  months: z.union([z.literal(1), z.literal(2), z.literal(3)]).optional(),
+});
 
 // Strict: the client can never inject a model id, provider, price, endpoint or credit amount.
 export const AdvisorInput = z.strictObject({
@@ -139,7 +152,7 @@ export interface PlanDef {
   code: string;
   name: string;
   priceEurMonth: number | null;
-  limits: { brands: number; seats: number; analysesPerMonth: number; pagesPerCrawl: number; monthlyCredits: number; trackedPrompts?: number; leadForms?: number; landingPages?: number; clientOrgs?: number; automationRules?: number; videoProjects?: number; backlinks?: number };
+  limits: { brands: number; seats: number; analysesPerMonth: number; pagesPerCrawl: number; monthlyCredits: number; trackedPrompts?: number; leadForms?: number; landingPages?: number; clientOrgs?: number; automationRules?: number; videoProjects?: number; backlinks?: number; articlesPerMonth?: number };
 }
 
 export type ProviderStatus = "not_configured" | "available" | "connected" | "reauth_required" | "disconnected" | "error" | "demo" | "blocked_external_approval" | "planned";

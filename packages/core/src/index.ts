@@ -27,3 +27,4 @@ export * from "./organic";
 export * from "./image-meta";
 export * from "./finding-draft";
 export * from "./audit-report";
+export * from "./pricing";

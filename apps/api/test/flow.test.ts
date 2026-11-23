@@ -268,7 +268,7 @@ describe("Billing (Stripe sandbox contract)", () => {
   it("billing is off by default (BILLING_ENABLED unset): checkout and webhook refuse", async () => {
     const { h, owner, orgId } = await setup();
     h.env.STRIPE_WEBHOOK_SECRET = secret;
-    const r = await owner.post(`/api/v1/orgs/${orgId}/billing/checkout`, { planCode: "pro" });
+    const r = await owner.post(`/api/v1/orgs/${orgId}/billing/checkout`, { planCode: "pro", acceptTerms: true });
     expect(r.status).toBe(503);
     expect(r.json.code).toBe("billing_disabled");
     const { raw, header } = await signed({ id: "evt_off", type: "checkout.session.completed", data: { object: {} } });
@@ -279,7 +279,7 @@ describe("Billing (Stripe sandbox contract)", () => {
   it("checkout is honestly unavailable without Stripe credentials", async () => {
     const { h, owner, orgId } = await setup();
     h.env.BILLING_ENABLED = "true";
-    const r = await owner.post(`/api/v1/orgs/${orgId}/billing/checkout`, { planCode: "pro" });
+    const r = await owner.post(`/api/v1/orgs/${orgId}/billing/checkout`, { planCode: "pro", acceptTerms: true });
     expect(r.status).toBe(503);
     expect(r.json.code).toBe("provider_not_configured");
   });
@@ -317,7 +317,7 @@ describe("Billing (Stripe sandbox contract)", () => {
     await h.db.prepare("UPDATE organizations SET plan_code = 'growth' WHERE id = ?").bind(orgId).run();
     const ba = await h.invite(owner, orgId, "billing@luna.es", "billing_admin");
     expect((await ba.get(`/api/v1/orgs/${orgId}/billing`)).status).toBe(200);
-    expect((await ba.post(`/api/v1/orgs/${orgId}/billing/checkout`, { planCode: "pro" })).status).toBe(503);
+    expect((await ba.post(`/api/v1/orgs/${orgId}/billing/checkout`, { planCode: "pro", acceptTerms: true })).status).toBe(503);
     expect((await ba.post(`/api/v1/orgs/${orgId}/sites/analyze`, { url: "panaderia-luna.es" })).status).toBe(403);
   });
 });

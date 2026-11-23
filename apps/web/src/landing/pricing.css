@@ -1,0 +1,57 @@
+/* Prices: landing (#precios) and /precios. Monthly/annual switch is CSS-only (radio inputs), so it works without JS. */
+.py { display: none; }
+.price-note { margin: 0; color: var(--mute); font-size: 13px; }
+.plan-tag, .pp-tag { margin: 0; color: var(--mute); font-size: 14px; }
+.plan-trial { margin: 0; color: var(--accent); font-size: 13px; font-weight: 600; }
+.plan .btn { margin-top: auto; }
+.plans-more { max-width: 1200px; margin: 18px auto 0; text-align: center; color: var(--mute); font-size: 15px; }
+.plans-more a { color: var(--ink); }
+.plans.plans-5 { grid-template-columns: repeat(5, 1fr); }
+@media (max-width: 1080px) { .plans.plans-5 { grid-template-columns: repeat(2, 1fr); } .plans.plans-5 .plan-featured { grid-column: auto; } }
+@media (max-width: 620px) { .plans.plans-5 { grid-template-columns: 1fr; } }
+
+/* /precios */
+.pp { max-width: 1200px; margin: 0 auto; padding: 120px var(--gutter) 80px; }
+.pp h1 { font-family: var(--serif); font-weight: 400; font-size: clamp(44px, 7vw, 88px); margin: 0 0 12px; line-height: 1; }
+.pp h2 { font-family: var(--serif); font-weight: 400; font-size: clamp(28px, 4vw, 40px); margin: 64px 0 12px; }
+.pp p { max-width: 760px; color: var(--mute); line-height: 1.6; }
+.pp p a { color: var(--ink); }
+.pp-status:empty { display: none; }
+.pp-status { display: inline-block; border: 1px solid var(--line); border-radius: 999px; padding: 6px 12px; font-size: 14px; }
+.pp-radio { position: absolute; opacity: 0; pointer-events: none; }
+.pp-switch { display: inline-flex; gap: 4px; padding: 4px; margin: 24px 0; border: 1px solid var(--line); border-radius: 999px; }
+.pp-switch label { cursor: pointer; padding: 8px 16px; border-radius: 999px; color: var(--mute); font-size: 15px; }
+#periodo-mes:checked ~ .pp-switch label[for="periodo-mes"],
+#periodo-ano:checked ~ .pp-switch label[for="periodo-ano"] { background: var(--accent); color: var(--accent-ink); font-weight: 600; }
+#periodo-mes:focus-visible ~ .pp-switch label[for="periodo-mes"],
+#periodo-ano:focus-visible ~ .pp-switch label[for="periodo-ano"] { outline: 2px solid var(--accent); outline-offset: 3px; }
+#periodo-ano:checked ~ .pp-grid .pm { display: none; }
+#periodo-ano:checked ~ .pp-grid .py { display: inline; }
+.pp-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 14px; }
+@media (max-width: 1080px) { .pp-grid { grid-template-columns: repeat(2, 1fr); } }
+@media (max-width: 620px) { .pp-grid { grid-template-columns: 1fr; } }
+.pp-plan { border: 1px solid var(--line); border-radius: 18px; padding: 22px; display: flex; flex-direction: column; gap: 10px; align-items: flex-start; }
+.pp-plan .price { font-family: var(--serif); font-size: 44px; margin: 0; line-height: 1; }
+.pp-plan .price small { font-family: var(--sans); font-size: 14px; color: var(--mute); margin-left: 4px; }
+.pp-plan .btn { margin-top: auto; }
+.pp-featured { border-color: rgba(180, 255, 77, .5); background: radial-gradient(circle at 0 0, rgba(180, 255, 77, .10), transparent 60%); }
+.pp-name { font-family: var(--sans) !important; font-size: 20px !important; font-weight: 600 !important; margin: 0 !important; }
+.pp-badge { margin: 0; font-size: 12px; font-weight: 700; color: var(--accent); text-transform: uppercase; letter-spacing: .08em; }
+.pp-guarantee { margin: 0; font-size: 13px; }
+.pt-wrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 14px; }
+.pt { width: 100%; min-width: 860px; border-collapse: collapse; font-size: 14px; }
+.pt th, .pt td { padding: 10px 12px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; }
+.pt thead th { color: var(--mute); font-weight: 600; background: var(--bg-2); position: sticky; top: 0; }
+.pt tbody th { font-weight: 500; max-width: 300px; }
+.pt-note { display: block; color: var(--mute); font-size: 12px; font-weight: 400; margin-top: 4px; }
+.st { display: inline-block; white-space: nowrap; font-size: 12px; font-weight: 600; padding: 3px 8px; border-radius: 999px; border: 1px solid var(--line); }
+.st-available { color: var(--accent); border-color: rgba(180, 255, 77, .45); }
+.st-partial { color: #fbbf24; border-color: rgba(251, 191, 36, .45); }
+.st-building { color: var(--mute); }
+.pp-calc { display: flex; flex-wrap: wrap; gap: 16px; align-items: flex-end; max-width: 760px; }
+.pp-calc label { display: flex; flex-direction: column; gap: 6px; color: var(--mute); font-size: 14px; }
+.pp-calc input { min-height: 44px; width: 180px; padding: 0 12px; border-radius: 10px; border: 1px solid var(--line); background: var(--bg-2); color: var(--ink); font-size: 16px; }
+.pp-calc-out { flex-basis: 100%; color: var(--ink) !important; }
+.pp details { border-bottom: 1px solid var(--line); padding: 14px 0; max-width: 860px; }
+.pp summary { cursor: pointer; font-weight: 600; }
+.pp details p { margin: 10px 0 0; }

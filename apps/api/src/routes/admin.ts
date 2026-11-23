@@ -21,7 +21,7 @@ import {
 import { rateLimit } from "../lib/ratelimit";
 import { addSeconds, nowIso, uuid } from "../lib/util";
 import { requirePlatform, requirePlatformAdmin, requireStepUp, requireUser } from "../middleware";
-import { billingAccess, ensureWebhookEndpoint, getSetting, StripeApiError, stripeMode, syncStripeCatalog, webhookSecrets } from "../lib/stripe";
+import { accountStatus, archiveProducts, billingAccess, ensureWebhookEndpoint, foreignProducts, getSetting, StripeApiError, stripeMode, syncStripeCatalog, taxConfig, webhookSecrets } from "../lib/stripe";
 import { providerStatus } from "./aihub";
 
 /** Platform SuperAdmin endpoints for the AI Model Hub. 404 for everyone else. */
@@ -140,9 +140,13 @@ admin.post("/ai/providers/test", async (c) => {
 
 // ── Stripe (platform admins only) ─────────────────────────────────────────────────────────────────
 admin.get("/billing/stripe", async (c) => {
-  const { results: plans } = await c.env.DB.prepare("SELECT code, name, price_eur_month, stripe_price_id FROM plans WHERE active = 1 ORDER BY position").all();
+  const { results: plans } = await c.env.DB.prepare("SELECT code, name, price_eur_month, price_eur_year, trial_days, stripe_price_id, stripe_price_id_year FROM plans WHERE active = 1 ORDER BY position").all();
   const mode = stripeMode(c.env);
   return c.json({
+    account: await accountStatus(c.env),
+    tax: mode ? await taxConfig(c.env) : null,
+    lastAutoSync: mode ? await getSetting(c.env.DB, `stripe_autosync_last_${mode}`) : null,
+    billingFlagValue: c.env.BILLING_ENABLED ?? null,
     mode: mode ?? "none",
     access: billingAccess(c.env),
     secretKeyPresent: !!c.env.STRIPE_SECRET_KEY,
@@ -167,6 +171,31 @@ admin.post("/billing/stripe/sync", async (c) => {
     return c.json(r);
   } catch (e) {
     if (e instanceof StripeApiError) throw new ApiError(502, "provider_error", `Stripe rechazó la sincronización (${e.code}).`);
+    throw e;
+  }
+});
+
+/** Products in the Stripe account that DNI Growth does not manage: preview first, then archive (reversible). */
+admin.get("/billing/stripe/foreign-products", async (c) => {
+  if (!stripeMode(c.env)) throw new ApiError(503, "provider_not_configured", "Falta STRIPE_SECRET_KEY.");
+  try {
+    return c.json({ items: await foreignProducts(c.env, c.get("deps")) });
+  } catch (e) {
+    if (e instanceof StripeApiError) throw new ApiError(502, "provider_error", `Stripe rechazó la consulta (${e.code}).`);
+    throw e;
+  }
+});
+
+admin.post("/billing/stripe/archive-products", async (c) => {
+  const { ids } = await parseBody(c, z.strictObject({ ids: z.array(z.string().regex(/^prod_[A-Za-z0-9]{6,40}$/)).min(1).max(50) }));
+  await rateLimit(c.env.DB, "stripe-archive", 10, 3600);
+  if (!stripeMode(c.env)) throw new ApiError(503, "provider_not_configured", "Falta STRIPE_SECRET_KEY.");
+  try {
+    const archived = await archiveProducts(c.env, c.get("deps"), ids);
+    await auditStmt(c.env.DB, { organizationId: null, actorUserId: c.get("user")!.id, action: "platform.stripe_products_archived", entityType: "plan", after: { mode: stripeMode(c.env), archived }, requestId: c.get("requestId") }).run();
+    return c.json({ archived });
+  } catch (e) {
+    if (e instanceof StripeApiError) throw new ApiError(502, "provider_error", `Stripe rechazó el archivado (${e.code}).`);
     throw e;
   }
 });

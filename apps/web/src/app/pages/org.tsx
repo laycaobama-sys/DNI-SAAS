@@ -10,6 +10,7 @@ import { UsageMeters, useUsage } from "../usage";
 import { PlanModulesTable } from "../planaccess";
 import { Entitlements } from "./agency";
 import { Badge, Button, Card, EmptyState, ErrorState, Input, Notice, PageHeader, Select, Spinner, TextField } from "../ui";
+import { GuaranteeCard, PlanPicker, SubscriptionPanel } from "./billing";
 
 export const ROLE_LABELS: Record<string, string> = {
   owner: "Propietario",
@@ -295,6 +296,29 @@ export function StripeAdminPanel({ onSynced }: { onSynced: () => void }) {
             </span>
           </dd>
         </div>
+        <div>
+          <dt className="text-mute">Cuenta de Stripe</dt>
+          <dd className="flex flex-wrap items-center gap-2">
+            {data.account ? (
+              <>
+                <span>{data.account.name ?? "Sin nombre"}</span>
+                <Badge tone={data.account.chargesEnabled ? "ok" : "warn"}>{data.account.chargesEnabled ? "puede cobrar" : "Stripe aún no permite cobrar"}</Badge>
+              </>
+            ) : (
+              "Sin comprobar: pulsa Sincronizar"
+            )}
+          </dd>
+        </div>
+        <div>
+          <dt className="text-mute">IVA</dt>
+          <dd>{!data.tax ? "—" : data.tax.mode === "automatic" ? "Stripe Tax (automático)" : data.tax.taxRateId ? "IVA España 21 % (tipo manual)" : "Pendiente de sincronizar"}</dd>
+        </div>
+        <div className="sm:col-span-2">
+          <dt className="text-mute">Sincronización automática</dt>
+          <dd className="text-xs">
+            Cada hora como máximo; última: {data.lastAutoSync ? fmtDate(data.lastAutoSync) : "nunca"} · interruptor BILLING_ENABLED = {data.billingFlagValue ?? "sin definir"}
+          </dd>
+        </div>
         <div className="sm:col-span-2">
           <dt className="text-mute">URL del webhook (eventos checkout.session.completed y customer.subscription.*)</dt>
           <dd className="break-all font-mono text-xs">{data.webhookUrl}</dd>
@@ -304,7 +328,7 @@ export function StripeAdminPanel({ onSynced }: { onSynced: () => void }) {
           <dd className="text-xs">
             {data.plans
               .filter((p: any) => p.price_eur_month > 0)
-              .map((p: any) => `${p.name}: ${p.stripe_price_id ?? "sin precio"}`)
+              .map((p: any) => `${p.name}: ${p.stripe_price_id ?? "sin precio"} / anual ${p.stripe_price_id_year ?? "sin precio"}`)
               .join(" · ")}
           </dd>
         </div>
@@ -314,7 +338,53 @@ export function StripeAdminPanel({ onSynced }: { onSynced: () => void }) {
       <Button className="mt-4" onClick={sync} loading={busy} disabled={!data.secretKeyPresent}>
         Sincronizar productos, precios y portal
       </Button>
+      {data.secretKeyPresent && <ForeignProducts />}
     </Card>
+  );
+}
+
+/** Products in the Stripe account that DNI Growth does not manage: preview, then archive (reversible in Stripe). */
+function ForeignProducts() {
+  const { data, reload } = useApi<{ items: Array<{ id: string; name: string; created: number }> }>("/admin/billing/stripe/foreign-products");
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<ApiError | null>(null);
+  const [done, setDone] = useState<number | null>(null);
+  if (!data) return null;
+  const archive = async () => {
+    setErr(null);
+    setBusy(true);
+    try {
+      const r = await post<{ archived: string[] }>("/admin/billing/stripe/archive-products", { ids: data.items.map((i) => i.id).slice(0, 50) });
+      setDone(r.archived.length);
+      reload();
+    } catch (e) {
+      setErr(e as ApiError);
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <div className="mt-4 border-t border-line pt-4 text-sm">
+      <p className="font-medium">Productos antiguos en la cuenta de Stripe</p>
+      {data.items.length === 0 ? (
+        <p className="text-mute">{done ? `${done} producto(s) archivado(s). ` : ""}No hay productos activos ajenos a DNI Growth.</p>
+      ) : (
+        <>
+          <ul className="mt-1 list-disc pl-5 text-mute">
+            {data.items.slice(0, 20).map((i) => (
+              <li key={i.id}>
+                {i.name} <span className="font-mono text-xs">{i.id}</span>
+              </li>
+            ))}
+          </ul>
+          <p className="mt-1 text-xs text-mute">Se archivan (no se borran): dejan de venderse y se pueden reactivar en Stripe. Las suscripciones existentes no se tocan.</p>
+          <Button className="mt-2" variant="danger" loading={busy} onClick={archive}>
+            Archivar {data.items.length} producto(s)
+          </Button>
+        </>
+      )}
+      <ErrorState error={err} />
+    </div>
   );
 }
 
@@ -336,18 +406,6 @@ export function BillingPage() {
   if (loading && !data) return <Spinner />;
   if (error) return <ErrorState error={error} onRetry={reload} />;
 
-  const checkout = async (planCode: string) => {
-    setErr(null);
-    setBusyPlan(planCode);
-    try {
-      const r = await post<{ url: string }>(`/orgs/${orgId}/billing/checkout`, { planCode });
-      if (r.url.startsWith("https://checkout.stripe.com/")) window.location.assign(r.url);
-    } catch (e) {
-      setErr(e as ApiError);
-    } finally {
-      setBusyPlan(null);
-    }
-  };
   const openPortal = async () => {
     setErr(null);
     setBusyPlan("portal");
@@ -376,20 +434,8 @@ export function BillingPage() {
             {data.stripe.note} {data.stripe.canCheckout ? "Usa la tarjeta 4242 4242 4242 4242, cualquier fecha futura y cualquier CVC." : ""}
           </Notice>
         )}
-        {stripeSub && !!data.subscription.cancel_at_period_end && (
-          <Notice tone="warn" title="Cancelación programada">
-            La suscripción no se renovará. Mantienes el plan {data.plan.name} hasta el{" "}
-            {data.subscription.current_period_end ? new Date(data.subscription.current_period_end).toLocaleDateString("es-ES", { day: "numeric", month: "long", year: "numeric" }) : "final del periodo"}; después pasarás al plan Free. Puedes deshacerlo en «Gestionar suscripción».
-          </Notice>
-        )}
-        {stripeSub && access.can("billing:manage") && (
-          <div className="flex flex-wrap items-center gap-3 rounded-2xl border border-line bg-surface p-4">
-            <p className="flex-1 text-sm">Cambia de plan, actualiza la tarjeta, descarga facturas o cancela desde el portal seguro de Stripe.</p>
-            <Button onClick={openPortal} loading={busyPlan === "portal"} disabled={!data.stripe.canCheckout}>
-              Gestionar suscripción
-            </Button>
-          </div>
-        )}
+        {stripeSub && access.can("billing:manage") && <SubscriptionPanel data={data} orgId={orgId!} reload={reload} openPortal={openPortal} portalBusy={busyPlan === "portal"} />}
+        {stripeSub && !access.can("billing:manage") && !!data.subscription.cancel_at_period_end && <Notice tone="warn">La suscripción está cancelada y no se renovará al final del periodo.</Notice>}
         <ErrorState error={err} />
       </div>
       <div className="mb-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
@@ -424,26 +470,28 @@ export function BillingPage() {
         </section>
       )}
 
-      <h2 id="planes" className="mb-3 scroll-mt-20 font-serif text-2xl">Planes</h2>
-      <div className="mb-6 grid gap-4 md:grid-cols-2 xl:grid-cols-5">
-        {data.plans.map((p: any) => {
+      {stripeSub && access.can("billing:manage") && (
+        <div className="mb-6">
+          <GuaranteeCard orgId={orgId!} canManage={access.can("billing:manage")} />
+        </div>
+      )}
+
+      <PlanPicker
+        data={data}
+        orgId={orgId!}
+        canPay={canPay}
+        stripeSub={stripeSub}
+        planExtras={(p: any) => {
           const l = JSON.parse(p.limits_json);
-          const current = p.code === data.plan.code;
           return (
-            <div key={p.code} className={`flex flex-col rounded-2xl border bg-surface p-4 ${current ? "border-accent" : "border-line"}`}>
-              <div className="flex items-center justify-between">
-                <p className="font-semibold">{p.name}</p>
-                {current && <Badge tone="accent">Actual</Badge>}
-              </div>
-              <p className="mt-2 font-serif text-4xl tabular-nums">
-                {p.price_eur_month}€<span className="font-sans text-sm text-mute">/mes</span>
-              </p>
+            <>
               <ul className="mt-3 flex-1 space-y-1 text-xs text-mute">
                 <li>{l.analysesPerMonth} auditorías/mes</li>
                 <li>{l.pagesPerCrawl} páginas por auditoría</li>
+                {l.articlesPerMonth !== undefined && <li>{l.articlesPerMonth} borradores de artículo con IA/mes</li>}
                 <li>{l.monthlyCredits} créditos/mes</li>
                 <li>
-                  {l.brands} marca(s) · {l.seats} usuario(s)
+                  {l.brands} web(s) · {l.seats >= 1000 ? "usuarios ilimitados" : `${l.seats} usuario(s)`}
                 </li>
                 {l.landingPages !== undefined && planIncludes(p.code, "landings") && <li>{l.landingPages} landings · {l.leadForms ?? 1} formularios</li>}
                 {l.automationRules !== undefined && planIncludes(p.code, "automations") && <li>{l.automationRules} reglas de automatización</li>}
@@ -454,15 +502,11 @@ export function BillingPage() {
                 {(AI_IMAGES_DAILY[p.code as keyof typeof AI_IMAGES_DAILY] ?? 0) > 0 && <li>{AI_IMAGES_DAILY[p.code as keyof typeof AI_IMAGES_DAILY]} imágenes con IA al día</li>}
               </ul>
               <p className="mt-3 text-xs leading-snug">{PLAN_PITCH[p.code as keyof typeof PLAN_PITCH] ?? ""}</p>
-              {!current && p.price_eur_month > 0 && !stripeSub && (
-                <Button className="mt-4" disabled={!canPay || !p.purchasable} loading={busyPlan === p.code} onClick={() => checkout(p.code)}>
-                  {!data.stripe.configured || !p.purchasable ? "Próximamente" : !canPay ? "Pagos aún no disponibles" : "Contratar este plan"}
-                </Button>
-              )}
-            </div>
+            </>
           );
-        })}
-      </div>
+        }}
+      />
+      <div className="mb-6" />
 
       <section className="mb-6" aria-labelledby="plan-modules-title">
         <h2 id="plan-modules-title" className="mb-1 font-serif text-2xl">Qué módulos incluye cada plan</h2>
@@ -565,6 +609,17 @@ export function IntegrationsPage() {
 }
 
 const ACTION_LABEL: Record<string, string> = {
+  "billing.terms_accepted": "Condiciones de contratación aceptadas",
+  "billing.paused": "Suscripción pausada",
+  "billing.resumed": "Suscripción reanudada",
+  "billing.cancel_flow": "Cancelación o alternativa elegida",
+  "billing.cancel_undone": "Cancelación anulada",
+  "billing.guarantee_refund": "Reembolso de la garantía de 90 días",
+  "billing.payment_failed": "Cobro fallido",
+  "billing.invoice_paid": "Factura pagada",
+  "billing.grace_expired": "Fin del periodo de gracia: plan Free",
+  "platform.stripe_catalog_autosync": "Sincronización automática con Stripe",
+  "platform.stripe_products_archived": "Productos antiguos archivados en Stripe",
   "org.create": "Organización creada",
   "member.invite": "Invitación enviada",
   "member.invite_revoke": "Invitación revocada",

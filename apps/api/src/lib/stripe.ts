@@ -8,7 +8,8 @@
  *   - BILLING_ENABLED="true"               → "open": every org member with billing:manage can subscribe.
  *   - live key without BILLING_ENABLED     → "off": nothing can be charged until the owner flips the flag.
  */
-import { decryptJson, encryptJson } from "@dni/core";
+import { decryptJson, encryptJson, RETENTION_DISCOUNT } from "@dni/core";
+import { auditStmt } from "./audit";
 import type { Deps, Env } from "../env";
 import { log, nowIso } from "./util";
 
@@ -23,7 +24,11 @@ export const stripeMode = (env: Env): StripeMode => {
   return null;
 };
 
-export const billingFlag = (env: Env) => env.BILLING_ENABLED === "true";
+/**
+ * Payments open to everyone: BILLING_ENABLED="true", or "auto" with a live key (the account must still be
+ * able to charge, see stripeReady). "auto" + test key keeps the sandbox admin-only.
+ */
+export const billingFlag = (env: Env) => env.BILLING_ENABLED === "true" || (env.BILLING_ENABLED === "auto" && stripeMode(env) === "live");
 
 export function billingAccess(env: Env): BillingAccess {
   const mode = stripeMode(env);
@@ -51,10 +56,10 @@ function encode(params: Params): string {
 }
 
 /** Minimal Stripe REST client (form-encoded), with idempotency keys on every POST. */
-export async function stripeApi<T>(env: Env, deps: Deps, method: "GET" | "POST", path: string, params: Params = {}, idempotencyKey?: string): Promise<T> {
+export async function stripeApi<T>(env: Env, deps: Deps, method: "GET" | "POST" | "DELETE", path: string, params: Params = {}, idempotencyKey?: string): Promise<T> {
   if (!env.STRIPE_SECRET_KEY) throw new StripeApiError(503, "not_configured");
   const qs = encode(params);
-  const url = `https://api.stripe.com/v1${path}${method === "GET" && qs ? `?${qs}` : ""}`;
+  const url = `https://api.stripe.com/v1${path}${method !== "POST" && qs ? `?${qs}` : ""}`;
   const headers: Record<string, string> = { authorization: `Bearer ${env.STRIPE_SECRET_KEY}`, "stripe-version": STRIPE_API_VERSION };
   if (method === "POST") {
     headers["content-type"] = "application/x-www-form-urlencoded";
@@ -79,12 +84,14 @@ export async function setSetting(db: D1Database, k: string, v: string) {
   await db.prepare("INSERT INTO platform_settings (k, v, updated_at) VALUES (?, ?, ?) ON CONFLICT(k) DO UPDATE SET v = excluded.v, updated_at = excluded.updated_at").bind(k, v, nowIso()).run();
 }
 
-// ── Catalogue sync: products, prices and customer portal, idempotent ───────────────────────────────
+// ── Catalogue sync: products, monthly + annual prices, tax, retention coupon and portal (idempotent) ─
 interface PlanRow {
   code: string;
   name: string;
   price_eur_month: number;
+  price_eur_year: number | null;
   stripe_price_id: string | null;
+  stripe_price_id_year: string | null;
 }
 interface StripePrice {
   id: string;
@@ -96,88 +103,178 @@ interface StripePrice {
 }
 
 export const productIdFor = (code: string) => `dni_growth_${code}`;
-export const lookupKeyFor = (code: string) => `dni_growth_${code}_monthly_eur`;
+export const lookupKeyFor = (code: string, interval: "month" | "year" = "month") => `dni_growth_${code}_${interval === "year" ? "yearly" : "monthly"}_eur`;
+
+type PriceAction = "kept" | "created" | "replaced";
 
 export interface CatalogSyncResult {
   mode: StripeMode;
-  plans: Array<{ code: string; productId: string; priceId: string; amountEur: number; action: "kept" | "created" | "replaced" }>;
+  plans: Array<{ code: string; productId: string; priceId: string; amountEur: number; action: PriceAction; priceIdYear: string | null; amountEurYear: number | null; yearAction: PriceAction | null }>;
   portalConfigurationId: string;
   portalAction: "created" | "updated";
+  tax: { mode: "automatic" | "manual"; taxRateId: string | null };
+  couponId: string;
+  account: { chargesEnabled: boolean; detailsSubmitted: boolean; name: string | null };
+}
+
+async function ensurePrice(env: Env, deps: Deps, productId: string, code: string, interval: "month" | "year", amount: number): Promise<{ priceId: string; action: PriceAction }> {
+  const lookup = lookupKeyFor(code, interval);
+  const existing = await stripeApi<{ data: StripePrice[] }>(env, deps, "GET", "/prices", { "lookup_keys[]": lookup, active: true, limit: 1 });
+  const cur = existing.data[0];
+  if (cur && cur.unit_amount === amount && cur.currency === "eur" && cur.recurring?.interval === interval) return { priceId: cur.id, action: "kept" };
+  // A new price takes over the lookup key; the old one is archived (existing subscribers keep their price).
+  const created = await stripeApi<StripePrice>(
+    env,
+    deps,
+    "POST",
+    "/prices",
+    {
+      product: productId,
+      currency: "eur",
+      unit_amount: amount,
+      "recurring[interval]": interval,
+      lookup_key: lookup,
+      transfer_lookup_key: true,
+      tax_behavior: "exclusive",
+      "metadata[plan_code]": code,
+      "metadata[interval]": interval,
+    },
+    `price:${lookup}:${amount}`,
+  );
+  if (cur) await stripeApi(env, deps, "POST", `/prices/${cur.id}`, { active: false }, `archive:${cur.id}`);
+  return { priceId: created.id, action: cur ? "replaced" : "created" };
+}
+
+/** Account readiness: a live account can only take payments once Stripe has verified it (charges_enabled). */
+export async function refreshAccountStatus(env: Env, deps: Deps): Promise<CatalogSyncResult["account"]> {
+  const mode = stripeMode(env);
+  const acct = await stripeApi<{ charges_enabled?: boolean; details_submitted?: boolean; settings?: { dashboard?: { display_name?: string } }; business_profile?: { name?: string } }>(env, deps, "GET", "/account");
+  const out = { chargesEnabled: acct.charges_enabled === true, detailsSubmitted: acct.details_submitted === true, name: acct.settings?.dashboard?.display_name ?? acct.business_profile?.name ?? null };
+  await setSetting(env.DB, `stripe_account_${mode}`, JSON.stringify({ ...out, checkedAt: nowIso() }));
+  return out;
+}
+
+export async function accountStatus(env: Env): Promise<{ chargesEnabled: boolean; detailsSubmitted: boolean; name: string | null; checkedAt?: string } | null> {
+  const mode = stripeMode(env);
+  if (!mode) return null;
+  const raw = await getSetting(env.DB, `stripe_account_${mode}`);
+  return raw ? JSON.parse(raw) : null;
+}
+
+/** VAT: Stripe Tax when the owner activated it in Stripe; otherwise Spanish VAT (21 %) as a manual rate. */
+async function ensureTax(env: Env, deps: Deps, mode: StripeMode): Promise<CatalogSyncResult["tax"]> {
+  let automatic = false;
+  try {
+    const s = await stripeApi<{ status?: string }>(env, deps, "GET", "/tax/settings");
+    automatic = s.status === "active";
+  } catch (e) {
+    if (!(e instanceof StripeApiError)) throw e;
+  }
+  let taxRateId = await getSetting(env.DB, `stripe_tax_rate_es_${mode}`);
+  if (!automatic && !taxRateId) {
+    const rate = await stripeApi<{ id: string }>(
+      env,
+      deps,
+      "POST",
+      "/tax_rates",
+      { display_name: "IVA", description: "IVA España 21 %", percentage: 21, inclusive: false, country: "ES", jurisdiction: "ES", tax_type: "vat", "metadata[managed_by]": "dni-growth" },
+      `taxrate:es21:${mode}`,
+    );
+    taxRateId = rate.id;
+    await setSetting(env.DB, `stripe_tax_rate_es_${mode}`, taxRateId);
+  }
+  await setSetting(env.DB, `stripe_tax_mode_${mode}`, automatic ? "automatic" : "manual");
+  return { mode: automatic ? "automatic" : "manual", taxRateId: automatic ? null : taxRateId };
+}
+
+export async function taxConfig(env: Env): Promise<{ mode: "automatic" | "manual"; taxRateId: string | null }> {
+  const mode = stripeMode(env);
+  const m = mode ? await getSetting(env.DB, `stripe_tax_mode_${mode}`) : null;
+  return m === "automatic" ? { mode: "automatic", taxRateId: null } : { mode: "manual", taxRateId: mode ? await getSetting(env.DB, `stripe_tax_rate_es_${mode}`) : null };
 }
 
 export async function syncStripeCatalog(env: Env, deps: Deps, appOrigin: string): Promise<CatalogSyncResult> {
   const mode = stripeMode(env);
   if (!mode) throw new StripeApiError(503, "not_configured");
-  const { results: plans } = await env.DB.prepare("SELECT code, name, price_eur_month, stripe_price_id FROM plans WHERE active = 1 AND price_eur_month > 0 ORDER BY position").all<PlanRow>();
+  const account = await refreshAccountStatus(env, deps);
+  const { results: plans } = await env.DB.prepare(
+    "SELECT code, name, price_eur_month, price_eur_year, stripe_price_id, stripe_price_id_year FROM plans WHERE active = 1 AND price_eur_month > 0 ORDER BY position",
+  ).all<PlanRow>();
   const out: CatalogSyncResult["plans"] = [];
 
   for (const p of plans) {
     const productId = productIdFor(p.code);
     // Product with a deterministic id: creating it twice fails with resource_already_exists → we update it instead.
     try {
-      await stripeApi(env, deps, "POST", "/products", { id: productId, name: `DNI Growth ${p.name}`, "metadata[plan_code]": p.code, tax_code: "txcd_10103001" }, `product:${productId}:v1`);
+      await stripeApi(env, deps, "POST", "/products", { id: productId, name: `DNI Growth ${p.name}`, "metadata[plan_code]": p.code, "metadata[managed_by]": "dni-growth", tax_code: "txcd_10103001" }, `product:${productId}:v1`);
     } catch (e) {
       if (!(e instanceof StripeApiError) || e.code !== "resource_already_exists") throw e;
-      await stripeApi(env, deps, "POST", `/products/${productId}`, { name: `DNI Growth ${p.name}`, active: true, "metadata[plan_code]": p.code });
+      await stripeApi(env, deps, "POST", `/products/${productId}`, { name: `DNI Growth ${p.name}`, active: true, "metadata[plan_code]": p.code, "metadata[managed_by]": "dni-growth" });
     }
-    const amount = Math.round(p.price_eur_month * 100);
-    const lookup = lookupKeyFor(p.code);
-    const existing = await stripeApi<{ data: StripePrice[] }>(env, deps, "GET", "/prices", { "lookup_keys[]": lookup, active: true, limit: 1 });
-    const cur = existing.data[0];
-    const matches = cur && cur.unit_amount === amount && cur.currency === "eur" && cur.recurring?.interval === "month";
-    let priceId: string;
-    let action: "kept" | "created" | "replaced";
-    if (matches) {
-      priceId = cur.id;
-      action = "kept";
-    } else {
-      // A new price takes over the lookup key; the old one is archived (existing subscribers keep their price).
-      const created = await stripeApi<StripePrice>(
-        env,
-        deps,
-        "POST",
-        "/prices",
-        {
-          product: productId,
-          currency: "eur",
-          unit_amount: amount,
-          "recurring[interval]": "month",
-          lookup_key: lookup,
-          transfer_lookup_key: true,
-          tax_behavior: "exclusive",
-          "metadata[plan_code]": p.code,
-        },
-        `price:${lookup}:${amount}`,
-      );
-      if (cur) await stripeApi(env, deps, "POST", `/prices/${cur.id}`, { active: false }, `archive:${cur.id}`);
-      priceId = created.id;
-      action = cur ? "replaced" : "created";
-    }
-    await env.DB.prepare("UPDATE plans SET stripe_price_id = ? WHERE code = ?").bind(priceId, p.code).run();
-    out.push({ code: p.code, productId, priceId, amountEur: p.price_eur_month, action });
+    const monthly = await ensurePrice(env, deps, productId, p.code, "month", Math.round(p.price_eur_month * 100));
+    const yearly = p.price_eur_year && p.price_eur_year > 0 ? await ensurePrice(env, deps, productId, p.code, "year", Math.round(p.price_eur_year * 100)) : null;
+    await env.DB.prepare("UPDATE plans SET stripe_price_id = ?, stripe_price_id_year = ? WHERE code = ?").bind(monthly.priceId, yearly?.priceId ?? null, p.code).run();
+    out.push({
+      code: p.code,
+      productId,
+      priceId: monthly.priceId,
+      amountEur: p.price_eur_month,
+      action: monthly.action,
+      priceIdYear: yearly?.priceId ?? null,
+      amountEurYear: yearly ? p.price_eur_year : null,
+      yearAction: yearly?.action ?? null,
+    });
   }
 
-  // Customer portal: update payment method, invoices, cancel at period end, switch between our plans.
+  const tax = await ensureTax(env, deps, mode);
+
+  // Retention offer: 30 % off for 2 months, applied at most once per organisation (enforced in the app).
+  try {
+    await stripeApi(
+      env,
+      deps,
+      "POST",
+      "/coupons",
+      { id: RETENTION_DISCOUNT.couponId, percent_off: RETENTION_DISCOUNT.percentOff, duration: "repeating", duration_in_months: RETENTION_DISCOUNT.months, name: "Oferta de permanencia: 30 % durante 2 meses", "metadata[managed_by]": "dni-growth" },
+      `coupon:${RETENTION_DISCOUNT.couponId}`,
+    );
+  } catch (e) {
+    if (!(e instanceof StripeApiError) || e.code !== "resource_already_exists") throw e;
+  }
+
+  // Customer portal: payment method, invoices, cancel at period end, switch plan and interval.
+  // Upgrades apply now with proration; downgrades and annual → monthly apply at the end of the period.
   const portal: Params = {
     "business_profile[headline]": "DNI Growth — gestiona tu suscripción",
     "business_profile[privacy_policy_url]": `${appOrigin}/legal/privacidad`,
-    "business_profile[terms_of_service_url]": `${appOrigin}/legal/aviso-legal`,
+    "business_profile[terms_of_service_url]": `${appOrigin}/legal/condiciones`,
     "features[invoice_history][enabled]": true,
     "features[payment_method_update][enabled]": true,
     "features[customer_update][enabled]": true,
     "features[customer_update][allowed_updates][0]": "email",
     "features[customer_update][allowed_updates][1]": "address",
     "features[customer_update][allowed_updates][2]": "tax_id",
+    "features[customer_update][allowed_updates][3]": "name",
     "features[subscription_cancel][enabled]": true,
     "features[subscription_cancel][mode]": "at_period_end",
+    "features[subscription_cancel][cancellation_reason][enabled]": true,
+    "features[subscription_cancel][cancellation_reason][options][0]": "too_expensive",
+    "features[subscription_cancel][cancellation_reason][options][1]": "missing_features",
+    "features[subscription_cancel][cancellation_reason][options][2]": "switched_service",
+    "features[subscription_cancel][cancellation_reason][options][3]": "unused",
+    "features[subscription_cancel][cancellation_reason][options][4]": "low_quality",
+    "features[subscription_cancel][cancellation_reason][options][5]": "other",
     "features[subscription_update][enabled]": true,
     "features[subscription_update][default_allowed_updates][0]": "price",
     "features[subscription_update][proration_behavior]": "create_prorations",
+    "features[subscription_update][schedule_at_period_end][conditions][0][type]": "decreasing_item_amount",
+    "features[subscription_update][schedule_at_period_end][conditions][1][type]": "shortening_interval",
     default_return_url: `${appOrigin}/app`,
   };
   out.forEach((p, i) => {
     portal[`features[subscription_update][products][${i}][product]`] = p.productId;
     portal[`features[subscription_update][products][${i}][prices][0]`] = p.priceId;
+    if (p.priceIdYear) portal[`features[subscription_update][products][${i}][prices][1]`] = p.priceIdYear;
   });
   const settingKey = `stripe_portal_config_${mode}`;
   const storedId = await getSetting(env.DB, settingKey);
@@ -188,18 +285,82 @@ export async function syncStripeCatalog(env: Env, deps: Deps, appOrigin: string)
     portalConfigurationId = storedId;
     portalAction = "updated";
   } else {
-    const cfg = await stripeApi<{ id: string }>(env, deps, "POST", "/billing_portal/configurations", portal, `portal-config:${mode}:v1`);
+    const cfg = await stripeApi<{ id: string }>(env, deps, "POST", "/billing_portal/configurations", portal, `portal-config:${mode}:v2`);
     portalConfigurationId = cfg.id;
     portalAction = "created";
     await setSetting(env.DB, settingKey, cfg.id);
   }
-  return { mode, plans: out, portalConfigurationId, portalAction };
+  await setSetting(env.DB, `stripe_catalog_signature_${mode}`, await catalogSignature(env));
+  return { mode, plans: out, portalConfigurationId, portalAction, tax, couponId: RETENTION_DISCOUNT.couponId, account };
+}
+
+/** Changes whenever a price, the webhook event list or the sync version changes → triggers an automatic re-sync. */
+async function catalogSignature(env: Env): Promise<string> {
+  const { results } = await env.DB.prepare("SELECT code, price_eur_month, price_eur_year FROM plans WHERE active = 1 ORDER BY position").all<{ code: string; price_eur_month: number; price_eur_year: number | null }>();
+  return `v2|${WEBHOOK_EVENTS.join(",")}|${results.map((r) => `${r.code}:${r.price_eur_month}:${r.price_eur_year ?? 0}`).join(",")}`;
+}
+
+/**
+ * Cron: as soon as the owner stores a Stripe key (test or live), the platform creates the catalogue,
+ * portal and webhook by itself, and re-syncs when prices change. Account status refreshes hourly.
+ * Failures back off for an hour and never block the rest of the cron.
+ */
+export async function maybeAutoSyncStripe(env: Env, deps: Deps, appOrigin: string): Promise<"skipped" | "synced" | "refreshed" | "failed"> {
+  const mode = stripeMode(env);
+  if (!mode) return "skipped";
+  const lastTry = await getSetting(env.DB, `stripe_autosync_last_${mode}`);
+  if (lastTry && Date.now() - Date.parse(lastTry) < 3_600_000) return "skipped";
+  const signature = await getSetting(env.DB, `stripe_catalog_signature_${mode}`);
+  const webhookReady = (await webhookSecrets(env)).length > 0;
+  await setSetting(env.DB, `stripe_autosync_last_${mode}`, nowIso());
+  try {
+    if (signature !== (await catalogSignature(env)) || !webhookReady) {
+      const catalog = await syncStripeCatalog(env, deps, appOrigin);
+      const webhook = await ensureWebhookEndpoint(env, deps, appOrigin);
+      await auditStmt(env.DB, { organizationId: null, actorUserId: null, action: "platform.stripe_catalog_autosync", entityType: "plan", after: { mode, plans: catalog.plans.map((p) => `${p.code}:${p.action}/${p.yearAction ?? "-"}`), webhook: webhook.action, chargesEnabled: catalog.account.chargesEnabled } }).run();
+      return "synced";
+    }
+    await refreshAccountStatus(env, deps);
+    return "refreshed";
+  } catch (e) {
+    log("error", "stripe.autosync_failed", { mode, error: e instanceof StripeApiError ? e.code : String(e).slice(0, 120) });
+    return "failed";
+  }
+}
+
+/** Products in the Stripe account that DNI Growth does not manage (preview before archiving them). */
+export async function foreignProducts(env: Env, deps: Deps): Promise<Array<{ id: string; name: string; created: number }>> {
+  const list = await stripeApi<{ data: Array<{ id: string; name: string; created: number; metadata?: Record<string, string> }> }>(env, deps, "GET", "/products", { active: true, limit: 100 });
+  return list.data.filter((p) => !p.id.startsWith("dni_growth_") && p.metadata?.["managed_by"] !== "dni-growth").map(({ id, name, created }) => ({ id, name, created }));
+}
+
+/** Archive (never delete) the given foreign products and their active prices. Reversible in the dashboard. */
+export async function archiveProducts(env: Env, deps: Deps, ids: string[]): Promise<string[]> {
+  const allowed = new Set((await foreignProducts(env, deps)).map((p) => p.id));
+  const done: string[] = [];
+  for (const id of ids.filter((x) => allowed.has(x))) {
+    const prices = await stripeApi<{ data: Array<{ id: string }> }>(env, deps, "GET", "/prices", { product: id, active: true, limit: 100 });
+    for (const pr of prices.data) await stripeApi(env, deps, "POST", `/prices/${pr.id}`, { active: false }, `archive:${pr.id}`);
+    await stripeApi(env, deps, "POST", `/products/${id}`, { active: false }, `archive:${id}`);
+    done.push(id);
+  }
+  return done;
 }
 
 // ── Webhook endpoint managed by the platform ──────────────────────────────────────────────────────
 // The signing secret is returned by Stripe only once, at creation. We store it AES-256-GCM encrypted with
 // DATA_ENC_KEY (a Cloudflare secret), bound to the mode via AAD. It is never returned by any endpoint or logged.
-export const WEBHOOK_EVENTS = ["checkout.session.completed", "customer.subscription.created", "customer.subscription.updated", "customer.subscription.deleted"];
+export const WEBHOOK_EVENTS = [
+  "checkout.session.completed",
+  "customer.subscription.created",
+  "customer.subscription.updated",
+  "customer.subscription.deleted",
+  "customer.subscription.paused",
+  "customer.subscription.resumed",
+  "customer.subscription.trial_will_end",
+  "invoice.paid",
+  "invoice.payment_failed",
+];
 
 interface StoredEndpoint {
   id: string;
@@ -227,9 +388,12 @@ export async function webhookSecrets(env: Env): Promise<string[]> {
   return out;
 }
 
-/** Ready to take payments: a key and at least one way to verify webhooks. */
+/** Ready to take payments: a key, a way to verify webhooks and (live) an account Stripe allows to charge. */
 export async function stripeReady(env: Env): Promise<boolean> {
-  return !!stripeMode(env) && (await webhookSecrets(env)).length > 0;
+  const mode = stripeMode(env);
+  if (!mode || !(await webhookSecrets(env)).length) return false;
+  if (mode === "test") return true;
+  return (await accountStatus(env))?.chargesEnabled === true;
 }
 
 /** Webhooks are processed when payments are open, or in test mode (events only come from the owner's sandbox). */

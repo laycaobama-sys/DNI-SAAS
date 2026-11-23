@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Precios · DNI Growth</title>
+    <meta name="description" content="Planes de DNI Growth: Free, Starter 49 €, Growth 129 € con 7 días de prueba, Pro 249 € y Agency 449 € al mes, sin IVA. Anual con 2 meses gratis. Garantía de 90 días medible." />
+    <link rel="canonical" href="__SITE_URL__/precios" />
+    <meta name="theme-color" content="#0b0b0c" />
+    <link rel="icon" href="/favicon.ico" sizes="48x48" />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="icon" href="/icon-192.png" type="image/png" sizes="192x192" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <meta property="og:type" content="website" />
+    <meta property="og:locale" content="es_ES" />
+    <meta property="og:site_name" content="DNI Growth" />
+    <meta property="og:title" content="Precios · DNI Growth" />
+    <meta property="og:description" content="Empieza gratis. Paga cuando lo demuestres. Cada función dice si está disponible hoy." />
+    <meta property="og:url" content="__SITE_URL__/precios" />
+    <meta property="og:image" content="__SITE_URL__/og-dni-growth.png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="DNI Growth: crece con pruebas, no con promesas." />
+    <link rel="stylesheet" href="/src/landing/landing.css" />
+    <link rel="stylesheet" href="/src/landing/legal.css" />
+    <link rel="stylesheet" href="/src/landing/pricing.css" />
+    <!--PRICING:JSONLD-->
+  </head>
+  <body>
+    <a class="skip" href="#main">Saltar al contenido</a>
+    <header class="nav is-solid"><a class="brand" href="/" aria-label="DNI Growth, inicio"><span class="brand-mark" aria-hidden="true">DNI</span><span class="brand-word">Growth</span></a><a class="btn" href="/app/register">Auditar mi web gratis</a></header>
+    <main class="pp" id="main">
+      <h1>Precios</h1>
+      <p class="lead-in">Empieza gratis. Paga cuando lo demuestres. Precios en euros, IVA aparte. Cancelas cuando quieras desde la app, sin llamadas ni permanencia.</p>
+      <p class="pp-status" data-pricing-status role="status" aria-live="polite"></p>
+
+      <input class="pp-radio" type="radio" name="periodo" id="periodo-mes" checked />
+      <input class="pp-radio" type="radio" name="periodo" id="periodo-ano" />
+      <div class="pp-switch" role="group" aria-label="Periodo de facturación">
+        <label for="periodo-mes">Mensual</label>
+        <label for="periodo-ano">Anual · 2 meses gratis</label>
+      </div>
+      <div class="pp-grid">
+        <!--PRICING:PLANS-->
+      </div>
+
+      <h2 id="comparativa">Comparativa completa</h2>
+      <p>Cada fila dice si funciona hoy de punta a punta (<strong>Disponible</strong>), si funciona con un límite que explicamos (<strong>Parcial</strong>) o si todavía la estamos construyendo (<strong>En desarrollo</strong>). No vendemos como hecho lo que no lo está.</p>
+      <div class="pt-wrap" tabindex="0" role="region" aria-label="Tabla comparativa de planes">
+        <!--PRICING:TABLE-->
+      </div>
+
+      <h2 id="garantia">Garantía de 90 días, medible</h2>
+      <p>En Growth, Pro y Agency: si cumples los requisitos (Search Console conectado desde el primer día, al menos el 80 % de los artículos propuestos aprobados y las correcciones técnicas críticas aplicadas) y, al cumplir 90 días, tus impresiones orgánicas de los últimos 28 días no han subido respecto a los 28 días anteriores al alta, te devolvemos lo pagado. Lo calcula la app con tus datos de Search Console y lo pides con un clic. <a href="/legal/garantia">Condiciones exactas</a>.</p>
+      <p>No garantizamos posiciones en Google ni menciones en asistentes con IA: nadie puede hacerlo honestamente.</p>
+
+      <h2 id="calculadora">¿Cuánto te cuesta hoy?</h2>
+      <p>Escribe lo que pagas ahora por cada artículo (a un redactor o a una agencia). Es tu dato, no el nuestro.</p>
+      <form class="pp-calc" data-pricing-calc>
+        <label>Coste por artículo (€)<input name="cost" type="number" min="0" max="5000" step="1" inputmode="numeric" /></label>
+        <label>Artículos al mes<input name="count" type="number" min="1" max="200" step="1" value="30" inputmode="numeric" /></label>
+        <p class="pp-calc-out" aria-live="polite" data-pricing-calc-out>Con Growth (129 €/mes) tienes hasta 30 borradores al mes, que siempre revisas antes de publicar.</p>
+      </form>
+
+      <h2 id="faq">Preguntas sobre facturación</h2>
+      <details><summary>¿Cómo funciona la prueba gratis de Growth?</summary><p>Dura 7 días y se pide tarjeta. No se cobra nada hasta el día 8; te avisamos por email antes. Si cancelas durante la prueba, no pagas nada. Solo hay una prueba por empresa.</p></details>
+      <details><summary>¿Puedo cambiar de plan?</summary><p>Sí, desde la app. Si subes, el cambio es inmediato y pagas solo la diferencia prorrateada. Si bajas, se aplica al final del periodo que ya pagaste.</p></details>
+      <details><summary>¿Puedo pausar en vez de cancelar?</summary><p>Sí, de 1 a 3 meses. Durante la pausa no se cobra nada, tus datos se conservan y la cuenta funciona con el plan Free.</p></details>
+      <details><summary>¿Cómo cancelo?</summary><p>En Facturación, «Pausar o cancelar». Te preguntamos el motivo (es opcional responder algo más) y puedes cancelar en ese momento. Mantienes el plan hasta el final del periodo pagado y después pasas a Free, sin perder tus datos.</p></details>
+      <details><summary>¿Qué pasa si falla un cobro?</summary><p>Stripe reintenta el cobro y te avisamos. Tienes 7 días de margen con todo funcionando; si no se resuelve, la cuenta pasa a Free sin borrar nada y vuelve al plan en cuanto se paga.</p></details>
+      <details><summary>¿Las facturas llevan IVA?</summary><p>Los precios se muestran sin IVA. En la factura se añade el IVA que corresponda. Puedes indicar tu NIF-IVA al pagar y descargar todas tus facturas desde el portal de facturación.</p></details>
+      <details><summary>¿Quién procesa los pagos?</summary><p>Stripe. Nosotros nunca vemos ni guardamos los datos de tu tarjeta.</p></details>
+      <details><summary>¿El gasto en publicidad está incluido?</summary><p>No. Si lanzas anuncios, el gasto se paga a la plataforma publicitaria y nunca se activa sin tu aprobación y un límite de gasto.</p></details>
+    </main>
+    <nav class="legal-foot" aria-label="Más páginas">
+      <a href="/">Inicio</a>
+      <a href="/precios" aria-current="page">Precios</a>
+      <a href="/blog">Blog</a>
+      <a href="/legal/condiciones">Condiciones</a>
+      <a href="/legal/garantia">Garantía</a>
+      <a href="/legal/privacidad">Privacidad</a>
+      <a href="/legal/aviso-legal">Aviso legal</a>
+    </nav>
+    <script type="module" src="/src/landing/pricing.ts"></script>
+  </body>
+</html>
