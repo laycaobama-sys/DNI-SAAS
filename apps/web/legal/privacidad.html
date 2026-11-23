@@ -16,7 +16,7 @@
     <header class="nav is-solid"><a class="brand" href="/"><span class="brand-mark" aria-hidden="true">DNI</span><span class="brand-word">Growth</span></a><a class="btn" href="/">Volver</a></header>
     <main class="legal" id="main">
       <h1>Política de privacidad</h1>
-      <p>Última actualización: 19 de noviembre de 2026.</p>
+      <p>Última actualización: 23 de noviembre de 2026.</p>
       <p>DNI Growth (<a href="/">dnigrowth.com</a>) es un software de crecimiento digital para empresas y agencias: auditoría técnica de webs, perfil de marca, plan de crecimiento, asesor y estudio creativo con IA, y paneles de datos de Google Search Console y Google Analytics. Esta política explica qué datos personales tratamos cuando usas la web y la aplicación, para qué, con quién los compartimos, cuánto tiempo los guardamos y cómo ejercer tus derechos, conforme al Reglamento General de Protección de Datos (RGPD) y la Ley Orgánica 3/2018 (LOPDGDD).</p>
 
       <h2 id="responsable">1. Responsable del tratamiento</h2>
@@ -36,6 +36,7 @@
       <ul>
         <li><strong>Seguridad y registro de actividad</strong>: sesiones activas, dirección IP convertida en un resumen criptográfico (hash) no reversible, identificadores de petición y un registro de auditoría de las acciones importantes (quién hizo qué y cuándo), sin contraseñas ni tokens.</li>
         <li><strong>Uso de créditos y trabajos</strong>: qué trabajos se lanzaron (auditorías, sincronizaciones, generación con IA), su estado y su consumo.</li>
+        <li id="analitica"><strong>Estadística de uso, sin cookies</strong>: contamos unos pocos eventos del producto (por ejemplo, «auditoría iniciada», «registro» o «Search Console conectado») con el nombre del evento, la ruta de la página sin parámetros, la organización cuando el evento ocurre dentro de la aplicación y un código de visita que cambia cada día. Ese código se calcula a partir de la IP y el navegador con una clave secreta, no es reversible y no guardamos la IP. No usamos cookies ni almacenamiento en tu navegador para esto, ni servicios de terceros. Si tu navegador envía la señal de privacidad (Global Privacy Control o «Do Not Track»), no calculamos ese código.</li>
       </ul>
       <h3>Datos de terceros que obtenemos a petición tuya</h3>
       <ul>
@@ -66,6 +67,7 @@
           <tr><td>Responder a tu mensaje del formulario de contacto</td><td>Datos del formulario de contacto</td><td>Tu consentimiento (art. 6.1.a) y, si pides información sobre el servicio, medidas precontractuales (art. 6.1.b)</td></tr>
           <tr><td>Enviarte novedades de DNI Growth, solo si marcas la casilla opcional</td><td>Nombre y correo</td><td>Consentimiento (art. 6.1.a), que puedes retirar en cualquier momento</td></tr>
           <tr><td>Seguridad, prevención de abusos y fraude, límites de uso y registro de auditoría</td><td>Sesiones, IP en hash, registro de actividad</td><td>Interés legítimo en proteger el servicio y a sus usuarios (art. 6.1.f)</td></tr>
+          <tr><td>Saber de forma agregada qué partes del producto se usan, para mejorarlo</td><td>Estadística de uso sin cookies (evento, ruta sin parámetros, código diario de visita)</td><td>Interés legítimo en mejorar el servicio (art. 6.1.f); puedes oponerte escribiéndonos o activando la señal de privacidad de tu navegador</td></tr>
           <tr><td>Facturación y obligaciones contables y fiscales (cuando se activen los cobros)</td><td>Plan, suscripción, datos de facturación</td><td>Contrato y obligación legal (art. 6.1.c)</td></tr>
         </tbody>
       </table></div>
@@ -97,6 +99,7 @@
         <li>Sesiones: caducan tras 7 días sin actividad y como máximo a los 30 días.</li>
         <li>Enlaces de verificación de correo y de restablecimiento de contraseña: caducan en poco tiempo y son de un solo uso. Estados temporales de inicio de sesión con Google: 10 minutos.</li>
         <li>Contadores de límites de uso: entre 1 y 3 días.</li>
+        <li>Estadística de uso sin cookies: 13 meses; después se borra automáticamente.</li>
         <li>Registro de auditoría: mientras exista la organización, porque sirve para seguridad y para demostrar quién autorizó cada acción.</li>
         <li>Datos de facturación: el plazo que exija la normativa fiscal y mercantil.</li>
       </ul>
@@ -112,7 +115,7 @@
           <tr><td><code>dni.pendingUrl</code></td><td>Almacenamiento de sesión</td><td>Recordar la URL que ibas a auditar mientras te registras</td><td>Hasta cerrar la pestaña</td></tr>
         </tbody>
       </table></div>
-      <p>No usamos cookies de analítica, publicidad ni redes sociales. Si en el futuro se añadieran, pediríamos tu consentimiento antes.</p>
+      <p>No usamos cookies de analítica, publicidad ni redes sociales. Si en el futuro se añadieran, pediríamos tu consentimiento antes. La <a href="#analitica">estadística de uso</a> no usa cookies ni guarda nada en tu navegador.</p>
 
       <h2>10. Seguridad</h2>
       <p>Conexiones cifradas (HTTPS), contraseñas derivadas con PBKDF2, secretos y tokens cifrados con AES-256-GCM, aislamiento estricto de los datos de cada organización, roles y permisos por función, límites de uso, protección del rastreador frente a direcciones internas y registro de auditoría de las acciones sensibles. Ningún sistema es infalible: si detectamos una brecha que afecte a tus datos, lo notificaremos a la autoridad y, cuando corresponda, a ti.</p>
@@ -129,6 +132,7 @@
     <nav class="legal-foot" aria-label="Páginas legales">
       <a href="/">Inicio</a>
       <a href="/blog">Blog</a>
+      <a href="/seguridad">Seguridad</a>
       <a href="/legal/aviso-legal">Aviso legal</a>
       <a href="/legal/privacidad" aria-current="page">Privacidad</a>
       <a href="/legal/condiciones">Condiciones de uso</a>

@@ -1,6 +1,6 @@
 # Estado de la ampliación — DNI Growth
 
-Última revisión: 2026-11-23 · Producción: https://dnigrowth.com (Worker `dni-growth`) · Pruebas: **453 en verde** (38 ficheros: core, API y web).
+Última revisión: 2026-11-23 · Producción: https://dnigrowth.com (Worker `dni-growth`) · Pruebas: **489 en verde** (42 ficheros: core, API y web).
 
 Este documento mapea cada punto de la especificación de ampliación (`ESPECIFICACION-CLAUDE-CODE.md`, tareas T01–T16 y conectores del §3) contra el código real: qué existe, dónde está, qué prueba lo cubre, qué falta y qué lo bloquea. Se actualiza en cada fase. El detalle verificado en producción está en [`../IMPLEMENTATION_STATUS.md`](../IMPLEMENTATION_STATUS.md).
 
@@ -56,8 +56,14 @@ Estado: **REAL**, verificado en producción el 2026-11-23 (auditoría de dnigrow
 | Sitemap dinámico (páginas, `/blog` y artículos con `lastmod`) | REAL · producción | `GET /sitemap.xml` en `site-blog.ts` | `site-blog.test.ts`, `curl` |
 | RSS del blog | REAL · producción | `/blog/feed.xml` | `site-blog.test.ts` |
 | Sin códigos internos en la interfaz | REAL | ver B4 | `ui-guards.test.tsx` |
-| `llms.txt` al día con lo disponible | REAL · producción | `apps/web/vite.config.ts` | `curl` |
-| Capturas reales y vídeo demo en la portada | NO EMPEZADO | — | requiere material de la titular |
+| 0.1 Una sola fuente: etiquetas de la portada, `llms.txt` y menú de la app salen de `FEATURES` | REAL · local | `packages/core/src/features.ts` (`buildLlmsTxt`, `menuStatusBadge`), `apps/web/vite.config.ts`, `apps/web/src/app/shell.tsx` (`MenuStatus`) | `packages/core/test/features.test.ts`, `apps/web/test/site-sources.test.tsx` |
+| 0.3 Una sola CSP en `_headers` y en las páginas del Worker; sin `cloudflareinsights` porque la web no carga el beacon | REAL · local | `apps/api/src/lib/site-headers.ts`, `apps/web/public/_headers` | `apps/api/test/site-pages.test.ts` |
+| 0.4 Analítica de producto propia, sin cookies (`product_events`, `POST /api/v1/public/events`, `GET /api/v1/admin/funnel`, tarjeta «Embudo») | PARCIAL · local | migración `0020_product_analytics.sql`, `apps/api/src/lib/product-events.ts`, `routes/events.ts`, `routes/admin.ts`, `apps/web/src/app/pages/admin.tsx`, [ADR 0021](../adr/0021-analitica-producto-sin-cookies.md) | `apps/api/test/product-events.test.ts`. Instrumentados: `signup`, `onboarding_step`, `gsc_connected`, `audit_started`; el resto aparece como «sin instrumentar». Falta `IP_HASH_SALT` en producción para contar visitantes-día |
+| 0.6 + 0.10 Portada: «Más clientes desde Google y ChatGPT. Con pruebas.», 4 beneficios, sin jerga, módulos como sección secundaria; página `/seguridad` en el sitemap | REAL · local | `apps/web/index.html`, `apps/web/seguridad.html`, `SITE_PAGES` en `site-blog.ts` | `site-sources.test.tsx`, `site-pages.test.ts` |
+| 0.5 «Ya funciona hoy» (Google en solo lectura, Asesor con IA, Creative Studio) con el plan exacto de cada uno | REAL · local | `apps/web/index.html` (`#ya-funciona`, `data-plan-module`) | `site-sources.test.tsx` |
+| 0.5 / 0.7 Capturas reales y vídeo demo de 90 s | PARCIAL | huecos `<figure class="shot">` y `#demo` ocultos; `landing.ts` solo crea el `<video>` si `data-video-src` apunta a `/demo/*.mp4` | `site-sources.test.tsx` (ocultos mientras no haya material; ninguna imagen inexistente). Requiere material real de la titular |
+| 0.8 Familia de marcas DNI solo en `/seguridad` | REAL · local | pie de portada, legales y blog | `site-sources.test.tsx` |
+| 0.9 404 propia (estado 404, `noindex`, misma CSP, enlaces a inicio, auditoría, blog, precios y contacto) | REAL · local | `apps/web/404.html`, `notFoundPage` en `apps/api/src/app.ts`, `wrangler.jsonc` | `site-pages.test.ts` |
 | Pagos (Stripe Live) | BLOQUEADO | `BILLING_ENABLED=false` por decisión de la titular | — |
 
 ## Tareas T01–T16

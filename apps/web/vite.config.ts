@@ -4,6 +4,8 @@ import { defineConfig, type Plugin } from "vite";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 import { legalTokens, loadLegalIdentity } from "./legal/legal-identity";
+// Relative import (not "@dni/core"): the config is bundled by Vite and features.ts has no dependencies.
+import { buildLlmsTxt } from "../../packages/core/src/features";
 
 /**
  * Public site URL used for canonical, sitemap, robots, llms.txt and JSON-LD.
@@ -47,41 +49,9 @@ function seoFiles(): Plugin {
         fileName: "robots.txt",
         source: `User-agent: *\nAllow: /\nDisallow: /app\nDisallow: /api/\n\nSitemap: ${SITE_URL}/sitemap.xml\n`,
       });
-      this.emitFile({
-        type: "asset",
-        fileName: "llms.txt",
-        source: `# DNI Growth
-
-> Software SaaS de crecimiento digital con IA para pymes y agencias: auditoría SEO técnica, GEO (Generative Engine Optimization) y AEO (Answer Engine Optimization) con evidencia por URL, perfil de marca verificable, plan de crecimiento editable y borradores revisables. Parte de la familia de marcas DNI.
-
-## Qué hace hoy (disponible)
-- Auditoría pública y no intrusiva de una web a partir de su URL (respeta robots.txt): reglas técnicas con evidencia por URL, tipo de página, salud técnica y potencial orgánico (medidas derivadas, con método).
-- Informe de auditoría y brief de cada mejora descargables en Markdown o HTML, sin IA y en todos los planes.
-- Borradores de corrección creados desde cada hallazgo (sin IA ni créditos), con comprobaciones antes de aprobar: campos pendientes, promesas de resultados, cifras sin fuente y precios sin verificar.
-- Content Studio: borradores con IA o escritos a mano, versiones, revisión y aprobación por roles, exportación Markdown/HTML.
-- Perfil de marca extraído con fuente de cada dato y confirmación humana; plan de crecimiento de 30 días editable y exportable.
-- Asesor de crecimiento con IA que responde con los datos observados de tu auditoría y cita la URL de evidencia.
-- Conexión de solo lectura con Google Search Console y Google Analytics 4: datos observados de tu propia cuenta, con fuente y fecha.
-- Monitor de visibilidad en IA por muestreo (no es cobertura total de todas las consultas reales).
-- CRM de contactos con formularios, landing pages por bloques con tests A/B, automatizaciones de seguimiento y estudio creativo.
-- Organizaciones multiempresa, roles y registro de auditoría.
-
-## En desarrollo (no disponible todavía)
-- Publicación directa en CMS de clientes, anuncios en Meta/Google con aprobación y límite de gasto, y datos de volumen de búsqueda con un proveedor licenciado.
-
-## Principios
-- Ninguna métrica sin fuente ni fecha. No se garantizan posiciones en buscadores ni menciones en motores de IA.
-- Nada se publica ni se gasta sin aprobación explícita.
-
-## Enlaces
-- [Inicio](${SITE_URL}/)
-- [Blog](${SITE_URL}/blog)
-- [Crear cuenta y auditar una web](${SITE_URL}/app/register)
-- [Privacidad](${SITE_URL}/legal/privacidad)
-- [Condiciones de uso](${SITE_URL}/legal/condiciones)
-- [Aviso legal](${SITE_URL}/legal/aviso-legal)
-`,
-      });
+      // Generated from FEATURES (packages/core/src/features.ts), the same registry behind the site badges
+      // and the app menu: a status or limit is never written here by hand.
+      this.emitFile({ type: "asset", fileName: "llms.txt", source: buildLlmsTxt(SITE_URL) });
     },
   };
 }
@@ -95,6 +65,9 @@ export default defineConfig({
       input: {
         landing: resolve(import.meta.dirname, "index.html"),
         blog: resolve(import.meta.dirname, "blog.html"),
+        seguridad: resolve(import.meta.dirname, "seguridad.html"),
+        // dist/404.html: served by Static Assets (not_found_handling "404-page") and by the Worker fallback.
+        notFound: resolve(import.meta.dirname, "404.html"),
         app: resolve(import.meta.dirname, "app/index.html"),
         privacidad: resolve(import.meta.dirname, "legal/privacidad.html"),
         avisoLegal: resolve(import.meta.dirname, "legal/aviso-legal.html"),

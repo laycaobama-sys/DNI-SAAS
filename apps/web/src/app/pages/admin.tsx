@@ -213,8 +213,99 @@ function Overview({ onOpen }: { onOpen: (t: Tab) => void }) {
           )}
         </Card>
       </div>
+      <div className="mt-6">
+        <FunnelCard />
+      </div>
       <Source observedAt={data.observedAt} />
     </>
+  );
+}
+
+type FunnelStep = { event: string; label: string; stage: "funnel" | "churn"; server: number; client: number; total: number; visitorDays: number | null; instrumented: boolean; instrumentedBy: string | null };
+type FunnelWindow = { days: number; since: string; steps: FunnelStep[]; onboardingSteps: Array<{ step: string; n: number }> };
+type FunnelData = { observedAt: string; measurement: string; source: string; windows: FunnelWindow[]; caveats: string[] };
+
+const ONBOARDING_STEP_LABEL: Record<string, string> = { email_verified: "Correo verificado", organization_created: "Organización creada" };
+
+/** «Embudo»: own cookieless product analytics, 7 or 30 days. Every count says where it comes from. */
+export function FunnelCard() {
+  const { data, error, reload } = useApi<FunnelData>("/admin/funnel");
+  const [days, setDays] = useState<7 | 30>(30);
+  if (error) return <ErrorState error={error} onRetry={reload} />;
+  if (!data) return <Skeleton className="h-64 rounded-2xl" />;
+  const w = data.windows.find((x) => x.days === days) ?? data.windows[0];
+  if (!w) return null;
+  const funnel = w.steps.filter((s) => s.stage === "funnel");
+  const churn = w.steps.filter((s) => s.stage === "churn");
+  const max = Math.max(1, ...w.steps.map((s) => s.total));
+  const row = (s: FunnelStep) => (
+    <li key={s.event} className="py-2">
+      <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1 text-sm">
+        <span className="min-w-0">
+          {s.label}
+          {!s.instrumented && <span className="ml-2 rounded border border-dashed border-line px-1 text-[10px] text-mute">sin instrumentar</span>}
+        </span>
+        <span className="tabular-nums">
+          {s.total}
+          <span className="ml-2 text-xs text-mute">
+            servidor {s.server} · navegador {s.client}
+            {s.visitorDays !== null && ` · ${s.visitorDays} visitantes-día`}
+          </span>
+        </span>
+      </div>
+      <div className="mt-1 h-2 overflow-hidden rounded-full bg-surface-2" aria-hidden>
+        <div className="h-full rounded-full bg-accent" style={{ width: `${(s.total / max) * 100}%` }} />
+      </div>
+      {s.instrumentedBy && <p className="mt-1 text-[11px] text-mute">Se registra en: {s.instrumentedBy}</p>}
+    </li>
+  );
+  return (
+    <Card
+      title="Embudo"
+      subtitle={`${data.source} · medición observada · últimos ${w.days} días`}
+      actions={
+        <div className="inline-flex rounded-lg border border-line p-0.5" role="group" aria-label="Periodo del embudo">
+          {([7, 30] as const).map((d) => (
+            <button key={d} type="button" onClick={() => setDays(d)} aria-pressed={days === d} className={cx("min-h-9 rounded-md px-3 text-xs font-medium", days === d ? "bg-surface-2 text-ink" : "text-mute hover:text-ink")}>
+              {d} días
+            </button>
+          ))}
+        </div>
+      }
+    >
+      <div className="grid gap-6 lg:grid-cols-[2fr_1fr]">
+        <div className="min-w-0">
+          <h3 className="text-xs font-semibold uppercase tracking-[0.1em] text-mute">Embudo</h3>
+          <ol className="mt-1 divide-y divide-line">{funnel.map(row)}</ol>
+        </div>
+        <div className="min-w-0 space-y-5">
+          <div>
+            <h3 className="text-xs font-semibold uppercase tracking-[0.1em] text-mute">Bajas</h3>
+            <ul className="mt-1 divide-y divide-line">{churn.map(row)}</ul>
+          </div>
+          <div>
+            <h3 className="text-xs font-semibold uppercase tracking-[0.1em] text-mute">Pasos de bienvenida</h3>
+            {w.onboardingSteps.length === 0 ? (
+              <p className="mt-1 text-sm text-mute">Sin pasos registrados en este periodo.</p>
+            ) : (
+              <ul className="mt-1 space-y-1 text-sm">
+                {w.onboardingSteps.map((s) => (
+                  <li key={s.step} className="flex justify-between gap-3">
+                    <span>{ONBOARDING_STEP_LABEL[s.step] ?? s.step}</span>
+                    <span className="tabular-nums">{s.n}</span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        </div>
+      </div>
+      <ul className="mt-5 space-y-1 border-t border-line pt-3 text-xs text-mute">
+        {data.caveats.map((c) => (
+          <li key={c}>{c}</li>
+        ))}
+      </ul>
+    </Card>
   );
 }
 

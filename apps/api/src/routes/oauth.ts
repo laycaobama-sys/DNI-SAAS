@@ -4,6 +4,7 @@ import { randomToken, sha256Hex, timingSafeEqual } from "@dni/core";
 import type { AppEnv, Env } from "../env";
 import { auditStmt } from "../lib/audit";
 import { mailMode } from "../lib/mail";
+import { trackFromRequest } from "../lib/product-events";
 import { rateLimit } from "../lib/ratelimit";
 import { GA4_STATE_PROVIDER } from "../lib/ga4";
 import { GSC_STATE_PROVIDER } from "../lib/gsc";
@@ -216,6 +217,7 @@ async function upsertGoogleUser(c: Context<AppEnv>, g: GoogleClaims): Promise<st
     db.prepare("INSERT INTO user_identities (id, user_id, provider, provider_subject, email, last_login_at) VALUES (?, ?, 'google', ?, ?, ?)").bind(uuid(), id, g.sub, g.email, nowIso()),
     auditStmt(db, { organizationId: null, actorUserId: id, action: "user.register_google", entityType: "user", entityId: id, ipHash, requestId }),
   ]);
+  await trackFromRequest(c, "signup", { props: { method: "google" } });
   return id;
 }
 

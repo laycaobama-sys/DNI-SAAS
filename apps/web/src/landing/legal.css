@@ -17,6 +17,11 @@
 .legal .idbox dd{margin:0}
 @media (max-width:560px){.legal .idbox{grid-template-columns:1fr;gap:2px}.legal .idbox dd{margin-bottom:10px}}
 .legal .draft-inline{color:var(--accent)}
+.legal .lead-in{font-size:19px;color:#d4d4dc;max-width:640px}
+.legal .legal-note{margin-top:40px;padding-top:16px;border-top:1px solid #2a2a33;font-size:14px;color:#9a9aa6}
+/* 404 page */
+.legal .nf-links{list-style:none;padding:0;margin:24px 0 0;display:grid;gap:10px}
+.legal .nf-links a{display:inline-flex;min-height:44px;align-items:center}
 .legal-foot{max-width:760px;margin:0 auto;padding:24px var(--gutter) 64px;border-top:1px solid #2a2a33;display:flex;flex-wrap:wrap;gap:12px 24px;font-size:15px}
 .legal-foot a{color:#c4c4cc;text-decoration:underline;text-underline-offset:3px;padding:6px 0}
 .legal-foot a[aria-current="page"]{color:#e8e8ee;text-decoration:none;font-weight:600}

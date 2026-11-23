@@ -7,6 +7,7 @@ import { auditStmt } from "../lib/audit";
 import { creditBalance, ensureMonthlyGrant, getPlan, grantStmt, orgPlan, analysesThisMonth } from "../lib/billing";
 import { ApiError, assertUuid, forbidden, notFound, parseBody } from "../lib/http";
 import { emailHtml, sendMail } from "../lib/mail";
+import { trackFromRequest } from "../lib/product-events";
 import { rateLimit } from "../lib/ratelimit";
 import { addSeconds, monthKey, nowIso, slugify, uuid } from "../lib/util";
 import { requireScope, requireUser } from "../middleware";
@@ -31,6 +32,7 @@ orgsPublic.post("/orgs", requireUser, async (c) => {
     grantStmt(c.env.DB, id, plan.limits.monthlyCredits, `grant:${id}:${monthKey()}:free`),
     auditStmt(c.env.DB, { organizationId: id, actorUserId: user.id, action: "org.create", entityType: "organization", entityId: id, after: { name }, requestId: c.get("requestId") }),
   ]);
+  await trackFromRequest(c, "onboarding_step", { organizationId: id, props: { step: "organization_created" } });
   return c.json({ id, name, slug }, 201);
 });
 

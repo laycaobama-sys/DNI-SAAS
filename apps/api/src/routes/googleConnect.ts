@@ -5,6 +5,7 @@ import type { AppEnv } from "../env";
 import { auditStmt } from "../lib/audit";
 import { GoogleApiError, googleReady, loadGoogleConnection, revokeToken, sealToken, type GoogleDataSource } from "../lib/google";
 import { ApiError, notFound } from "../lib/http";
+import { trackFromRequest } from "../lib/product-events";
 import { rateLimit } from "../lib/ratelimit";
 import { addSeconds, log, nowIso, uuid } from "../lib/util";
 import { validateIdToken } from "./oauth";
@@ -148,6 +149,8 @@ export async function completeGoogleConnect(
       requestId: c.get("requestId"),
     }),
   ]);
+  // Product funnel: Search Console connected (no account, no property, no token: only the fact).
+  if (src.provider === "google_search_console") await trackFromRequest(c, "gsc_connected", { organizationId: orgId, props: { reconnect: !!existing } });
   try {
     await afterConnect(tok.access_token, orgId, integrationId);
   } catch (e) {

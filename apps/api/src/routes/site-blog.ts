@@ -4,6 +4,7 @@ import { checkDraft, markdownToSafeHtml } from "@dni/core";
 import type { AppEnv } from "../env";
 import { auditStmt } from "../lib/audit";
 import { ApiError, assertUuid, notFound, parseBody } from "../lib/http";
+import { SITE_SECURITY_HEADERS } from "../lib/site-headers";
 import { nowIso, uuid } from "../lib/util";
 import { requireScope } from "../middleware";
 
@@ -14,7 +15,7 @@ import { requireScope } from "../middleware";
  */
 
 /** Public pages listed in the sitemap besides the blog posts. */
-export const SITE_PAGES = ["/", "/blog", "/legal/privacidad", "/legal/aviso-legal", "/legal/condiciones", "/legal/eliminacion-datos"];
+export const SITE_PAGES = ["/", "/blog", "/seguridad", "/legal/privacidad", "/legal/aviso-legal", "/legal/condiciones", "/legal/eliminacion-datos"];
 
 interface PostRow {
   id: string;
@@ -66,16 +67,8 @@ export function blogDescription(md: string): string {
 /** The article body without its own leading H1 (the page already shows the title as H1). */
 const bodyWithoutTitle = (md: string) => md.replace(/^\s*#\s+[^\n]*\n+/, "");
 
-const PAGE_HEADERS = {
-  "content-type": "text/html; charset=utf-8",
-  "x-content-type-options": "nosniff",
-  "referrer-policy": "strict-origin-when-cross-origin",
-  "x-frame-options": "DENY",
-  "permissions-policy": "camera=(), microphone=(), geolocation=(), interest-cohort=()",
-  "strict-transport-security": "max-age=31536000; includeSubDomains",
-  "content-security-policy":
-    "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: https:; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'",
-};
+/** Same security headers as the static pages (lib/site-headers.ts ↔ apps/web/public/_headers). */
+export const PAGE_HEADERS = { "content-type": "text/html; charset=utf-8", ...SITE_SECURITY_HEADERS };
 
 /** Minimal shell for tests and local runs without the built assets. */
 const FALLBACK_SHELL = `<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Blog · DNI Growth</title><meta name="description" content=""><link rel="canonical" href=""><meta property="og:type" content="website"><meta property="og:title" content=""><meta property="og:description" content=""><meta property="og:url" content=""></head><body><main id="main" class="legal blog" data-blog-main></main></body></html>`;
