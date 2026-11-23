@@ -7,6 +7,7 @@ import {
   evaluateGuarantee,
   GUARANTEE,
   PauseInput,
+  PLAN_OFFERS,
   RETENTION_DISCOUNT,
   verifyStripeSignature,
   type GuaranteeResult,
@@ -17,6 +18,7 @@ import { auditStmt } from "../lib/audit";
 import { creditBalance, ensureMonthlyGrant, getPlan, grantStmt, orgPlan } from "../lib/billing";
 import { ApiError, parseBody } from "../lib/http";
 import { emailHtml, mailMode, sendMail } from "../lib/mail";
+import { trackEvent, trackFromRequest } from "../lib/product-events";
 import { rateLimit } from "../lib/ratelimit";
 import { accountStatus, billingAccess, billingFlag, getSetting, setSetting, stripeApi, StripeApiError, stripeMode, stripeReady, taxConfig, webhookSecrets, webhooksAcceptedAsync, type BillingAccess } from "../lib/stripe";
 import { log, monthKey, nowIso, uuid } from "../lib/util";
@@ -266,6 +268,7 @@ async function pauseSubscription(c: Context<AppEnv>, sub: SubRow & { provider_su
     c.env.DB.prepare("UPDATE organizations SET plan_code = 'free' WHERE id = ?").bind(t.orgId),
     auditStmt(c.env.DB, { organizationId: t.orgId, actorUserId: t.userId, action: "billing.paused", entityType: "subscription", after: { months, pausedUntil }, requestId: c.get("requestId") }),
   ]);
+  await trackFromRequest(c, "paused", { organizationId: t.orgId, props: { plan: sub.plan_code, months } });
   return pausedUntil;
 }
 
@@ -306,7 +309,7 @@ billing.post("/billing/cancel", requireScope("billing:manage"), async (c) => {
   const reason = CANCEL_REASONS.find((r) => r.key === input.reason)!;
   const deps = c.get("deps");
   let outcome: "discount_applied" | "paused" | "cancel_scheduled";
-  let detail: Record<string, unknown> = {};
+  let detail: Record<string, unknown>;
   if (input.offer === "discount") {
     if (reason.offer !== "discount" || sub.status !== "active") throw new ApiError(409, "offer_not_available", "Esta oferta no está disponible para tu suscripción.");
     const claimed = await db.prepare("UPDATE organizations SET retention_offer_used_at = ? WHERE id = ? AND retention_offer_used_at IS NULL").bind(nowIso(), t.orgId).run();
@@ -335,6 +338,7 @@ billing.post("/billing/cancel", requireScope("billing:manage"), async (c) => {
     await db.prepare("UPDATE subscriptions SET cancel_at_period_end = 1, updated_at = ? WHERE organization_id = ?").bind(nowIso(), t.orgId).run();
     outcome = "cancel_scheduled";
     detail = { accessUntil: sub.status === "trialing" ? sub.trial_end : sub.current_period_end };
+    await trackFromRequest(c, "canceled", { organizationId: t.orgId, props: { plan: sub.plan_code, reason: input.reason } });
   }
   await db.batch([
     db
@@ -565,9 +569,9 @@ webhooks.post("/stripe", async (c) => {
       const org = await db.prepare("SELECT id FROM organizations WHERE id = ?").bind(orgId).first();
       const plan = org && planCode ? await getPlan(db, planCode).catch(() => null) : null;
       const prev = await db
-        .prepare("SELECT provider_event_at, payment_failed_at, grace_until FROM subscriptions WHERE organization_id = ?")
+        .prepare("SELECT provider_event_at, payment_failed_at, grace_until, status, plan_code, provider FROM subscriptions WHERE organization_id = ?")
         .bind(orgId)
-        .first<{ provider_event_at: number | null; payment_failed_at: string | null; grace_until: string | null }>();
+        .first<{ provider_event_at: number | null; payment_failed_at: string | null; grace_until: string | null; status: string | null; plan_code: string | null; provider: string | null }>();
       const stale = isSubEvent && typeof prev?.provider_event_at === "number" && prev.provider_event_at > created;
       if (org && plan && planCode && !stale) {
         const subId = (event.type === "checkout.session.completed" ? obj["subscription"] : obj["id"]) as string | undefined;
@@ -628,6 +632,15 @@ webhooks.post("/stripe", async (c) => {
           ...(paid ? [grantStmt(db, orgId, plan.limits.monthlyCredits, `grant:${orgId}:${monthKey()}:${planCode}`, "plan_upgrade", "stripe")] : []),
           auditStmt(db, { organizationId: orgId, actorUserId: null, action: "billing.subscription_sync", entityType: "subscription", after: { planCode, status, interval, paused: !!pausedUntil, eventId: event.id } }),
         ]);
+        // Product funnel (cookieless, no personal data): first trial, first paid period, plan upgrades.
+        const wasStripe = prev?.provider === "stripe" && prev.status !== "canceled";
+        const props = { plan: planCode, interval: interval ?? "month" };
+        if (status === "trialing" && !(wasStripe && prev?.status === "trialing")) await trackEvent(db, { event: "trial_started", organizationId: orgId, props });
+        else if (status === "active" && !(wasStripe && prev?.status === "active")) await trackEvent(db, { event: "subscribed", organizationId: orgId, props });
+        else if (status === "active" && wasStripe && prev?.status === "active" && prev.plan_code && prev.plan_code !== planCode) {
+          const rank = (code: string) => PLAN_OFFERS.findIndex((o) => o.code === code);
+          if (rank(planCode) > rank(prev.plan_code)) await trackEvent(db, { event: "upgraded", organizationId: orgId, props: { ...props, from: prev.plan_code } });
+        }
         handled = true;
       } else if (stale) handled = true;
     } else if (orgId && event.type === "customer.subscription.deleted") {

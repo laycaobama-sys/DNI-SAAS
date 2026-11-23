@@ -10,7 +10,7 @@ import { createHarness } from "./helpers";
 
 const WEB = join(import.meta.dirname, "..", "..", "web");
 const read = (p: string) => readFileSync(join(WEB, p), "utf8");
-const PAGES = ["index.html", "blog.html", "seguridad.html", "404.html", ...readdirSync(join(WEB, "legal")).filter((f) => f.endsWith(".html")).map((f) => `legal/${f}`)];
+const PAGES = ["index.html", "blog.html", "seguridad.html", "precios.html", "404.html", ...readdirSync(join(WEB, "legal")).filter((f) => f.endsWith(".html")).map((f) => `legal/${f}`)];
 
 /** Headers of the `/*` block of apps/web/public/_headers, lower-cased names. */
 function headersFileBlock(): Record<string, string> {

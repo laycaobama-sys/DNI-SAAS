@@ -21,7 +21,7 @@
     "not_found_handling": "404-page",
     // Pages also run the Worker first so non-canonical hosts/variants get a 301 (duplicate-content fix).
     // Unknown paths get dist/404.html with status 404 (not_found_handling); /404 itself also answers 404.
-    "run_worker_first": ["/", "/index.html", "/legal/*", "/blog", "/blog.html", "/blog/*", "/seguridad", "/seguridad.html", "/404", "/404.html", "/l/*", "/api/*", "/app", "/app/*", "/google*.html", "/robots.txt", "/sitemap.xml", "/llms.txt"]
+    "run_worker_first": ["/", "/index.html", "/legal/*", "/blog", "/blog.html", "/blog/*", "/seguridad", "/seguridad.html", "/precios", "/precios.html", "/404", "/404.html", "/l/*", "/api/*", "/app", "/app/*", "/google*.html", "/robots.txt", "/sitemap.xml", "/llms.txt"]
   },
 
   // D1 created with jurisdiction=eu (data stays in the EU).
@@ -73,7 +73,7 @@
     // Hard monthly cap kept under the 3,000 emails included in Workers Paid (no overage charges).
     "EMAIL_MONTHLY_CAP": "2500",
     "GOOGLE_CLIENT_ID": "1028756015912-90c4g5idtm8tgea4s6dh92lj3ljfs2e2.apps.googleusercontent.com",
-    "BILLING_ENABLED": "false",
+    "BILLING_ENABLED": "auto",
     // GEO monitor: Gemini API on the FREE tier only (no billing account on the key project).
     "GEMINI_MODEL": "gemini-3.8-flash",
     // Free model used only when the main one is overloaded (5xx); each sample stores who answered.

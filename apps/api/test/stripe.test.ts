@@ -503,6 +503,9 @@ describe("Billing v2: annual, trial, pause, cancellation offers, live readiness"
     let r = await owner.post(`/api/v1/orgs/${orgId}/billing/checkout`, { planCode: "starter", acceptTerms: true });
     expect(r.json.code).toBe("provider_not_ready");
     expect((await owner.get(`/api/v1/orgs/${orgId}/billing`)).json.stripe.note).toMatch(/verificando la cuenta/);
+    // The public pricing page never claims open payments before Stripe does.
+    const pub = async () => (await h.app.request("/api/v1/public/pricing-status", {}, h.env, h.ctx)).json() as Promise<{ paymentsOpen: boolean }>;
+    expect(await pub()).toEqual({ paymentsOpen: false });
     // Stripe approves the account: next hourly refresh opens payments for every customer.
     stripe.state.chargesEnabled = true;
     await h.db.prepare("DELETE FROM platform_settings WHERE k LIKE 'stripe_autosync_last_%'").run();
@@ -510,6 +513,14 @@ describe("Billing v2: annual, trial, pause, cancellation offers, live readiness"
     r = await owner.post(`/api/v1/orgs/${orgId}/billing/checkout`, { planCode: "starter", acceptTerms: true });
     expect(r.status).toBe(200);
     expect((await owner.get(`/api/v1/orgs/${orgId}/billing`)).json.stripe).toMatchObject({ access: "open", canCheckout: true, mode: "live" });
+    expect(await pub()).toEqual({ paymentsOpen: true });
+  });
+
+  it("public pricing status stays closed in test mode, even with payments forced on", async () => {
+    const { h } = await setup({ flag: true });
+    const res = await h.app.request("/api/v1/public/pricing-status", {}, h.env, h.ctx);
+    expect(await res.json()).toEqual({ paymentsOpen: false });
+    expect(res.headers.get("cache-control")).toMatch(/max-age=300/);
   });
 
   it("foreign products: preview excludes DNI Growth products and only listed ones are archived (never deleted)", async () => {
@@ -584,5 +595,36 @@ describe("Plan rows follow the commercial catalogue", () => {
     const limits = Object.fromEntries(results.map((r) => [r.code, JSON.parse(r.limits_json)]));
     expect(limits["growth"]).toMatchObject({ brands: 1, seats: 3, analysesPerMonth: 60, articlesPerMonth: 30 });
     expect(limits["agency"]).toMatchObject({ brands: 15, clientOrgs: 15 });
+  });
+});
+
+describe("Billing funnel events and guarantee continuity", () => {
+  it("records trial_started, subscribed and upgraded once each (cookieless, no personal data)", async () => {
+    const { h, owner, orgId } = await setup();
+    await owner.post("/api/v1/admin/billing/stripe/sync", {});
+    const price = async (code: string) => (await h.db.prepare("SELECT stripe_price_id AS id FROM plans WHERE code = ?").bind(code).first<{ id: string }>())!.id;
+    const t = Math.floor(Date.now() / 1000);
+    await webhook(h, subEvent("evt_f1", "customer.subscription.created", orgId, await price("growth"), t, "trialing", { trial_end: t + 7 * 86400 }));
+    await webhook(h, subEvent("evt_f2", "customer.subscription.updated", orgId, await price("growth"), t + 1, "trialing", { trial_end: t + 7 * 86400 }));
+    await webhook(h, subEvent("evt_f3", "customer.subscription.updated", orgId, await price("growth"), t + 2, "active"));
+    await webhook(h, subEvent("evt_f4", "customer.subscription.updated", orgId, await price("pro"), t + 3, "active"));
+    await webhook(h, subEvent("evt_f5", "customer.subscription.updated", orgId, await price("starter"), t + 4, "active"));
+    const { results } = await h.db.prepare("SELECT event, props_json FROM product_events WHERE organization_id = ? AND event IN ('trial_started', 'subscribed', 'upgraded', 'paused', 'canceled') ORDER BY created_at, event").bind(orgId).all<{ event: string; props_json: string }>();
+    expect(results.map((r) => r.event).sort()).toEqual(["subscribed", "trial_started", "upgraded"]);
+    expect(JSON.parse(results.find((r) => r.event === "upgraded")!.props_json)).toMatchObject({ plan: "pro", from: "growth" });
+    for (const r of results) expect(r.props_json).not.toMatch(/@/);
+  });
+
+  it("a pause during the 90 days breaks continuity: the guarantee says why and never offers a refund", async () => {
+    const { h, owner, orgId } = await setup();
+    await owner.post("/api/v1/admin/billing/stripe/sync", {});
+    const growth = (await h.db.prepare("SELECT stripe_price_id AS id FROM plans WHERE code = 'growth'").first<{ id: string }>())!.id;
+    await webhook(h, subEvent("evt_p1", "customer.subscription.updated", orgId, growth, Math.floor(Date.now() / 1000), "active"));
+    expect((await owner.post(`/api/v1/orgs/${orgId}/billing/pause`, { months: 1 })).status).toBe(200);
+    expect((await owner.post(`/api/v1/orgs/${orgId}/billing/resume`, {})).status).toBe(200);
+    const g = (await owner.get(`/api/v1/orgs/${orgId}/billing/guarantee`)).json;
+    expect(g.status).toBe("requirements_missing");
+    expect(g.requirements.find((r: { key: string }) => r.key === "days")).toMatchObject({ met: false, detail: expect.stringMatching(/pausó/) });
+    expect((await owner.post(`/api/v1/orgs/${orgId}/billing/guarantee/claim`, {})).json.code).toBe("guarantee_not_available");
   });
 });

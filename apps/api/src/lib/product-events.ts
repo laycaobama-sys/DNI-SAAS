@@ -50,6 +50,11 @@ export const INSTRUMENTED: Partial<Record<ProductEvent, string>> = {
   signup: "servidor: registro con correo o con Google",
   onboarding_step: "servidor: correo verificado y organización creada",
   gsc_connected: "servidor: conexión de Search Console completada",
+  trial_started: "servidor: webhook de Stripe, primera prueba de la organización",
+  subscribed: "servidor: webhook de Stripe, primer periodo pagado",
+  upgraded: "servidor: webhook de Stripe, cambio a un plan superior",
+  canceled: "servidor: cancelación programada desde la app",
+  paused: "servidor: pausa desde la app",
 };
 
 /** Events are deleted after 13 months (cron in src/index.ts). */

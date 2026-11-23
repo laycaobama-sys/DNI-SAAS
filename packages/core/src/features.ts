@@ -1,3 +1,4 @@
+import { GUARANTEE, PLAN_OFFERS } from "./pricing";
 /**
  * Single source of truth for what each module really does today. The public site (badges and module
  * names), llms.txt (generated at build time by apps/web/vite.config.ts) and the app menu read from here,
@@ -138,6 +139,10 @@ ${modules}
 ## En desarrollo (no disponible todavía)
 ${building.map((b) => `- ${b}`).join("\n")}
 
+## Planes y precios (EUR al mes, IVA aparte; anual = 2 meses gratis)
+${PLAN_OFFERS.map((o) => `- ${o.name}: ${o.monthly === 0 ? "gratis" : `${o.monthly} € al mes o ${o.yearlyPerMonth} € al mes en anual`}${o.trialDays ? `, ${o.trialDays} días de prueba gratis` : ""}. ${o.tagline}.`).join("\n")}
+- Garantía medible de ${GUARANTEE.days} días en ${GUARANTEE.plans.map((c) => PLAN_OFFERS.find((o) => o.code === c)?.name ?? c).join(", ")}: condiciones en ${url}/legal/garantia
+
 ## Principios
 - Ninguna métrica sin fuente ni fecha. No se garantizan posiciones en buscadores ni menciones en motores de IA.
 - Nada se publica ni se gasta sin aprobación explícita.
@@ -145,6 +150,7 @@ ${building.map((b) => `- ${b}`).join("\n")}
 
 ## Enlaces
 - [Inicio](${url}/)
+- [Precios](${url}/precios)
 - [Blog](${url}/blog)
 - [Seguridad y confianza](${url}/seguridad)
 - [Crear cuenta y auditar una web](${url}/app/register)

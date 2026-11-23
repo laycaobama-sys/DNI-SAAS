@@ -15,7 +15,7 @@ import { requireScope } from "../middleware";
  */
 
 /** Public pages listed in the sitemap besides the blog posts. */
-export const SITE_PAGES = ["/", "/blog", "/seguridad", "/legal/privacidad", "/legal/aviso-legal", "/legal/condiciones", "/legal/eliminacion-datos"];
+export const SITE_PAGES = ["/", "/precios", "/blog", "/seguridad", "/legal/garantia", "/legal/privacidad", "/legal/aviso-legal", "/legal/condiciones", "/legal/eliminacion-datos"];
 
 interface PostRow {
   id: string;

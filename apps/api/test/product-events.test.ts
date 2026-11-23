@@ -210,7 +210,9 @@ describe("GET /api/v1/admin/funnel", () => {
     expect(step(d7, "audit_started")).toMatchObject({ server: 1, client: 2, total: 3, visitorDays: 2, instrumented: true, stage: "funnel" });
     // Two users signed up and verified through the real flow.
     expect(step(d7, "signup")).toMatchObject({ server: 2, total: 2, instrumented: true });
-    expect(step(d7, "subscribed")).toMatchObject({ total: 0, visitorDays: null, instrumented: false, instrumentedBy: null });
+    expect(step(d7, "subscribed")).toMatchObject({ total: 0, visitorDays: null, instrumented: true });
+    // Not recorded by any flow yet: shown as «sin instrumentar» so a zero is not read as «nobody did it».
+    expect(step(d7, "cms_connected")).toMatchObject({ total: 0, instrumented: false, instrumentedBy: null });
     expect(step(d30, "subscribed").total).toBe(1);
     expect(step(d30, "canceled")).toMatchObject({ total: 0, stage: "churn" });
     expect(d7.steps.map((s: any) => s.event)).toEqual([...PRODUCT_EVENTS]);

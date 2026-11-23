@@ -19,7 +19,7 @@ import { automation } from "./routes/automation";
 import { studio } from "./routes/studio";
 import { agency } from "./routes/agency";
 import { auth } from "./routes/auth";
-import { billing, providerManifest, webhooks } from "./routes/billing";
+import { billing, billingPublic, providerManifest, webhooks } from "./routes/billing";
 import { insights } from "./routes/insights";
 import { oauth } from "./routes/oauth";
 import { analytics } from "./routes/analytics";
@@ -49,7 +49,7 @@ export function canonicalRedirect(url: URL, canon: URL): string | null {
   if (path.startsWith("/api/") && path !== "/api/v1/auth/google/start") return null;
   let clean = path;
   if (clean === "/index.html") clean = "/";
-  else if (/^\/(legal\/[a-z-]+|blog|blog\/[a-z0-9-]+|seguridad)(\.html|\/)$/.test(clean)) clean = clean.replace(/(\.html|\/)$/, "");
+  else if (/^\/(legal\/[a-z-]+|blog|blog\/[a-z0-9-]+|seguridad|precios)(\.html|\/)$/.test(clean)) clean = clean.replace(/(\.html|\/)$/, "");
   const offHost = url.host !== canon.host || url.protocol !== canon.protocol;
   if (!offHost && clean === path) return null;
   return `${canon.origin}${clean}${url.search}`;
@@ -89,6 +89,7 @@ export function createApp(deps: Deps) {
   );
   app.route("/api/v1/public", crmPublic);
   app.route("/api/v1/public", eventsPublic);
+  app.route("/api/v1/public", billingPublic);
 
   // Every tenant route: authenticated user + active membership resolved from the path.
   const tenant = new Hono<AppEnv>();

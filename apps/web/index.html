@@ -58,7 +58,7 @@
             "operatingSystem": "Web",
             "url": "__SITE_URL__/",
             "description": "Auditoría técnica SEO, GEO y AEO con evidencia por URL, perfil de marca verificable y plan de crecimiento editable de 30 días.",
-            "offers": { "@type": "Offer", "name": "Free Audit", "price": "0", "priceCurrency": "EUR" },
+            "offers": { "@type": "Offer", "name": "Free", "price": "0", "priceCurrency": "EUR" },
             "publisher": { "@id": "__SITE_URL__/#org" }
           },
           {
@@ -67,7 +67,7 @@
               { "@type": "Question", "name": "¿Qué es GEO (Generative Engine Optimization)?", "acceptedAnswer": { "@type": "Answer", "text": "GEO es el trabajo para que motores de respuesta con IA (como asistentes conversacionales y buscadores generativos) entiendan, citen y recomienden correctamente tu marca: datos estructurados, entidad de marca clara, contenido verificable y fuentes de autoridad. DNI Growth revisa estas señales técnicas en tu web." } },
               { "@type": "Question", "name": "¿Qué es AEO (Answer Engine Optimization)?", "acceptedAnswer": { "@type": "Answer", "text": "AEO consiste en estructurar tu contenido para responder preguntas concretas de forma directa: FAQs reales, encabezados claros, datos estructurados válidos y respuestas breves que buscadores y asistentes puedan extraer." } },
               { "@type": "Question", "name": "¿DNI Growth garantiza la primera posición en Google o aparecer en ChatGPT?", "acceptedAnswer": { "@type": "Answer", "text": "No. Ningún proveedor puede garantizar posiciones ni menciones en motores de IA. DNI Growth te muestra problemas reales con evidencia, prioriza mejoras y mide resultados con datos de fuente cuando conectas tus cuentas." } },
-              { "@type": "Question", "name": "¿La auditoría es gratuita y segura para mi web?", "acceptedAnswer": { "@type": "Answer", "text": "Sí. El plan Free Audit incluye auditorías limitadas. El rastreo es público y no intrusivo: solo lee páginas HTML públicas, respeta robots.txt, limita páginas y velocidad, y no modifica nada en tu sitio." } },
+              { "@type": "Question", "name": "¿La auditoría es gratuita y segura para mi web?", "acceptedAnswer": { "@type": "Answer", "text": "Sí. El plan Free incluye 3 auditorías al mes. El rastreo es público y no intrusivo: solo lee páginas HTML públicas, respeta robots.txt, limita páginas y velocidad, y no modifica nada en tu sitio." } },
               { "@type": "Question", "name": "¿Publicáis contenido o lanzáis anuncios sin mi permiso?", "acceptedAnswer": { "@type": "Answer", "text": "Nunca. Cualquier publicación, gasto publicitario o envío requiere tu aprobación explícita, límites de presupuesto configurados y queda registrado en el historial de auditoría." } },
               { "@type": "Question", "name": "¿Dónde se guardan mis datos?", "acceptedAnswer": { "@type": "Answer", "text": "En la infraestructura de Cloudflare, con base de datos en jurisdicción de la Unión Europea, aislamiento por empresa y secretos fuera de la base de datos." } }
             ]
@@ -76,6 +76,7 @@
       }
     </script>
     <link rel="stylesheet" href="/src/landing/landing.css" />
+    <link rel="stylesheet" href="/src/landing/pricing.css" />
   </head>
   <body>
     <a class="skip" href="#main">Saltar al contenido</a>
@@ -87,7 +88,7 @@
         <ul class="nav-links">
           <li><a href="#ya-funciona">Producto</a></li>
           <li><a href="#como-funciona">Cómo funciona</a></li>
-          <li><a href="#precios">Precios</a></li>
+          <li><a href="/precios">Precios</a></li>
           <li><a href="#faq">Preguntas</a></li>
           <li><a href="/blog">Blog</a></li>
         </ul>
@@ -301,20 +302,13 @@
         <div class="section-head reveal">
           <p class="kicker">Precios</p>
           <h2 id="price-title" class="h2 invert-hover">Empieza gratis. Escala cuando lo demuestres.</h2>
-          <p class="lead">Precios de lanzamiento orientativos, IVA no incluido. El gasto publicitario siempre se factura aparte. Los planes de pago se activarán cuando la pasarela de pago esté verificada.</p>
+          <p class="lead">Precios en euros al mes, IVA aparte. En anual pagas 10 meses y usas 12. Sin permanencia: cancelas desde la app cuando quieras. El gasto publicitario siempre va aparte.</p>
         </div>
-        <div class="plans">
-          <article class="plan plan-featured reveal">
-            <h3>Free Audit</h3>
-            <p class="price">0 €</p>
-            <ul><li>3 auditorías al mes</li><li>Hasta 10 páginas por auditoría</li><li>Perfil de marca y plan de 30 días</li><li>1 usuario</li></ul>
-            <a class="btn btn-accent" href="/app/register">Crear cuenta gratis</a>
-          </article>
-          <article class="plan reveal"><h3>Starter</h3><p class="price">39 €<small>/mes</small></p><ul><li>1 marca · 1 usuario</li><li>20 auditorías/mes · 25 páginas</li></ul><span class="badge">Próximamente</span></article>
-          <article class="plan reveal"><h3>Growth</h3><p class="price">89 €<small>/mes</small></p><ul><li>3 marcas · 3 usuarios</li><li>60 auditorías/mes · 50 páginas</li></ul><span class="badge">Próximamente</span></article>
-          <article class="plan reveal"><h3>Pro</h3><p class="price">179 €<small>/mes</small></p><ul><li>10 marcas · 10 usuarios</li><li>200 auditorías/mes · 100 páginas</li></ul><span class="badge">Próximamente</span></article>
-          <article class="plan reveal"><h3>Agency</h3><p class="price">349 €<small>/mes</small></p><ul><li>50 marcas · 25 usuarios</li><li>Portal cliente y marca blanca (en desarrollo)</li></ul><span class="badge">Próximamente</span></article>
+        <div class="plans plans-5">
+          <!--PRICING:LANDING_PLANS-->
         </div>
+        <p class="plans-more"><span class="pp-status" data-pricing-status role="status" aria-live="polite"></span></p>
+        <p class="plans-more"><a href="/precios">Comparativa completa, estado de cada función y garantía de 90 días →</a></p>
       </section>
 
       <section id="faq" class="faq" aria-labelledby="faq-title">
@@ -326,7 +320,7 @@
           <details class="reveal"><summary>¿Qué es GEO (Generative Engine Optimization)?</summary><p>GEO es el trabajo para que motores de respuesta con IA entiendan, citen y recomienden correctamente tu marca: datos estructurados, entidad de marca clara, contenido verificable y fuentes de autoridad. DNI Growth revisa estas señales técnicas en tu web.</p></details>
           <details class="reveal"><summary>¿Qué es AEO (Answer Engine Optimization)?</summary><p>AEO consiste en estructurar tu contenido para responder preguntas concretas de forma directa: FAQs reales, encabezados claros, datos estructurados válidos y respuestas breves que buscadores y asistentes puedan extraer.</p></details>
           <details class="reveal"><summary>¿Garantizáis la primera posición en Google o aparecer en ChatGPT?</summary><p>No. Ningún proveedor puede garantizar posiciones ni menciones en motores de IA. Te mostramos problemas reales con evidencia, priorizamos mejoras y medimos resultados con datos de fuente cuando conectas tus cuentas.</p></details>
-          <details class="reveal"><summary>¿La auditoría es gratuita y segura para mi web?</summary><p>Sí. El plan Free Audit incluye auditorías limitadas. El rastreo es público y no intrusivo: solo lee páginas HTML públicas, respeta robots.txt, limita páginas y velocidad, y no modifica nada en tu sitio.</p></details>
+          <details class="reveal"><summary>¿La auditoría es gratuita y segura para mi web?</summary><p>Sí. El plan Free incluye 3 auditorías al mes. El rastreo es público y no intrusivo: solo lee páginas HTML públicas, respeta robots.txt, limita páginas y velocidad, y no modifica nada en tu sitio.</p></details>
           <details class="reveal"><summary>¿Publicáis contenido o lanzáis anuncios sin mi permiso?</summary><p>Nunca. Cualquier publicación, gasto publicitario o envío requiere tu aprobación explícita, límites de presupuesto configurados y queda registrado en el historial de auditoría.</p></details>
           <details class="reveal"><summary>¿Dónde se guardan mis datos?</summary><p>En la infraestructura de Cloudflare, con base de datos en jurisdicción de la Unión Europea, aislamiento por empresa y secretos fuera de la base de datos. Te lo explicamos con detalle en <a href="/seguridad">Seguridad y confianza</a>.</p></details>
         </div>
@@ -363,17 +357,20 @@
         <p>Más clientes desde Google y ChatGPT. Con pruebas.</p>
       </div>
       <nav aria-label="Más páginas" class="footer-links">
+        <a href="/precios">Precios</a>
         <a href="/blog">Blog</a>
         <a href="/seguridad">Seguridad</a>
         <a href="/#contacto">Contacto</a>
         <a href="/legal/privacidad">Privacidad</a>
         <a href="/legal/aviso-legal">Aviso legal</a>
         <a href="/legal/condiciones">Condiciones de uso</a>
+        <a href="/legal/garantia">Garantía</a>
         <a href="/legal/eliminacion-datos">Eliminación de datos</a>
         <a href="/llms.txt">llms.txt</a>
       </nav>
       <p class="footer-copy">© <span data-year>2026</span> DNI Growth · Actualizado __BUILD_DATE__</p>
     </footer>
     <script type="module" src="/src/landing/landing.ts"></script>
+    <script type="module" src="/src/landing/pricing.ts"></script>
   </body>
 </html>
