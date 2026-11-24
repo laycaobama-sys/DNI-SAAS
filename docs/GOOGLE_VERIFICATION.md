@@ -3,7 +3,11 @@
 Proyecto de Google Cloud: `dni-growth` · Google Auth Platform · app **publicada (producción)**, sin verificar.
 Mientras no esté verificada: aviso «Google no ha verificado esta app» en el consentimiento y tope de **100 usuarios** con permisos sensibles. La verificación no tiene coste.
 
-## Estado (2026-11-24): FALTA RESPONDER AL CORREO DEL 21 DE NOVIEMBRE
+## Estado (2026-11-24): RESPUESTA ENVIADA, A LA ESPERA DE GOOGLE
+
+**Enviada el 2026-11-24 a la 1:55 (hora de España)** desde el Gmail de la titular, como respuesta al mismo correo (destinatario: la dirección de respuesta de «API OAuth Dev Verification»). Gmail confirmó «Mensaje enviado». Si Google responde con el correo de su revisor, hay que invitarlo a la organización «Demo verificación Google» con rol Analista.
+
+Antecedente:
 
 El 21 nov llegó «[Action Needed] Your Google APIs Verification Request» (equipo *Third Party Data Safety*): una lista de comprobación y la frase «You must reply to this email … in order to proceed with the review». **La revisión no avanza hasta que se responda.**
 

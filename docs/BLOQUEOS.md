@@ -34,9 +34,9 @@ El texto que acepta el cliente queda guardado con su versión (`termsVersion 202
 - Añade tu NIF en *Configuración → Facturas → Identificadores fiscales* para que aparezca en las facturas.
 - Pregunta a tu gestor por VERI*FACTU.
 
-## 4. URGENTE · Google: responder al correo del 21 de noviembre
+## 4. EN CURSO · Google: respuesta enviada, esperando a Google
 
-Google envió el 21 nov «[Action Needed] Your Google APIs Verification Request» y **no sigue con la revisión hasta que se responda**. La respuesta está escrita y revisada punto por punto en [GOOGLE_VERIFICATION.md](GOOGLE_VERIFICATION.md) (permisos idénticos a los registrados desde la versión `8015e5ff`, vídeo accesible, acceso gratis sin tarjeta, política de privacidad completa). Se envía desde tu Gmail, como respuesta a ese mismo correo, en cuanto des el visto bueno.
+Google pidió el 21 nov que confirmáramos su lista de requisitos («[Action Needed] Your Google APIs Verification Request»). La respuesta se **envió el 2026-11-24 a la 1:55** desde tu Gmail, con tu autorización ([texto en GOOGLE_VERIFICATION.md](GOOGLE_VERIFICATION.md)): permisos idénticos a los registrados desde la versión `8015e5ff`, vídeo, acceso gratis sin tarjeta y política de privacidad. Ahora le toca a Google.
 
 Si Google contesta con el correo de su revisor, hay que invitarlo a la organización «Demo verificación Google» (ya tiene Analytics), como miembro con rol Analista.
 
@@ -50,12 +50,14 @@ Comprobado en Google Cloud (*Google Auth Platform → Centro de verificación*) 
 
 Mientras tanto la conexión ya funciona: las sincronizaciones diarias de Search Console y Analytics se completan (11 y 7 en los últimos 7 días). Cada cliente nuevo ve el aviso «app no verificada» hasta que Google termine. La garantía de 90 días necesita Search Console conectado.
 
-## 5. BLOQUEADO · Meta: falta verificar la empresa
+## 5. EN CURSO · Meta: app publicada; falta proveedor de tecnología y verificar la empresa
 
-Comprobado el 2026-11-24: **la cuenta de desarrollador ya no pide confirmación** (la revisión de la app abre sin el aviso de «actividad inusual»). La app «DNI Growth» no tiene solicitudes enviadas.
+Hecho el 2026-11-24:
+- **La cuenta de desarrollador ya no pide confirmación** (la revisión de la app abre sin el aviso de «actividad inusual»).
+- **App «DNI Growth» publicada** (modo producción): Meta indicó «Se ha completado toda la configuración obligatoria» y después «Tu aplicación se ha publicado correctamente»; la alerta «Cambio del modo de la aplicación» lo confirma. Se puede volver a modo desarrollo con «Anular publicación».
 
-El paso siguiente solo lo puedes dar tú, porque pide documentos de la empresa y es una decisión que Meta no deja deshacer:
-1. En el panel de la app, «Conviértete en un proveedor de tecnología» → **Sí, soy proveedor de tecnología** (Meta avisa: «Esta decisión no se puede revocar»). No se ha pulsado.
+Pendiente:
+1. En el panel de la app, «Conviértete en un proveedor de tecnología» → **Sí, soy proveedor de tecnología**. Meta avisa: «Esta decisión no se puede revocar». El sistema de seguridad del asistente bloqueó este clic por ser irreversible, así que no se ha pulsado.
 2. Verificación de la empresa en Meta Business (documentos oficiales del negocio).
 3. Revisión de la app con los vídeos de cada permiso ([GUIA_APROBACIONES_GOOGLE_META.md](GUIA_APROBACIONES_GOOGLE_META.md)).
 

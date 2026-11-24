@@ -10,7 +10,8 @@ Leyenda: **Hecho** (funciona de punta a punta y está verificado) · **Parcial**
 - `pnpm verify`: lint, typecheck, **548 pruebas**, build y escaneo de secretos en verde.
 - `/precios`, portada, inicio de sesión, privacidad y `/api/v1/health` → 200; `/precios` con Search Console (todos) y Analytics (desde Starter); Google pide solo `openid email` al iniciar sesión.
 - Reconciliación con Stripe ejecutada por el cron a las 00:31 UTC; suscripciones de producción coherentes con su plan.
-- Meta: la cuenta de desarrollador ya no pide confirmación; falta la verificación de la empresa (titular).
+- Google: respuesta al correo de verificación del 21 nov enviada el 2026-11-24.
+- Meta: la cuenta de desarrollador ya no pide confirmación y la app «DNI Growth» está publicada (modo producción); falta ser proveedor de tecnología y verificar la empresa.
 
 **2026-11-24 (Fase 2):**
 - `pnpm verify`: lint, typecheck, **539 pruebas** (47 ficheros), build y escaneo de secretos en verde.
