@@ -99,7 +99,7 @@ describe("Backlinks", () => {
       "https://blog.es/b": { body: html({ body: "<p>Sin enlaces</p>" }) },
     };
     const { h, owner, O } = await setup(site, "free");
-    expect((await owner.get(`${O}/backlinks`)).json).toMatchObject({ code: "plan_required", requiredPlan: "growth" });
+    expect((await owner.get(`${O}/backlinks`)).json).toMatchObject({ code: "plan_required", requiredPlan: "starter" });
     await capPlan(h, "growth", { backlinks: 50 });
     await h.db.prepare("UPDATE organizations SET plan_code = 'growth'").run();
     const imp = await owner.post(`${O}/backlinks`, { csv: "origen,destino\nhttps://blog.es/a,https://luna.es/\nhttps://blog.es/b,https://luna.es/\nhttps://blog.es/bloqueado/x,https://luna.es/\nno-es-url,https://luna.es/" });

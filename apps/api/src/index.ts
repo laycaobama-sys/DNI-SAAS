@@ -11,7 +11,7 @@ import { drainEmailOutbox } from "./lib/mail";
 import { maybeSyncCatalog } from "./lib/openrouter";
 import { purgeProductEvents } from "./lib/product-events";
 import { maybeAutoSyncStripe } from "./lib/stripe";
-import { billingMaintenance } from "./routes/billing";
+import { billingMaintenance, reconcileStripe } from "./routes/billing";
 import { deliverWebhooks, scanOverdueTasks } from "./lib/rules";
 import { log } from "./lib/util";
 
@@ -60,6 +60,7 @@ export default {
     // Stripe: catalogue/portal/webhook created automatically once a key exists; grace periods and trial reminders.
     await maybeAutoSyncStripe(env, deps, env.APP_ORIGIN).catch((e) => log("error", "stripe.autosync_cron_failed", { error: String(e).slice(0, 120) }));
     await billingMaintenance(env).catch((e) => log("error", "billing.maintenance_failed", { error: String(e).slice(0, 120) }));
+    await reconcileStripe(env, deps).catch((e) => log("error", "billing.reconcile_failed", { error: String(e).slice(0, 120) }));
     await env.DB.prepare("DELETE FROM ai_quota_counters WHERE updated_at < ?").bind(new Date(Date.now() - 3 * 86400_000).toISOString()).run();
     // Expiry sweep of the AI response cache (all tenants by design: rows are only deleted, never read).
     await env.DB.prepare("DELETE FROM ai_response_cache WHERE expires_at < ?").bind(new Date().toISOString()).run();

@@ -6,7 +6,7 @@ import { hmacSha256Hex, PLAN_OFFERS } from "@dni/core";
 import { describe, expect, it } from "vitest";
 import { createHarness } from "./helpers";
 import { RETENTION_COUPON_NAME, WEBHOOK_EVENTS, maybeAutoSyncStripe, productNameFor, stripeApi } from "../src/lib/stripe";
-import { billingMaintenance } from "../src/routes/billing";
+import { billingMaintenance, reconcileStripe } from "../src/routes/billing";
 
 const WHSEC = "whsec_fixture_secret";
 // Assembled at runtime so the repository secret scanner never sees a key-shaped literal.
@@ -35,7 +35,14 @@ function fakeStripe() {
     { id: "dni_growth_starter", name: "DNI Growth Starter", created: 2, metadata: { managed_by: "dni-growth" } },
   ];
   const archivedProducts: string[] = [];
-  const state = { chargesEnabled: true, taxStatus: "pending" as string, invoices: [] as Array<{ id: string; amount_paid: number; created: number; status: string }> };
+  const state = {
+    chargesEnabled: true,
+    taxStatus: "pending" as string,
+    invoices: [] as Array<{ id: string; amount_paid: number; created: number; status: string }>,
+    /** What Stripe would answer when we read a Checkout Session or a subscription directly (reconciliation). */
+    sessions: {} as Record<string, Record<string, unknown>>,
+    subs: {} as Record<string, Record<string, unknown>>,
+  };
   let n = 0;
   const handler = async (url: string, init?: RequestInit) => {
     const u = new URL(url);
@@ -110,6 +117,14 @@ function fakeStripe() {
     if (method === "POST" && path.startsWith("/webhook_endpoints/")) {
       const e = endpoints.find((x) => x.id === path.split("/")[2]);
       return e ? Response.json({ id: e.id, url: e.url }) : Response.json({ error: { code: "resource_missing" } }, { status: 404 });
+    }
+    if (method === "GET" && path.startsWith("/checkout/sessions/")) {
+      const cs = state.sessions[path.split("/")[3]!];
+      return cs ? Response.json(cs) : Response.json({ error: { code: "resource_missing" } }, { status: 404 });
+    }
+    if (method === "GET" && path.startsWith("/subscriptions/")) {
+      const sub = state.subs[path.split("/")[2]!];
+      return sub ? Response.json(sub) : Response.json({ error: { code: "resource_missing" } }, { status: 404 });
     }
     if (method === "POST" && path === "/checkout/sessions") return Response.json({ id: `cs_test_${++n}`, url: `https://checkout.stripe.com/c/pay/cs_test_${n}` });
     if (method === "POST" && path === "/billing_portal/sessions") return Response.json({ url: "https://billing.stripe.com/p/session/test_123" });
@@ -268,7 +283,7 @@ describe("Subscription lifecycle via signed webhooks", () => {
     const price = async (code: string) => (await h.db.prepare("SELECT stripe_price_id FROM plans WHERE code = ?").bind(code).first<{ stripe_price_id: string }>())!.stripe_price_id;
     const t0 = Math.floor(Date.now() / 1000);
 
-    const done = await webhook(h, { id: "evt_1", type: "checkout.session.completed", created: t0, livemode: false, data: { object: { subscription: "sub_1", customer: "cus_1", client_reference_id: orgId, metadata: { organization_id: orgId, plan_code: "growth" } } } });
+    const done = await webhook(h, { id: "evt_1", type: "checkout.session.completed", created: t0, livemode: false, data: { object: { payment_status: "paid", subscription: "sub_1", customer: "cus_1", client_reference_id: orgId, metadata: { organization_id: orgId, plan_code: "growth" } } } });
     expect(done.status).toBe(200);
     expect((await webhook(h, { id: "evt_1", type: "checkout.session.completed", created: t0, livemode: false, data: { object: {} } })).json.duplicate).toBe(true);
     let bill = (await owner.get(`/api/v1/orgs/${orgId}/billing`)).json;
@@ -384,7 +399,7 @@ describe("Platform-managed webhook endpoint", () => {
     expect(stripe.endpoints).toHaveLength(1);
 
     // Events signed with the managed secret are accepted; a wrong secret is rejected.
-    const evt = { id: "evt_m1", type: "checkout.session.completed", created: Math.floor(Date.now() / 1000), livemode: false, data: { object: { subscription: "sub_9", customer: "cus_9", metadata: { organization_id: orgId, plan_code: "starter" } } } };
+    const evt = { id: "evt_m1", type: "checkout.session.completed", created: Math.floor(Date.now() / 1000), livemode: false, data: { object: { payment_status: "paid", subscription: "sub_9", customer: "cus_9", metadata: { organization_id: orgId, plan_code: "starter" } } } };
     expect((await webhook(h, evt, "whsec_wrong")).status).toBe(400);
     expect((await webhook(h, evt, secret)).status).toBe(200);
     expect((await owner.get(`/api/v1/orgs/${orgId}/billing`)).json).toMatchObject({ plan: { code: "starter" }, stripe: { configured: true } });
@@ -406,7 +421,7 @@ describe("Billing v2: annual, trial, pause, cancellation offers, live readiness"
     (await h.db.prepare(`SELECT ${col} AS id FROM plans WHERE code = ?`).bind(code).first<{ id: string }>())!.id;
   const activate = async (h: ReturnType<typeof createHarness>, orgId: string, priceId: string, status = "active", extra: Record<string, unknown> = {}) => {
     const t = Math.floor(Date.now() / 1000);
-    await webhook(h, { id: `evt_co_${priceId}_${status}`, type: "checkout.session.completed", created: t, livemode: false, data: { object: { subscription: "sub_1", customer: "cus_1", client_reference_id: orgId, metadata: { organization_id: orgId, plan_code: "growth" } } } });
+    await webhook(h, { id: `evt_co_${priceId}_${status}`, type: "checkout.session.completed", created: t, livemode: false, data: { object: { payment_status: status === "trialing" ? "no_payment_required" : "paid", subscription: "sub_1", customer: "cus_1", client_reference_id: orgId, metadata: { organization_id: orgId, plan_code: "growth" } } } });
     await webhook(h, subEvent(`evt_su_${priceId}_${status}`, "customer.subscription.updated", orgId, priceId, t + 1, status, extra));
   };
 
@@ -674,5 +689,120 @@ describe("Stripe idempotency keys", () => {
     expect(seen[0]).toMatch(/^product:p:v1:[0-9a-f]{16}$/);
     expect(seen[1]).toBe(seen[0]);
     expect(seen[2]).not.toBe(seen[0]);
+  });
+});
+
+describe("Money safety: what the customer paid is what the organisation gets", () => {
+  const priceOf = async (h: ReturnType<typeof createHarness>, code: string, col = "stripe_price_id") =>
+    (await h.db.prepare(`SELECT ${col} AS id FROM plans WHERE code = ?`).bind(code).first<{ id: string }>())!.id;
+  const planOf = async (h: ReturnType<typeof createHarness>, orgId: string) => (await h.db.prepare("SELECT plan_code FROM organizations WHERE id = ?").bind(orgId).first<{ plan_code: string }>())!.plan_code;
+  const subOf = async (h: ReturnType<typeof createHarness>, orgId: string) =>
+    (await h.db.prepare("SELECT status, plan_code, current_period_end FROM subscriptions WHERE organization_id = ?").bind(orgId).first<{ status: string; plan_code: string; current_period_end: string | null }>())!;
+  const stripeSub = (orgId: string, priceId: string, status: string, periodEnd: number, extra: Record<string, unknown> = {}) => ({
+    id: "sub_r1",
+    customer: "cus_r1",
+    status,
+    metadata: { organization_id: orgId, plan_code: "growth" },
+    items: { data: [{ price: { id: priceId, recurring: { interval: "month" } }, current_period_end: periodEnd }] },
+    ...extra,
+  });
+
+  it("a trial is never shown as a paid subscription, whatever order Stripe's two notifications arrive in", async () => {
+    const { h, owner, orgId } = await setup();
+    await owner.post("/api/v1/admin/billing/stripe/sync", {});
+    const t = Math.floor(Date.now() / 1000);
+    const growth = await priceOf(h, "growth");
+    // Subscription event first (trialing), checkout event second.
+    await webhook(h, subEvent("evt_t1", "customer.subscription.created", orgId, growth, t, "trialing", { trial_end: t + 7 * 86400 }));
+    await webhook(h, { id: "evt_t2", type: "checkout.session.completed", created: t + 1, livemode: false, data: { object: { payment_status: "no_payment_required", subscription: "sub_1", customer: "cus_1", client_reference_id: orgId, metadata: { organization_id: orgId, plan_code: "growth" } } } });
+    expect(await subOf(h, orgId)).toMatchObject({ status: "trialing", plan_code: "growth" });
+    expect(await planOf(h, orgId)).toBe("growth");
+  });
+
+  it("a bank payment still pending at checkout does not open the plan until Stripe confirms it", async () => {
+    const { h, owner, orgId } = await setup();
+    await owner.post("/api/v1/admin/billing/stripe/sync", {});
+    const t = Math.floor(Date.now() / 1000);
+    await webhook(h, { id: "evt_p1", type: "checkout.session.completed", created: t, livemode: false, data: { object: { payment_status: "unpaid", subscription: "sub_1", customer: "cus_1", client_reference_id: orgId, metadata: { organization_id: orgId, plan_code: "pro" } } } });
+    expect(await planOf(h, orgId)).toBe("free");
+    expect((await subOf(h, orgId)).status).toBe("incomplete");
+    // The payment clears: Stripe says active, the plan opens.
+    await webhook(h, subEvent("evt_p2", "customer.subscription.updated", orgId, await priceOf(h, "pro"), t + 60, "active"));
+    expect(await planOf(h, orgId)).toBe("pro");
+  });
+
+  it("a lost notification: back from Checkout, «sync» asks Stripe and the paid plan opens (once, with its credits)", async () => {
+    const { h, owner, orgId, stripe } = await setup();
+    await owner.post("/api/v1/admin/billing/stripe/sync", {});
+    const r = await owner.post(`/api/v1/orgs/${orgId}/billing/checkout`, { planCode: "starter", acceptTerms: true });
+    expect(r.status).toBe(200);
+    const csId = new URL(r.json.url as string).pathname.split("/").at(-1)!;
+    // Stripe has the payment, but no webhook reached us.
+    stripe.state.sessions[csId] = { id: csId, status: "complete", payment_status: "paid", subscription: "sub_r1", client_reference_id: orgId };
+    stripe.state.subs["sub_r1"] = stripeSub(orgId, await priceOf(h, "starter"), "active", Math.floor(Date.now() / 1000) + 30 * 86400);
+    expect(await planOf(h, orgId)).toBe("free");
+    const s1 = await owner.post(`/api/v1/orgs/${orgId}/billing/sync`, {});
+    expect(s1.status).toBe(200);
+    expect(s1.json).toMatchObject({ planCode: "starter", status: "active" });
+    // A Free organisation (internal row, always active) never reads as «paid».
+    const other = await h.signup("otra@luna.es", "Otra");
+    const freeOrg = await h.createOrg(other, "Otra SL");
+    expect((await other.post(`/api/v1/orgs/${freeOrg}/billing/sync`, {})).json).toMatchObject({ planCode: "free", status: null });
+    // Repeating it changes nothing and never grants credits twice.
+    await owner.post(`/api/v1/orgs/${orgId}/billing/sync`, {});
+    const grants = await h.db.prepare("SELECT COUNT(*) AS n FROM credit_ledger WHERE organization_id = ? AND category = 'plan_upgrade'").bind(orgId).first<{ n: number }>();
+    expect(grants!.n).toBe(1);
+    // Only reads were sent to Stripe for this: nothing charged, nothing changed there.
+    expect(stripe.calls.filter((c) => c.path.startsWith("/checkout/sessions/") || c.path.startsWith("/subscriptions/")).every((c) => c.method === "GET")).toBe(true);
+  });
+
+  it("the hourly reconciliation catches a period that ended without news: renewed or cancelled in Stripe", async () => {
+    const { h, owner, orgId, stripe } = await setup();
+    await owner.post("/api/v1/admin/billing/stripe/sync", {});
+    const growth = await priceOf(h, "growth");
+    const past = Math.floor(Date.now() / 1000) - 2 * 86400;
+    await webhook(h, { id: "evt_r0", type: "customer.subscription.created", created: past - 30 * 86400, livemode: false, data: { object: stripeSub(orgId, growth, "active", past) } });
+    expect(await planOf(h, orgId)).toBe("growth");
+
+    // Renewed in Stripe but the notification was lost: the new period is applied.
+    const next = Math.floor(Date.now() / 1000) + 28 * 86400;
+    stripe.state.subs["sub_r1"] = stripeSub(orgId, growth, "active", next);
+    expect(await reconcileStripe(h.env, h.deps, { force: true })).toMatchObject({ applied: 1 });
+    expect(await planOf(h, orgId)).toBe("growth");
+    expect(Date.parse((await subOf(h, orgId)).current_period_end!)).toBeGreaterThan(Date.now());
+    // Nothing to check now that the period is current.
+    expect(await reconcileStripe(h.env, h.deps, { force: true })).toMatchObject({ checked: 0 });
+
+    // Cancelled in Stripe without a notification: back to Free.
+    await h.db.prepare("UPDATE subscriptions SET current_period_end = ? WHERE organization_id = ?").bind(new Date(Date.now() - 86400_000).toISOString(), orgId).run();
+    stripe.state.subs["sub_r1"] = stripeSub(orgId, growth, "canceled", past);
+    await reconcileStripe(h.env, h.deps, { force: true });
+    expect(await planOf(h, orgId)).toBe("free");
+    expect((await subOf(h, orgId)).status).toBe("canceled");
+  });
+
+  it("never applies a subscription Stripe does not know or that belongs to another organisation", async () => {
+    const { h, owner, orgId, stripe } = await setup();
+    await owner.post("/api/v1/admin/billing/stripe/sync", {});
+    const pro = await priceOf(h, "pro");
+    const past = Math.floor(Date.now() / 1000) - 2 * 86400;
+    await webhook(h, { id: "evt_x0", type: "customer.subscription.created", created: past - 30 * 86400, livemode: false, data: { object: stripeSub(orgId, await priceOf(h, "starter"), "active", past) } });
+    // Unknown to Stripe (404): left as it is for the end-of-period safety net, never upgraded.
+    await reconcileStripe(h.env, h.deps, { force: true });
+    expect(await planOf(h, orgId)).toBe("starter");
+    // Belongs to someone else: ignored.
+    stripe.state.subs["sub_r1"] = stripeSub("00000000-0000-4000-8000-000000000999", pro, "active", past + 60 * 86400);
+    await reconcileStripe(h.env, h.deps, { force: true });
+    expect(await planOf(h, orgId)).toBe("starter");
+  });
+
+  it("the cron runs the reconciliation at most once an hour and does nothing without a Stripe key", async () => {
+    const { h, stripe } = await setup();
+    await reconcileStripe(h.env, h.deps);
+    const before = stripe.calls.length;
+    await reconcileStripe(h.env, h.deps);
+    expect(stripe.calls.length).toBe(before);
+    const none = await setup({ key: "" });
+    expect(await reconcileStripe(none.h.env, none.h.deps, { force: true })).toEqual({ checked: 0, applied: 0 });
   });
 });

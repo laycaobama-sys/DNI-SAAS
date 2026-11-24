@@ -133,12 +133,12 @@ describe("E2E Fase 2: URL → adelanto → registro → bienvenida → primer ar
     expect(a).toMatchObject({ done: 4, next: null, percent: 67 });
   });
 
-  it("on the Free plan the article step says which plan includes it instead of a broken button", async () => {
+  it("on the Free plan the article step is open (1 AI article a month, as /precios says)", async () => {
     const h = harness();
     const owner = await h.signup("free@taller-sol.es");
     const orgId = await h.createOrg(owner, "Free SL");
     const a = (await owner.get(`/api/v1/orgs/${orgId}/activation`)).json;
-    expect(a.steps.find((s: { key: string }) => s.key === "article")).toMatchObject({ status: "locked", href: `/o/${orgId}/billing` });
+    expect(a.steps.find((s: { key: string }) => s.key === "article")).toMatchObject({ status: "pending", href: `/o/${orgId}/content`, cta: "Crear artículo" });
     // Autopilot is stored as a preference and said to be in development.
     const m = (await owner.put(`/api/v1/orgs/${orgId}/onboarding`, { publishingMode: "autopilot" })).json;
     expect(m.steps.find((s: { key: string }) => s.key === "mode").note).toMatch(/en desarrollo/);
@@ -316,6 +316,7 @@ describe("help emails at 24 h and 72 h", () => {
     await h.db.prepare("INSERT INTO organization_onboarding (organization_id, publishing_mode, articles_per_week, skipped_json, updated_at) VALUES (?, 'approval', 1, '[\"competitors\",\"analytics\"]', ?)").bind(cOrg, new Date().toISOString()).run();
     await h.db.prepare("INSERT INTO brands (id, organization_id, name) VALUES ('00000000-0000-4000-8000-0000000000b1', ?, 'Cid')").bind(cOrg).run();
     await h.db.prepare("INSERT INTO brand_profiles (id, organization_id, brand_id, confirmed_at) VALUES ('00000000-0000-4000-8000-0000000000b2', ?, '00000000-0000-4000-8000-0000000000b1', ?)").bind(cOrg, new Date().toISOString()).run();
+    await h.db.prepare("INSERT INTO content_items (id, organization_id, kind, title, created_by) VALUES ('00000000-0000-4000-8000-0000000000b3', ?, 'blog_article', 'Primer artículo', 'test')").bind(cOrg).run();
     const at = (hours: number) => new Date(Date.now() + 1000 + hours * 3600_000);
     expect(await sendLifecycleEmails(h.env, at(25))).toEqual({ sent: 1, skipped: 1 });
     expect(await sendLifecycleEmails(h.env, at(73))).toEqual({ sent: 1, skipped: 1 });

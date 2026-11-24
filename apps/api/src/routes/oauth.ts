@@ -111,7 +111,9 @@ oauth.get("/google/start", async (c) => {
     client_id: c.env.GOOGLE_CLIENT_ID!,
     redirect_uri: redirectUri(c.env),
     response_type: "code",
-    scope: "openid email profile",
+    // Exactly the scopes registered in Google Cloud (openid, userinfo.email): no `profile`. The display name
+    // falls back to the part of the email before «@».
+    scope: "openid email",
     state,
     nonce,
     code_challenge: challenge,

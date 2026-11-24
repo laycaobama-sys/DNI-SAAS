@@ -402,6 +402,33 @@ export function BillingPage() {
   useEffect(() => {
     if (data) clearWantedPlan();
   }, [data]);
+  // Back from Stripe Checkout: ask Stripe directly (a few tries) instead of waiting for its notification.
+  const [checkoutSync, setCheckoutSync] = useState<"checking" | "done" | "pending" | null>(null);
+  useEffect(() => {
+    if (params.get("checkout") !== "success" || !orgId) return;
+    let stop = false;
+    setCheckoutSync("checking");
+    (async () => {
+      for (let i = 0; i < 4 && !stop; i++) {
+        try {
+          const r = await post<{ planCode: string; status: string | null }>(`/orgs/${orgId}/billing/sync`, {});
+          if (r.status === "active" || r.status === "trialing") {
+            if (!stop) setCheckoutSync("done");
+            reload();
+            return;
+          }
+        } catch {
+          // Rate limit or network: the webhook and the hourly check still apply the payment.
+        }
+        await new Promise((res) => setTimeout(res, 4000));
+      }
+      if (!stop) setCheckoutSync("pending");
+      reload();
+    })();
+    return () => {
+      stop = true;
+    };
+  }, [orgId, params]);
   // Deep links from warnings («#uso», «#planes») scroll once the content exists.
   useEffect(() => {
     if (!hash || !data) return;
@@ -430,7 +457,15 @@ export function BillingPage() {
     <>
       <PageHeader eyebrow="Organización" title="Plan, límites y créditos" subtitle="Lo que incluye tu plan, cuánto llevas usado hoy y este mes, y cuándo se renueva. Cada consumo queda registrado." />
       <div className="mb-4 space-y-3">
-        {params.get("checkout") === "success" && <Notice tone="ok">Pago recibido por Stripe. El plan se activa cuando llega la confirmación firmada (normalmente en segundos).</Notice>}
+        {params.get("checkout") === "success" && (
+          <Notice tone={checkoutSync === "pending" ? "warn" : "ok"} title={checkoutSync === "done" ? "Plan activado" : checkoutSync === "pending" ? "Stripe aún está confirmando el pago" : "Comprobando el pago con Stripe…"}>
+            {checkoutSync === "done"
+              ? "Stripe ha confirmado tu suscripción y tu plan ya está activo. Gracias."
+              : checkoutSync === "pending"
+                ? "Algunos métodos de pago tardan en confirmarse. En cuanto Stripe lo confirme, el plan se activa solo (lo comprobamos también cada hora). No hace falta pagar de nuevo."
+                : "Estamos preguntando a Stripe por tu pago. Tarda unos segundos."}
+          </Notice>
+        )}
         {params.get("checkout") === "cancel" && <Notice tone="warn">Pago cancelado. No se ha realizado ningún cargo.</Notice>}
         {!data.stripe.configured && <Notice tone="warn" title="Pagos no activados">Stripe no está conectado en este entorno. Los planes de pago aparecen como «próximamente» y no se realiza ningún cargo.</Notice>}
         {data.stripe.configured && data.stripe.access === "test_admin_only" && (

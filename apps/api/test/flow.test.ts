@@ -288,7 +288,7 @@ describe("Billing (Stripe sandbox contract)", () => {
     const { h, owner, orgId } = await setup();
     h.env.STRIPE_WEBHOOK_SECRET = secret;
     h.env.BILLING_ENABLED = "true";
-    const event = { id: "evt_test_001", type: "checkout.session.completed", data: { object: { subscription: "sub_123", metadata: { organization_id: orgId, plan_code: "growth" } } } };
+    const event = { id: "evt_test_001", type: "checkout.session.completed", data: { object: { payment_status: "paid", subscription: "sub_123", metadata: { organization_id: orgId, plan_code: "growth" } } } };
     const { raw, header } = await signed(event);
 
     // Flip the first hex digit to a DIFFERENT one (replacing it with a fixed digit was a no-op 1/16 of the time).

@@ -30,8 +30,11 @@ describe("plan module matrix", () => {
       expect(planIncludes("agency", m)).toBe(true);
     }
     expect(planIncludes("pro", "agency")).toBe(false);
-    expect(planIncludes("starter", "authority")).toBe(false);
-    expect(planIncludes("unknown-plan", "content")).toBe(false);
+    expect(planIncludes("starter", "authority")).toBe(true);
+    expect(planIncludes("free", "authority")).toBe(false);
+    expect(planIncludes("starter", "creative")).toBe(false);
+    expect(planIncludes("unknown-plan", "seo-tecnico")).toBe(false);
+    expect(planIncludes("unknown-plan", "content")).toBe(true);
   });
 
   it("maps API paths to modules (branding writes are white label)", () => {
@@ -163,5 +166,44 @@ describe("platform console", () => {
     const r = await admin.post(url, { planCode: "free", reason: "Bajar a gratis" });
     expect(r.status).toBe(409);
     expect(r.json.code).toBe("stripe_subscription");
+  });
+});
+
+describe("the limits each plan applies are at least what /precios sells", () => {
+  /** Published row → limit key in plans.limits_json. «N por web» is multiplied by the plan's webs. */
+  const ROW_LIMIT: Record<string, string> = {
+    "Webs (proyectos)": "brands",
+    Usuarios: "seats",
+    "Auditorías al mes": "analysesPerMonth",
+    "Páginas por auditoría": "pagesPerCrawl",
+    "Borradores de artículos al mes (revisión humana)": "articlesPerMonth",
+    "Visibilidad en IA (prompts en seguimiento)": "trackedPrompts",
+    "Vídeos y piezas sociales": "videoProjects",
+  };
+  const sold = (value: string, webs: number): number | null => {
+    if (value === "—") return null;
+    if (/ilimitad/i.test(value)) return 1000;
+    const n = Number(/(\d+)/.exec(value)?.[1]);
+    if (!Number.isFinite(n)) throw new Error(`valor sin número: ${value}`);
+    return /por web/.test(value) ? n * webs : n;
+  };
+
+  it("checks every numeric row against the plans table the API enforces", async () => {
+    const h = createHarness();
+    const { results } = await h.db.prepare("SELECT code, price_eur_month, price_eur_year, limits_json FROM plans WHERE active = 1").all<{ code: string; price_eur_month: number; price_eur_year: number; limits_json: string }>();
+    const { PRICING_ROWS, PLAN_OFFERS } = await import("@dni/core");
+    for (const offer of PLAN_OFFERS) {
+      const plan = results.find((r) => r.code === offer.code);
+      expect(plan, `plan ${offer.code} en la tabla plans`).toBeDefined();
+      // The price charged is the price published.
+      expect([plan!.price_eur_month, plan!.price_eur_year ?? 0], offer.code).toEqual([offer.monthly, offer.yearly]);
+      const limits = JSON.parse(plan!.limits_json) as Record<string, number>;
+      for (const [label, key] of Object.entries(ROW_LIMIT)) {
+        const row = PRICING_ROWS.find((r) => r.label === label)!;
+        expect(row, label).toBeDefined();
+        const n = sold(row.values[offer.code], limits.brands ?? 1);
+        if (n !== null) expect(limits[key] ?? 0, `${offer.code} · ${label}: vendido ${row.values[offer.code]}, límite ${key}=${limits[key]}`).toBeGreaterThanOrEqual(n);
+      }
+    }
   });
 });

@@ -9,27 +9,28 @@ export const PLAN_LABEL: Record<PlanCode, string> = { free: "Gratis", starter: "
 
 /** One-line promise per plan, shown on the plan page. Honest: no results guaranteed. */
 export const PLAN_PITCH: Record<PlanCode, string> = {
-  free: "Prueba la auditoría, el plan de 30 días, el asesor IA, Search Console y el CRM básico.",
-  starter: "Para un negocio: SEO técnico, keywords, visibilidad en IA, contenidos, landings e informes.",
-  growth: "Crecimiento completo: backlinks, creatividades, vídeo, automatizaciones, atribución y GA4.",
+  free: "Prueba la auditoría, el plan de 30 días, el asesor IA, Search Console, un artículo con IA al mes y el CRM básico.",
+  starter: "Para un negocio: SEO técnico, keywords, visibilidad en IA, contenidos, Google Analytics, enlaces, vídeo, landings e informes.",
+  growth: "Crecimiento completo: imágenes con IA, automatizaciones, atribución de ventas y más usuarios y cuotas.",
   pro: "Equipos con publicidad: Ads Manager con Spend Guardian y límites más altos.",
   agency: "Agencias: organizaciones cliente aisladas y marca blanca.",
 };
 
 /** Minimum plan per module (app path segment). Modules not listed are included in every plan. */
 export const MODULE_MIN_PLAN: Record<string, PlanCode> = {
+  // Must match what /precios sells (PRICING_ROWS): test «published rows are delivered» in plan-access.test.ts.
+  // Content Studio is in every plan; Free gets 1 AI article a month (limits_json.articlesPerMonth).
   "seo-tecnico": "starter",
   keywords: "starter",
   "ai-visibility": "starter",
-  content: "starter",
   landings: "starter",
   reports: "starter",
-  authority: "growth",
+  authority: "starter",
+  video: "starter",
+  analytics: "starter",
   creative: "growth",
-  video: "growth",
   automations: "growth",
   attribution: "growth",
-  analytics: "growth",
   ads: "pro",
   agency: "agency",
 };

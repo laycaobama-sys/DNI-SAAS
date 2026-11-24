@@ -69,7 +69,7 @@ describe("Google sign-in (OIDC + PKCE)", () => {
     expect(loc.origin + loc.pathname).toBe("https://accounts.google.com/o/oauth2/v2/auth");
     expect(loc.searchParams.get("code_challenge_method")).toBe("S256");
     expect(loc.searchParams.get("redirect_uri")).toBe("http://localhost:8787/api/v1/auth/google/callback");
-    expect(loc.searchParams.get("scope")).toBe("openid email profile");
+    expect(loc.searchParams.get("scope")).toBe("openid email");
     expect(cb.status).toBe(302);
     expect(location).toBe("/app/");
     expect(tokenCalls[0]!.get("code_verifier")).toMatch(/^[A-Za-z0-9_-]{43,128}$/);

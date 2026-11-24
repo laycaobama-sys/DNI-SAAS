@@ -14,7 +14,7 @@ import {
   type GuaranteeResult,
   type ProviderManifestEntry,
 } from "@dni/core";
-import type { AppEnv, Env } from "../env";
+import type { AppEnv, Deps, Env } from "../env";
 import { auditStmt } from "../lib/audit";
 import { creditBalance, ensureMonthlyGrant, getPlan, grantStmt, orgPlan } from "../lib/billing";
 import { ApiError, parseBody } from "../lib/http";
@@ -222,11 +222,27 @@ billing.post("/billing/checkout", requireScope("billing:manage"), async (c) => {
       actorUserId: t.userId,
       action: "billing.checkout_start",
       entityType: "subscription",
+      // The Checkout Session id lets the reconciliation ask Stripe directly if its notification never arrives.
+      entityId: session.id,
       after: { planCode, interval, trialDays, sessionId: session.id, mode: stripeMode(c.env), tax: tax.mode },
       requestId: c.get("requestId"),
     }),
   ]);
   return c.json({ url: session.url, trialDays });
+});
+
+/**
+ * Back from Stripe Checkout (or «Comprobar con Stripe»): asks Stripe directly for this organisation's checkout and
+ * subscription and applies them, so a payment never waits on a delayed notification. Reads only.
+ */
+billing.post("/billing/sync", requireScope("billing:read"), async (c) => {
+  const t = c.get("tenant");
+  await rateLimit(c.env.DB, `billing-sync:${t.orgId}`, 12, 3600);
+  const r = await reconcileStripe(c.env, c.get("deps"), { orgId: t.orgId });
+  const org = await c.env.DB.prepare("SELECT plan_code FROM organizations WHERE id = ?").bind(t.orgId).first<{ plan_code: string }>();
+  const sub = await subRow(c.env.DB, t.orgId);
+  // Only the Stripe subscription counts here (Free organisations also have an internal, always-active row).
+  return c.json({ ...r, planCode: org?.plan_code ?? "free", status: sub?.provider === "stripe" ? sub.status : null });
 });
 
 billing.post("/billing/portal", requireScope("billing:manage"), async (c) => {
@@ -555,103 +571,12 @@ webhooks.post("/stripe", async (c) => {
     if (!orgId && customerId) {
       orgId = (await db.prepare("SELECT organization_id FROM subscriptions WHERE provider_customer_id = ?").bind(customerId).first<{ organization_id: string }>())?.organization_id;
     }
-    let handled = false;
-    const isSubEvent = SUB_SYNC_EVENTS.has(event.type);
     const now = nowIso();
-    if (orgId && (event.type === "checkout.session.completed" || isSubEvent)) {
-      // The plan comes from the subscribed price (portal plan/interval changes), falling back to our own metadata.
-      const items = (obj["items"] as { data?: Array<{ price?: { id?: string; recurring?: { interval?: string } }; current_period_end?: number }> } | undefined)?.data ?? [];
-      const priceId = items[0]?.price?.id;
-      const byPrice = priceId
-        ? await db.prepare("SELECT code, CASE WHEN stripe_price_id_year = ? THEN 'year' ELSE 'month' END AS interval FROM plans WHERE stripe_price_id = ? OR stripe_price_id_year = ?").bind(priceId, priceId, priceId).first<{ code: string; interval: string }>()
-        : null;
-      const planCode = byPrice?.code ?? meta["plan_code"];
-      const interval = items[0]?.price?.recurring?.interval ?? byPrice?.interval ?? meta["interval"] ?? null;
-      const org = await db.prepare("SELECT id FROM organizations WHERE id = ?").bind(orgId).first();
-      const plan = org && planCode ? await getPlan(db, planCode).catch(() => null) : null;
-      const prev = await db
-        .prepare("SELECT provider_event_at, payment_failed_at, grace_until, status, plan_code, provider FROM subscriptions WHERE organization_id = ?")
-        .bind(orgId)
-        .first<{ provider_event_at: number | null; payment_failed_at: string | null; grace_until: string | null; status: string | null; plan_code: string | null; provider: string | null }>();
-      const stale = isSubEvent && typeof prev?.provider_event_at === "number" && prev.provider_event_at > created;
-      if (org && plan && planCode && !stale) {
-        const subId = (event.type === "checkout.session.completed" ? obj["subscription"] : obj["id"]) as string | undefined;
-        const status = event.type === "checkout.session.completed" ? "active" : mapStatus(String(obj["status"] ?? "active"));
-        const periodEndRaw = typeof obj["current_period_end"] === "number" ? (obj["current_period_end"] as number) : items[0]?.current_period_end;
-        const periodEnd = iso(periodEndRaw);
-        const pause = isSubEvent ? (obj["pause_collection"] as { resumes_at?: number } | null | undefined) : undefined;
-        const pausedUntil = pause ? (iso(pause.resumes_at) ?? "indefinite") : null;
-        const trialEnd = isSubEvent && status === "trialing" ? iso(obj["trial_end"]) : null;
-        // Failed payment: access continues for a 7-day grace period (nothing is deleted), then Free until paid.
-        const failedAt = status === "past_due" ? (prev?.payment_failed_at ?? now) : null;
-        const graceUntil = status === "past_due" ? (prev?.grace_until ?? new Date(Date.parse(failedAt!) + GRACE_DAYS * DAY_MS).toISOString()) : null;
-        const inGrace = status === "past_due" && !!graceUntil && Date.parse(graceUntil) > Date.now();
-        const paid = ((status === "active" || status === "trialing") && !pausedUntil) || (inGrace && !pausedUntil);
-        const cancelScheduled = isSubEvent && (obj["cancel_at_period_end"] === true || typeof obj["cancel_at"] === "number") ? 1 : 0;
-        await db.batch([
-          db
-            .prepare(
-              `INSERT INTO subscriptions (id, organization_id, plan_code, provider, provider_sub_id, provider_customer_id, status, current_period_end, provider_event_at, cancel_at_period_end,
-                 billing_interval, trial_end, paused_until, payment_failed_at, grace_until, started_at)
-               VALUES (?, ?, ?, 'stripe', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-               ON CONFLICT(organization_id) DO UPDATE SET plan_code = excluded.plan_code, provider = 'stripe',
-                 provider_sub_id = COALESCE(excluded.provider_sub_id, subscriptions.provider_sub_id),
-                 provider_customer_id = COALESCE(excluded.provider_customer_id, subscriptions.provider_customer_id),
-                 status = excluded.status, current_period_end = COALESCE(excluded.current_period_end, subscriptions.current_period_end),
-                 provider_event_at = MAX(COALESCE(subscriptions.provider_event_at, 0), excluded.provider_event_at),
-                 cancel_at_period_end = CASE WHEN ? THEN excluded.cancel_at_period_end ELSE subscriptions.cancel_at_period_end END,
-                 billing_interval = COALESCE(excluded.billing_interval, subscriptions.billing_interval),
-                 trial_end = CASE WHEN ? THEN excluded.trial_end ELSE subscriptions.trial_end END,
-                 paused_until = CASE WHEN ? THEN excluded.paused_until ELSE subscriptions.paused_until END,
-                 payment_failed_at = excluded.payment_failed_at, grace_until = excluded.grace_until,
-                 started_at = CASE WHEN subscriptions.status = 'canceled' OR subscriptions.provider <> 'stripe' THEN excluded.started_at ELSE COALESCE(subscriptions.started_at, excluded.started_at) END,
-                 updated_at = ?`,
-            )
-            .bind(
-              uuid(),
-              orgId,
-              planCode,
-              subId ?? null,
-              customerId,
-              status,
-              periodEnd,
-              created,
-              cancelScheduled,
-              interval,
-              trialEnd,
-              pausedUntil,
-              failedAt,
-              graceUntil,
-              paid ? now : null,
-              isSubEvent ? 1 : 0,
-              isSubEvent ? 1 : 0,
-              isSubEvent ? 1 : 0,
-              now,
-            ),
-          db.prepare("UPDATE organizations SET plan_code = ? WHERE id = ?").bind(paid ? planCode : "free", orgId),
-          ...(status === "trialing" ? [db.prepare("UPDATE organizations SET trial_used_at = COALESCE(trial_used_at, ?) WHERE id = ?").bind(now, orgId)] : []),
-          ...(paid ? [grantStmt(db, orgId, plan.limits.monthlyCredits, `grant:${orgId}:${monthKey()}:${planCode}`, "plan_upgrade", "stripe")] : []),
-          auditStmt(db, { organizationId: orgId, actorUserId: null, action: "billing.subscription_sync", entityType: "subscription", after: { planCode, status, interval, paused: !!pausedUntil, eventId: event.id } }),
-        ]);
-        // Product funnel (cookieless, no personal data): first trial, first paid period, plan upgrades.
-        const wasStripe = prev?.provider === "stripe" && prev.status !== "canceled";
-        const props = { plan: planCode, interval: interval ?? "month" };
-        if (status === "trialing" && !(wasStripe && prev?.status === "trialing")) await trackEvent(db, { event: "trial_started", organizationId: orgId, props });
-        else if (status === "active" && !(wasStripe && prev?.status === "active")) await trackEvent(db, { event: "subscribed", organizationId: orgId, props });
-        else if (status === "active" && wasStripe && prev?.status === "active" && prev.plan_code && prev.plan_code !== planCode) {
-          const rank = (code: string) => PLAN_OFFERS.findIndex((o) => o.code === code);
-          if (rank(planCode) > rank(prev.plan_code)) await trackEvent(db, { event: "upgraded", organizationId: orgId, props: { ...props, from: prev.plan_code } });
-        }
-        handled = true;
-      } else if (stale) handled = true;
+    let handled = false;
+    if (orgId && (event.type === "checkout.session.completed" || SUB_SYNC_EVENTS.has(event.type))) {
+      handled = await applySubscriptionState(c.env, { type: event.type, obj, created, eventId: event.id, orgId, customerId, meta });
     } else if (orgId && event.type === "customer.subscription.deleted") {
-      await db.batch([
-        db
-          .prepare("UPDATE subscriptions SET status = 'canceled', plan_code = 'free', cancel_at_period_end = 0, paused_until = NULL, payment_failed_at = NULL, grace_until = NULL, provider_event_at = ?, updated_at = ? WHERE organization_id = ?")
-          .bind(created, now, orgId),
-        db.prepare("UPDATE organizations SET plan_code = 'free' WHERE id = ?").bind(orgId),
-        auditStmt(db, { organizationId: orgId, actorUserId: null, action: "billing.subscription_canceled", entityType: "subscription", after: { eventId: event.id } }),
-      ]);
+      await applySubscriptionDeleted(db, orgId, created, event.id);
       handled = true;
     } else if (orgId && event.type === "invoice.payment_failed") {
       const r = await db
@@ -696,6 +621,234 @@ webhooks.post("/stripe", async (c) => {
     throw new ApiError(500, "webhook_processing_failed", "Error procesando el evento.");
   }
 });
+
+/** What a Stripe notification (or a reconciliation read straight from Stripe) says about a subscription. */
+interface StripeStateInput {
+  type: string;
+  obj: Record<string, unknown>;
+  /** Unix seconds of the event (or of the moment we read the object from Stripe). Older data never overwrites newer. */
+  created: number;
+  eventId: string;
+  orgId: string;
+  customerId: string | null;
+  meta: Record<string, string>;
+}
+
+/** Checkout result: card paid → active; trial (nothing charged today) → trialing; payment still pending → incomplete (no access yet). */
+function checkoutStatus(obj: Record<string, unknown>): string {
+  const ps = obj["payment_status"];
+  return ps === "paid" ? "active" : ps === "no_payment_required" ? "trialing" : "incomplete";
+}
+
+/**
+ * Applies a subscription's state to the organisation: plan, status, period, trial, pause, grace and credits.
+ * Shared by the webhook and by the reconciliation that reads Stripe directly, so both follow the same rules.
+ * Returns true when the state was applied (or was stale and safely ignored).
+ */
+export async function applySubscriptionState(env: Env, input: StripeStateInput): Promise<boolean> {
+  const db = env.DB;
+  const { obj, created, meta, orgId, customerId } = input;
+  const eventType = input.type;
+  const event = { id: input.eventId, type: eventType };
+  const isSubEvent = SUB_SYNC_EVENTS.has(eventType);
+  const now = nowIso();
+  // The plan comes from the subscribed price (portal plan/interval changes), falling back to our own metadata.
+  const items = (obj["items"] as { data?: Array<{ price?: { id?: string; recurring?: { interval?: string } }; current_period_end?: number }> } | undefined)?.data ?? [];
+  const priceId = items[0]?.price?.id;
+  const byPrice = priceId
+    ? await db.prepare("SELECT code, CASE WHEN stripe_price_id_year = ? THEN 'year' ELSE 'month' END AS interval FROM plans WHERE stripe_price_id = ? OR stripe_price_id_year = ?").bind(priceId, priceId, priceId).first<{ code: string; interval: string }>()
+    : null;
+  const planCode = byPrice?.code ?? meta["plan_code"];
+  const interval = items[0]?.price?.recurring?.interval ?? byPrice?.interval ?? meta["interval"] ?? null;
+  const org = await db.prepare("SELECT id FROM organizations WHERE id = ?").bind(orgId).first();
+  const plan = org && planCode ? await getPlan(db, planCode).catch(() => null) : null;
+  const prev = await db
+    .prepare("SELECT provider_event_at, payment_failed_at, grace_until, status, plan_code, provider, provider_sub_id FROM subscriptions WHERE organization_id = ?")
+    .bind(orgId)
+    .first<{ provider_event_at: number | null; payment_failed_at: string | null; grace_until: string | null; status: string | null; plan_code: string | null; provider: string | null; provider_sub_id: string | null }>();
+  const stale = isSubEvent && typeof prev?.provider_event_at === "number" && prev.provider_event_at > created;
+  if (org && plan && planCode && !stale) {
+    const subId = (event.type === "checkout.session.completed" ? obj["subscription"] : obj["id"]) as string | undefined;
+    // Subscription events are the authority on status. A checkout event only says how the checkout ended, and
+    // when the subscription's own event already arrived (order is not guaranteed) its status is kept, so a
+    // trial is never shown as a paid subscription and a pending bank payment never opens the plan early.
+    const fromCheckout = event.type === "checkout.session.completed";
+    const sameSub = fromCheckout && prev?.provider === "stripe" && !!subId && prev.provider_sub_id === subId && !!prev.status;
+    const status = fromCheckout ? (sameSub ? prev!.status! : checkoutStatus(obj)) : mapStatus(String(obj["status"] ?? "active"));
+    const periodEndRaw = typeof obj["current_period_end"] === "number" ? (obj["current_period_end"] as number) : items[0]?.current_period_end;
+    const periodEnd = iso(periodEndRaw);
+    const pause = isSubEvent ? (obj["pause_collection"] as { resumes_at?: number } | null | undefined) : undefined;
+    const pausedUntil = pause ? (iso(pause.resumes_at) ?? "indefinite") : null;
+    const trialEnd = isSubEvent && status === "trialing" ? iso(obj["trial_end"]) : null;
+    // Failed payment: access continues for a 7-day grace period (nothing is deleted), then Free until paid.
+    const failedAt = status === "past_due" ? (prev?.payment_failed_at ?? now) : null;
+    const graceUntil = status === "past_due" ? (prev?.grace_until ?? new Date(Date.parse(failedAt!) + GRACE_DAYS * DAY_MS).toISOString()) : null;
+    const inGrace = status === "past_due" && !!graceUntil && Date.parse(graceUntil) > Date.now();
+    const paid = ((status === "active" || status === "trialing") && !pausedUntil) || (inGrace && !pausedUntil);
+    const cancelScheduled = isSubEvent && (obj["cancel_at_period_end"] === true || typeof obj["cancel_at"] === "number") ? 1 : 0;
+    await db.batch([
+      db
+        .prepare(
+          `INSERT INTO subscriptions (id, organization_id, plan_code, provider, provider_sub_id, provider_customer_id, status, current_period_end, provider_event_at, cancel_at_period_end,
+             billing_interval, trial_end, paused_until, payment_failed_at, grace_until, started_at)
+           VALUES (?, ?, ?, 'stripe', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+           ON CONFLICT(organization_id) DO UPDATE SET plan_code = excluded.plan_code, provider = 'stripe',
+             provider_sub_id = COALESCE(excluded.provider_sub_id, subscriptions.provider_sub_id),
+             provider_customer_id = COALESCE(excluded.provider_customer_id, subscriptions.provider_customer_id),
+             status = excluded.status, current_period_end = COALESCE(excluded.current_period_end, subscriptions.current_period_end),
+             provider_event_at = MAX(COALESCE(subscriptions.provider_event_at, 0), excluded.provider_event_at),
+             cancel_at_period_end = CASE WHEN ? THEN excluded.cancel_at_period_end ELSE subscriptions.cancel_at_period_end END,
+             billing_interval = COALESCE(excluded.billing_interval, subscriptions.billing_interval),
+             trial_end = CASE WHEN ? THEN excluded.trial_end ELSE subscriptions.trial_end END,
+             paused_until = CASE WHEN ? THEN excluded.paused_until ELSE subscriptions.paused_until END,
+             payment_failed_at = excluded.payment_failed_at, grace_until = excluded.grace_until,
+             started_at = CASE WHEN subscriptions.status = 'canceled' OR subscriptions.provider <> 'stripe' THEN excluded.started_at ELSE COALESCE(subscriptions.started_at, excluded.started_at) END,
+             updated_at = ?`,
+        )
+        .bind(
+          uuid(),
+          orgId,
+          planCode,
+          subId ?? null,
+          customerId,
+          status,
+          periodEnd,
+          created,
+          cancelScheduled,
+          interval,
+          trialEnd,
+          pausedUntil,
+          failedAt,
+          graceUntil,
+          paid ? now : null,
+          isSubEvent ? 1 : 0,
+          isSubEvent ? 1 : 0,
+          isSubEvent ? 1 : 0,
+          now,
+        ),
+      db.prepare("UPDATE organizations SET plan_code = ? WHERE id = ?").bind(paid ? planCode : "free", orgId),
+      ...(status === "trialing" ? [db.prepare("UPDATE organizations SET trial_used_at = COALESCE(trial_used_at, ?) WHERE id = ?").bind(now, orgId)] : []),
+      ...(paid ? [grantStmt(db, orgId, plan.limits.monthlyCredits, `grant:${orgId}:${monthKey()}:${planCode}`, "plan_upgrade", "stripe")] : []),
+      auditStmt(db, { organizationId: orgId, actorUserId: null, action: "billing.subscription_sync", entityType: "subscription", after: { planCode, status, interval, paused: !!pausedUntil, eventId: event.id } }),
+    ]);
+    // Product funnel (cookieless, no personal data): first trial, first paid period, plan upgrades.
+    const wasStripe = prev?.provider === "stripe" && prev.status !== "canceled";
+    const props = { plan: planCode, interval: interval ?? "month" };
+    if (status === "trialing" && !(wasStripe && prev?.status === "trialing")) await trackEvent(db, { event: "trial_started", organizationId: orgId, props });
+    else if (status === "active" && !(wasStripe && prev?.status === "active")) await trackEvent(db, { event: "subscribed", organizationId: orgId, props });
+    else if (status === "active" && wasStripe && prev?.status === "active" && prev.plan_code && prev.plan_code !== planCode) {
+      const rank = (code: string) => PLAN_OFFERS.findIndex((o) => o.code === code);
+      if (rank(planCode) > rank(prev.plan_code)) await trackEvent(db, { event: "upgraded", organizationId: orgId, props: { ...props, from: prev.plan_code } });
+    }
+    return true;
+  }
+  return stale;
+}
+
+/** The subscription no longer exists in Stripe: back to Free, nothing deleted. */
+export async function applySubscriptionDeleted(db: D1Database, orgId: string, created: number, eventId: string): Promise<void> {
+  const now = nowIso();
+  await db.batch([
+    db
+      .prepare("UPDATE subscriptions SET status = 'canceled', plan_code = 'free', cancel_at_period_end = 0, paused_until = NULL, payment_failed_at = NULL, grace_until = NULL, provider_event_at = ?, updated_at = ? WHERE organization_id = ?")
+      .bind(created, now, orgId),
+    db.prepare("UPDATE organizations SET plan_code = 'free' WHERE id = ?").bind(orgId),
+    auditStmt(db, { organizationId: orgId, actorUserId: null, action: "billing.subscription_canceled", entityType: "subscription", after: { eventId } }),
+  ]);
+}
+
+/**
+ * Reconciliation with Stripe (safety net for lost notifications). Stripe retries webhooks for days, but if one
+ * never lands the customer must not pay without getting the plan, nor keep a plan Stripe stopped charging.
+ *  1. Checkouts started in the last 48 h whose organisation has no subscription update since: read the
+ *     Checkout Session and, if it completed, the subscription, and apply it with the webhook's own rules.
+ *  2. Subscriptions whose period (or trial) ended more than 6 h ago without news: read them from Stripe and
+ *     apply what Stripe says (renewed, unpaid, cancelled).
+ * Reads only (GET), never charges, idempotent. Cron: at most once an hour; on demand: one organisation.
+ */
+export async function reconcileStripe(env: Env, deps: Deps, opts: { orgId?: string; force?: boolean } = {}): Promise<{ checked: number; applied: number }> {
+  if (!stripeMode(env)) return { checked: 0, applied: 0 };
+  const db = env.DB;
+  if (!opts.orgId && !opts.force) {
+    const last = await getSetting(db, "billing_reconcile_last");
+    if (last && Date.now() - Date.parse(last) < 3_600_000) return { checked: 0, applied: 0 };
+    await setSetting(db, "billing_reconcile_last", nowIso());
+  }
+  const nowSec = () => Math.floor(Date.now() / 1000);
+  let checked = 0;
+  let applied = 0;
+  type Sub = { id: string; status: string; customer?: string; metadata?: Record<string, string> } & Record<string, unknown>;
+  const applySub = async (orgId: string, sub: Sub, reason: string) => {
+    // Never apply a subscription that belongs to another organisation.
+    if (sub.metadata?.organization_id && sub.metadata.organization_id !== orgId) return false;
+    if (sub.status === "canceled" || sub.status === "incomplete_expired") await applySubscriptionDeleted(db, orgId, nowSec(), `reconcile:${sub.id}:${reason}`);
+    else
+      await applySubscriptionState(env, {
+        type: "customer.subscription.updated",
+        obj: sub,
+        created: nowSec(),
+        eventId: `reconcile:${sub.id}:${reason}`,
+        orgId,
+        customerId: typeof sub.customer === "string" ? sub.customer : null,
+        meta: { ...(sub.metadata ?? {}), organization_id: orgId },
+      });
+    applied++;
+    await auditStmt(db, { organizationId: orgId, actorUserId: null, action: "billing.reconciled", entityType: "subscription", entityId: sub.id, after: { from: reason, status: sub.status } }).run();
+    return true;
+  };
+
+  // 1) Checkouts without news.
+  const since = new Date(Date.now() - 48 * 3_600_000).toISOString();
+  const { results: checkouts } = await db
+    .prepare(
+      `SELECT a.organization_id, a.entity_id, a.created_at FROM audit_logs a
+       WHERE a.action = 'billing.checkout_start' AND a.entity_id LIKE 'cs_%' AND a.created_at > ?1 AND (?2 IS NULL OR a.organization_id = ?2)
+         AND NOT EXISTS (SELECT 1 FROM subscriptions s WHERE s.organization_id = a.organization_id AND s.provider = 'stripe' AND s.updated_at >= a.created_at)
+       ORDER BY a.created_at DESC LIMIT 20`,
+    )
+    .bind(since, opts.orgId ?? null)
+    .all<{ organization_id: string; entity_id: string; created_at: string }>();
+  const seen = new Set<string>();
+  for (const row of checkouts) {
+    if (seen.has(row.organization_id)) continue;
+    seen.add(row.organization_id);
+    checked++;
+    try {
+      const session = await stripeApi<{ status?: string; subscription?: string | null; client_reference_id?: string | null }>(env, deps, "GET", `/checkout/sessions/${row.entity_id}`, {});
+      if (session.client_reference_id && session.client_reference_id !== row.organization_id) continue;
+      if (session.status !== "complete" || !session.subscription) continue;
+      const sub = await stripeApi<Sub>(env, deps, "GET", `/subscriptions/${session.subscription}`, {});
+      await applySub(row.organization_id, sub, "checkout");
+    } catch (e) {
+      log("warn", "billing.reconcile_checkout_failed", { error: e instanceof StripeApiError ? e.code : String(e).slice(0, 120) });
+    }
+  }
+
+  // 2) Periods or trials that ended without news.
+  const cutoff = new Date(Date.now() - 6 * 3_600_000).toISOString();
+  const { results: overdue } = await db
+    .prepare(
+      `SELECT organization_id, provider_sub_id FROM subscriptions
+       WHERE provider = 'stripe' AND provider_sub_id IS NOT NULL AND status IN ('active','trialing','past_due','incomplete')
+         AND ((current_period_end IS NOT NULL AND current_period_end < ?1) OR (status = 'trialing' AND trial_end IS NOT NULL AND trial_end < ?1))
+         AND (?2 IS NULL OR organization_id = ?2)
+       ORDER BY current_period_end LIMIT 20`,
+    )
+    .bind(cutoff, opts.orgId ?? null)
+    .all<{ organization_id: string; provider_sub_id: string }>();
+  for (const row of overdue) {
+    checked++;
+    try {
+      const sub = await stripeApi<Sub>(env, deps, "GET", `/subscriptions/${row.provider_sub_id}`, {});
+      await applySub(row.organization_id, sub, "period_end");
+    } catch (e) {
+      // A subscription Stripe does not know (e.g. created with a test key before switching to live) is left to the
+      // end-of-period safety net in billingMaintenance; it is never upgraded.
+      log("warn", "billing.reconcile_period_failed", { error: e instanceof StripeApiError ? e.code : String(e).slice(0, 120) });
+    }
+  }
+  return { checked, applied };
+}
 
 /**
  * Cron (every few minutes): grace periods that expired move to Free (nothing deleted) and trials ending

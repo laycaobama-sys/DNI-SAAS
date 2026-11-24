@@ -81,8 +81,8 @@ describe("Increment 1: domain → audit with evidence → draft → export (no A
     expect(brief.json).toContain("## Evidencia (anexo)");
     expect(brief.json).toContain("https://estudio-norte.es/og.svg");
     expect((await owner.get(`${O}/crawls/${crawlId}/findings/not_a_rule/brief`)).status).toBe(404);
-    // Saving an editable draft is Content Studio (Starter+): Free gets a clear 402, not a broken button.
-    expect((await owner.post(`${O}/content/from-finding`, { crawlId, ruleKey: "og_image_format" })).status).toBe(402);
+    // Content Studio is in every plan (/precios: Free «1 de prueba»): Free can save the finding as an editable draft.
+    expect((await owner.post(`${O}/content/from-finding`, { crawlId, ruleKey: "og_image_format" })).status).toBe(201);
   });
 
   it("creates the draft without AI or credits, blocks approval until it is complete, and exports it with evidence", async () => {
