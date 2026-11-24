@@ -1,10 +1,16 @@
 # Estado del plan maestro — DNI Growth
 
-Última revisión: **2026-11-24** · Producción: https://dnigrowth.com (versión `4c47d2b4`) · Plan: [PLAN_DNI_GROWTH.md](PLAN_DNI_GROWTH.md) · Pasos de la titular: [BLOQUEOS.md](BLOQUEOS.md) · Detalle con pruebas: [IMPLEMENTATION_STATUS.md](IMPLEMENTATION_STATUS.md) · Cambios: [CHANGELOG.md](CHANGELOG.md)
+Última revisión: **2026-11-24** · Producción: https://dnigrowth.com (versión `8015e5ff`) · Plan: [PLAN_DNI_GROWTH.md](PLAN_DNI_GROWTH.md) · Pasos de la titular: [BLOQUEOS.md](BLOQUEOS.md) · Detalle con pruebas: [IMPLEMENTATION_STATUS.md](IMPLEMENTATION_STATUS.md) · Cambios: [CHANGELOG.md](CHANGELOG.md)
 
 Leyenda: **Hecho** (funciona de punta a punta y está verificado) · **Parcial** (existe una base que funciona; falta lo que se indica) · **Pendiente** (no empezado) · **Bloqueado** (depende de una acción externa o de la titular).
 
 ## Verificación en producción
+
+**2026-11-24 (cobros sin fallos, versión `8015e5ff`):**
+- `pnpm verify`: lint, typecheck, **548 pruebas**, build y escaneo de secretos en verde.
+- `/precios`, portada, inicio de sesión, privacidad y `/api/v1/health` → 200; `/precios` con Search Console (todos) y Analytics (desde Starter); Google pide solo `openid email` al iniciar sesión.
+- Reconciliación con Stripe ejecutada por el cron a las 00:31 UTC; suscripciones de producción coherentes con su plan.
+- Meta: la cuenta de desarrollador ya no pide confirmación; falta la verificación de la empresa (titular).
 
 **2026-11-24 (Fase 2):**
 - `pnpm verify`: lint, typecheck, **539 pruebas** (47 ficheros), build y escaneo de secretos en verde.

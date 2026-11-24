@@ -4,6 +4,14 @@ Formato: fecha, versión desplegada en Cloudflare y cambios visibles. Las prueba
 
 ## 2026-11-24
 
+### Cada plan abre lo que se paga y cobros sin fallos — versión `8015e5ff`
+- Lo que vende `/precios` y lo que abre cada plan coinciden, y hay pruebas que lo comprueban fila a fila ([ADR 0024](adr/0024-planes-y-reconciliacion-stripe.md)).
+- Free: un artículo con IA al mes. Starter: además Google Analytics, enlaces y vídeo. `/precios` separa Search Console (todos los planes) y Analytics (desde Starter).
+- El plan solo se activa cuando Stripe confirma el pago; una prueba gratuita nunca aparece como pagada; un adeudo bancario pendiente no abre el plan hasta que se cobra.
+- Si un aviso de Stripe se pierde: al volver del pago la página pregunta a Stripe y activa el plan; además, cada hora se revisan los pagos sin noticias y los periodos vencidos (renovados o cancelados). Solo lecturas; los créditos del plan se dan una sola vez.
+- Inicio de sesión con Google con exactamente los permisos registrados en Google (`openid email`).
+- Sin cambios de precios ni de límites; sin migración.
+
 ### Activación (Fase 2) — versión `4c47d2b4`
 - Auditoría gratuita sin registro desde la portada: revisamos hasta 5 páginas públicas con las mismas reglas que el análisis completo, sin IA ni créditos. Límites por IP y diario, caché de 24 h por dominio.
 - Página `/auditoria/{id}` con nota global y por áreas (Técnica, SEO, GEO/AEO) con su palabra («Bien», «Mejorable», «Urgente»), los 3 problemas que más pesan con evidencia y solución, «otros N problemas» al crear la cuenta, botones para compartir y comparación con un competidor. No se indexa.

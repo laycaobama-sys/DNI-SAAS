@@ -34,7 +34,13 @@ El texto que acepta el cliente queda guardado con su versión (`termsVersion 202
 - Añade tu NIF en *Configuración → Facturas → Identificadores fiscales* para que aparezca en las facturas.
 - Pregunta a tu gestor por VERI*FACTU.
 
-## 4. EN CURSO · Google: verificación para leer Search Console y Analytics
+## 4. URGENTE · Google: responder al correo del 21 de noviembre
+
+Google envió el 21 nov «[Action Needed] Your Google APIs Verification Request» y **no sigue con la revisión hasta que se responda**. La respuesta está escrita y revisada punto por punto en [GOOGLE_VERIFICATION.md](GOOGLE_VERIFICATION.md) (permisos idénticos a los registrados desde la versión `8015e5ff`, vídeo accesible, acceso gratis sin tarjeta, política de privacidad completa). Se envía desde tu Gmail, como respuesta a ese mismo correo, en cuanto des el visto bueno.
+
+Si Google contesta con el correo de su revisor, hay que invitarlo a la organización «Demo verificación Google» (ya tiene Analytics), como miembro con rol Analista.
+
+Situación anterior:
 
 Comprobado en Google Cloud (*Google Auth Platform → Centro de verificación*) el 2026-11-23:
 - **Marca: verificada** ✅ (se muestra a los usuarios).
@@ -44,13 +50,20 @@ Comprobado en Google Cloud (*Google Auth Platform → Centro de verificación*) 
 
 Mientras tanto la conexión ya funciona: las sincronizaciones diarias de Search Console y Analytics se completan (11 y 7 en los últimos 7 días). Cada cliente nuevo ve el aviso «app no verificada» hasta que Google termine. La garantía de 90 días necesita Search Console conectado.
 
-## 5. BLOQUEADO · Meta: tu cuenta de desarrollador pide confirmación
+## 5. BLOQUEADO · Meta: falta verificar la empresa
 
-El 2026-11-23, al abrir la revisión de la app, Meta muestra: «Confirmación de la cuenta requerida — Hemos detectado actividad inusual en esta cuenta de desarrollador». Solo tú puedes resolverlo (pide comprobar tu identidad):
-1. Entra en developers.facebook.com con tu cuenta y pulsa **Confirmar cuenta**. Sigue los pasos que te pida.
-2. Después, la revisión de la app necesita la verificación del negocio en Meta Business y los vídeos de cada permiso ([GUIA_APROBACIONES_GOOGLE_META.md](GUIA_APROBACIONES_GOOGLE_META.md)).
+Comprobado el 2026-11-24: **la cuenta de desarrollador ya no pide confirmación** (la revisión de la app abre sin el aviso de «actividad inusual»). La app «DNI Growth» no tiene solicitudes enviadas.
+
+El paso siguiente solo lo puedes dar tú, porque pide documentos de la empresa y es una decisión que Meta no deja deshacer:
+1. En el panel de la app, «Conviértete en un proveedor de tecnología» → **Sí, soy proveedor de tecnología** (Meta avisa: «Esta decisión no se puede revocar»). No se ha pulsado.
+2. Verificación de la empresa en Meta Business (documentos oficiales del negocio).
+3. Revisión de la app con los vídeos de cada permiso ([GUIA_APROBACIONES_GOOGLE_META.md](GUIA_APROBACIONES_GOOGLE_META.md)).
 
 Hasta entonces, la publicación directa en Instagram y Facebook y los anuncios de Meta aparecen como «requiere aprobación externa» y no se venden como disponibles. No toques la «Clave secreta de la aplicación» en ningún chat.
+
+## 5 bis. Aviso · Cuenta antigua de Stripe
+
+La cuenta antigua de Stripe (`acct_1Ucxx…`, la que no usa DNI Growth) tiene pendiente la verificación de identidad y los cobros suspendidos. **No afecta a DNI Growth**, que cobra con «DNI Growth-IA». Si ya no la usas, puedes dejarla así o cerrarla tú desde su panel.
 
 ## 6. Claves de API
 

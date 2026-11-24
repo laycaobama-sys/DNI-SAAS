@@ -1,6 +1,6 @@
 # Estado de implementación — DNI Growth
 
-Última actualización: 2026-11-24 · Producción: **https://dnigrowth.com** (Worker `dni-growth`, versión `4c47d2b4-c389-4055-945c-a0e1e0eab6c7`; workers.dev redirige con 301 a dnigrowth.com) · Workers Paid, sin servicios de pago adicionales ([verificación de la cuenta](CLOUDFLARE_ACCOUNT_VERIFICATION.md)).
+Última actualización: 2026-11-24 · Producción: **https://dnigrowth.com** (Worker `dni-growth`, versión `8015e5ff-4b2e-4f77-b574-8ffe5cfc7455`; workers.dev redirige con 301 a dnigrowth.com) · Workers Paid, sin servicios de pago adicionales ([verificación de la cuenta](CLOUDFLARE_ACCOUNT_VERIFICATION.md)).
 
 Leyenda:
 - **VERIFICADO EN PRODUCCIÓN**: probado contra la URL pública con una respuesta comprobable.
@@ -8,7 +8,7 @@ Leyenda:
 - **BLOQUEADO POR PERMISOS**: necesita una acción, clave o aceptación del titular.
 - **NO IMPLEMENTADO**.
 
-Pruebas automáticas: lint, typecheck, **539 tests** (47 ficheros: core, API y web), build y escaneo de secretos en verde el 2026-11-24 (`pnpm -s verify`, código de salida 0), desplegado como `4c47d2b4`.
+Pruebas automáticas: lint, typecheck, **548 tests** (47 ficheros: core, API y web), build y escaneo de secretos en verde el 2026-11-24 (`pnpm -s verify`, código de salida 0), desplegado como `8015e5ff`.
 
 Verificación en producción del 2026-11-24 (Fase 2, sin sesión y sin crear cuentas): auditoría gratuita de dnigrowth.com desde el formulario de la portada → completada por la cola al primer intento (92/100); comparación con example.com (71/100); páginas públicas, cabeceras, protecciones y cron en verde. Detalle en la sección «Fase 2 · Activación».
 
@@ -222,6 +222,15 @@ Versión `75a82608`, migración 0015 aplicada con copia previa `backups/dni-grow
 | IVA | VERIFICADO EN PRODUCCIÓN | `stripe_tax_mode_live = automatic`: la cuenta real tiene Stripe Tax activo (comisión aproximada del 0,5 % por cobro; decisión con el gestor en [BLOQUEOS §3](BLOQUEOS.md)) |
 | Pago abierto al público (`BILLING_ENABLED="auto"`) | VERIFICADO EN PRODUCCIÓN | `GET /api/v1/public/pricing-status` → `{"paymentsOpen":true}` (2026-11-24) |
 | Primer cobro real | SIN DATOS | no se ha hecho ningún pago real (prohibido usar tarjetas de prueba en producción); el circuito completo se probó en modo prueba |
+
+## Cada plan abre lo que vende /precios y reconciliación con Stripe (nuevo, [ADR 0024](adr/0024-planes-y-reconciliacion-stripe.md))
+| Pieza | Estado | Prueba |
+|---|---|---|
+| Tabla de `/precios` = módulos que abre cada plan (fila a fila) y límites ≥ lo vendido | VERIFICADO EN PRODUCCIÓN | `plan-access.test.ts` y `plan-modules.test.ts`; `/precios` en producción muestra «Google Search Console (solo lectura)» y «Google Analytics 4 (solo lectura)»; la portada marca Analytics como «Starter» (2026-11-24) |
+| El plan se abre solo con el pago confirmado (pagado / prueba / pendiente) | VERIFICADO SOLO EN LOCAL | `stripe.test.ts` «Money safety»: prueba gratuita en cualquier orden y adeudo bancario pendiente; en producción aún no hay cobros reales |
+| Reconciliación horaria con Stripe (solo lecturas) | VERIFICADO EN PRODUCCIÓN | cron desplegado: ajuste `billing_reconcile_last` = 2026-11-24 00:31 UTC; sin correcciones necesarias (1 suscripción activa coherente, 1 cancelada en Free); pruebas de aviso perdido, renovación, cancelación, suscripción ajena y límite horario |
+| `POST /orgs/:id/billing/sync` al volver de Checkout | VERIFICADO EN PRODUCCIÓN (sin sesión) y EN LOCAL (con sesión) | sin sesión → 403; en local, organización Free: «Comprobando el pago con Stripe…» y luego «Stripe aún está confirmando el pago» (no «Plan activado»), sin errores en consola |
+| Inicio de sesión con Google con los permisos registrados | VERIFICADO EN PRODUCCIÓN | `GET /api/v1/auth/google/start` → 302 con `scope=openid+email` |
 
 ## Módulos por plan, uso justo de IA y consola de plataforma (nuevo, [ADR 0018](adr/0018-modulos-por-plan.md))
 | Pieza | Estado | Prueba |

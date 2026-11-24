@@ -1,6 +1,6 @@
 # Cobros con Stripe: estado, cómo funciona y cuánto cuesta
 
-Última revisión: 2026-11-24. Decisiones de diseño en [ADR 0022](adr/0022-cobros-v2.md); lo que queda para la titular (abogado e IVA) en [BLOQUEOS.md §2–§3](BLOQUEOS.md).
+Última revisión: 2026-11-24. Decisiones de diseño en [ADR 0022](adr/0022-cobros-v2.md) y [ADR 0024](adr/0024-planes-y-reconciliacion-stripe.md); lo que queda para la titular (abogado e IVA) en [BLOQUEOS.md §2–§3](BLOQUEOS.md).
 
 ## Estado
 
@@ -43,9 +43,11 @@ Fuente única: `packages/core/src/pricing.ts` (web pública, /precios, JSON-LD, 
 | Portal | Cambiar de plan o de periodo (las subidas al momento con prorrateo, las bajadas al final del periodo), tarjeta, facturas y cancelación al final del periodo. |
 | Retención honesta | Pausa de 1 a 3 meses, oferta del 30 % durante 2 meses solo si el motivo es el precio y una sola vez, bajada de plan; cancelar siempre a un clic. |
 | Impagos | 7 días de gracia con el plan intacto; después Free sin borrar nada; se recupera al pagar. |
+| Pago confirmado | El plan se abre solo si Stripe confirma el pago (`payment_status = paid`); la prueba gratuita queda como «en prueba» y un adeudo bancario pendiente como «incompleto» hasta que se cobra. |
+| Reconciliación | Al volver de Checkout, la página llama a `POST /orgs/:id/billing/sync`, que lee la sesión y la suscripción en Stripe y las aplica. Cada hora, el cron revisa los pagos de las últimas 48 h sin noticias y los periodos vencidos hace más de 6 h. Solo lecturas, idempotente, nunca aplica una suscripción de otra organización ([ADR 0024](adr/0024-planes-y-reconciliacion-stripe.md)). |
 | Red de seguridad | Una suscripción cancelada al final del periodo pasa a Free 2 días después aunque no llegue el aviso de Stripe. |
 | Webhooks | Firma verificada sobre el cuerpo crudo, cada evento una sola vez, se ignoran los de otro modo (real/prueba) y los antiguos que llegan tarde. |
-| Pruebas | `apps/api/test/stripe.test.ts` (25), `billing` web (5), `pricing` core y web. |
+| Pruebas | `apps/api/test/stripe.test.ts` (32, con 6 de «Money safety»), `plan-modules.test.ts` (límites ≥ lo vendido), `plan-access.test.ts` (tabla de /precios = módulos de cada plan), `billing` web (5), `pricing` core y web. |
 
 ## Lo que cuesta Stripe (sin cuota mensual)
 

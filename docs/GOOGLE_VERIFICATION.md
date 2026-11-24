@@ -3,6 +3,38 @@
 Proyecto de Google Cloud: `dni-growth` · Google Auth Platform · app **publicada (producción)**, sin verificar.
 Mientras no esté verificada: aviso «Google no ha verificado esta app» en el consentimiento y tope de **100 usuarios** con permisos sensibles. La verificación no tiene coste.
 
+## Estado (2026-11-24): FALTA RESPONDER AL CORREO DEL 21 DE NOVIEMBRE
+
+El 21 nov llegó «[Action Needed] Your Google APIs Verification Request» (equipo *Third Party Data Safety*): una lista de comprobación y la frase «You must reply to this email … in order to proceed with the review». **La revisión no avanza hasta que se responda.**
+
+Revisado punto por punto antes de responder (2026-11-24, versión `8015e5ff`):
+- **Permisos idénticos a los registrados:** el inicio de sesión ahora pide solo `openid email` (antes pedía también `profile`, que no estaba registrado); las conexiones piden `openid email` + `webmasters.readonly` o `analytics.readonly`. Comprobado en producción: `GET /api/v1/auth/google/start` → 302 con `scope=openid+email`.
+- **Vídeo:** https://youtu.be/iCyrb1Xcc1Q accesible («No listado»).
+- **Acceso sin bloqueos:** registro con Google, gratis, sin tarjeta ni teléfono. Search Console funciona en el plan Free; Analytics es del plan Starter, así que la respuesta ofrece abrirles el acceso sin coste (invitándoles a la organización «Demo verificación Google», que ya tiene Analytics).
+- **Política de privacidad:** cubre acceso, uso, transferencia, protección, conservación y borrado de los datos de Google, y la declaración de uso limitado.
+- No hay permisos restringidos (no hace falta CASA), ni de Workspace/Photos, ni de escritura o borrado.
+
+Texto de la respuesta (responder al mismo correo, desde la cuenta de contacto del desarrollador):
+
+> Hello Third Party Data Safety Team,
+>
+> Thank you for the checklist. We have audited project dni-growth (1028756015912) against every item and confirm compliance. Summary and updates:
+>
+> 1. Scopes and least privilege. The app requests exactly the scopes registered in the Cloud Console: openid and userinfo.email for "Sign in with Google" (we just removed an unregistered "profile" request, so sign-in now asks only for "openid email"); webmasters.readonly when an organization admin clicks "Connect Search Console"; analytics.readonly when they click "Connect Google Analytics". Each scope is requested incrementally, only on that explicit action, and all of them are read-only: we never write to or delete anything in the user's Google account. All features are live in production at https://dnigrowth.com. No narrower scope supports listing the user's properties and reading their aggregated reports.
+> 2. Demo video: https://youtu.be/iCyrb1Xcc1Q (unlisted). It shows the consent screen with the client_id and the requested scope in the address bar, the property selection, the imported data for each scope and the disconnect option.
+> 3. App access. No test credentials are needed: anyone can sign up with "Sign in with Google" for free, with no credit card and no phone verification. Step by step:
+>    a) Open https://dnigrowth.com and click "Crear cuenta gratis" (or go to https://dnigrowth.com/app/register) and continue with Google.
+>    b) Create an organization (any name and website).
+>    c) Search Console (available on the free plan): left menu "Search Console" > "Conectar con Google (solo lectura)" > grant access > pick a property > "Sincronizar ahora".
+>    d) Google Analytics: left menu "Analytics (GA4)" > "Conectar con Google (solo lectura)" > grant access > pick a GA4 property. This module belongs to our paid plans; to avoid any payment requirement, reply with the Google account you will use and we will add it within 24 hours to our review organization ("Demo verificación Google"), which has Analytics enabled at no cost.
+> 4. Privacy policy (https://dnigrowth.com/legal/privacidad, section "Datos de usuario de Google"): it states exactly which data each scope reads, how it is used (only to show the user's own reports inside their workspace), that it is never sold, transferred to advertisers or data brokers, used for advertising or sent to AI models, how it is protected (refresh tokens encrypted with AES-256-GCM, strict per-organization isolation), how long it is kept and how users disconnect and delete it, plus our Limited Use statement linking the Google API Services User Data Policy.
+> 5. We do not use restricted scopes, Workspace, Photos or Data Portability APIs, so CASA and the AI/ML training restrictions for those APIs do not apply; in any case, Google user data is never used to train or improve AI models.
+>
+> Yes, we confirm that the application complies with all the requirements above. Please let us know if you need anything else.
+>
+> Best regards,
+> DNI Growth
+
 ## Estado (2026-11-19, noche): ENVIADO A REVISIÓN
 
 - **Vídeo de demostración:** https://youtu.be/iCyrb1Xcc1Q (YouTube, visibilidad «Oculto/No listado», 6:04). Grabado con FFmpeg sobre Chrome real. Muestra la portada y el pie con Privacidad, el consentimiento con `client_id` en la barra de direcciones, Search Console (`webmasters.readonly`) con la propiedad `https://dnigrowth.com/`, Analytics (`analytics.readonly`) con la propiedad GA4 **DNI Growth** (ID 565232679, creada para esto), el diálogo «Desconectar» y la sección «Datos de usuario de Google» de la política.
