@@ -41,3 +41,9 @@
 .tools .og-host{font-size:13px;color:#9a9aa6;text-transform:uppercase}
 .tools .og-title{font-weight:600;color:#f5f5f4}
 .tools .og-desc{font-size:14px;color:#c9c9d1}
+.tools .compare{width:100%;border-collapse:collapse;font-size:15px}
+.tools .compare caption{text-align:left;color:#9a9aa6;font-size:13px;padding:0 0 8px}
+.tools .compare th,.tools .compare td{border-top:1px solid #2a2a33;padding:12px 10px;vertical-align:top;text-align:left}
+.tools .compare thead th{color:#f5f5f4;border-top:0}
+.tools .compare tbody th{color:#e8e8ee;width:18%}
+@media (max-width:640px){.tools .compare{min-width:640px}}

@@ -1,3 +1,4 @@
+import { hasAiProvenance } from "@dni/core";
 import { describe, expect, it } from "vitest";
 import { createHarness } from "./helpers";
 
@@ -235,6 +236,8 @@ describe("AI images (Workers AI → R2)", () => {
     const r = await owner.post(`/api/v1/orgs/${orgId}/creative/images`, { prompt: "Barra de pan artesanal sobre mesa de madera, luz cálida" });
     expect(r.status).toBe(201);
     expect([...r2.store.keys()][0]).toBe(`media/${orgId}/${r.json.id}.png`);
+    // Marked as AI-generated (IPTC digital source type) in the stored file.
+    expect(hasAiProvenance([...r2.store.values()][0]!.bytes)).toBe(true);
     const file = await owner.req("GET", r.json.url);
     expect(file.status).toBe(200);
     expect(file.headers.get("content-type")).toBe("image/png");

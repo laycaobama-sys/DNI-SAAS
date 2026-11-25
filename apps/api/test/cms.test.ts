@@ -192,7 +192,7 @@ describe("WordPress: publishing", () => {
     const off = await owner.post(`${O}/content/${id}/wordpress/unpublish`);
     expect(off.json.publication.state).toBe("unpublished");
     expect(wp.posts.get(100)!.status).toBe("draft");
-    const actions = (await h.db.prepare("SELECT action FROM audit_logs WHERE organization_id = ? AND action LIKE 'cms.%' ORDER BY created_at").bind(orgId).all<{ action: string }>()).results.map((r) => r.action);
+    const actions = (await h.db.prepare("SELECT action FROM audit_logs WHERE organization_id = ? AND action LIKE 'cms.%' ORDER BY created_at, rowid").bind(orgId).all<{ action: string }>()).results.map((r) => r.action);
     expect(actions).toEqual(["cms.wordpress_connect", "cms.wordpress_publish", "cms.wordpress_publish", "cms.wordpress_unpublish"]);
   });
 
