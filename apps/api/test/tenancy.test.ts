@@ -171,6 +171,9 @@ describe("Static SQL guard", () => {
       /^"SELECT kind, state, COUNT\(\*\) AS n FROM jobs WHERE created_at >= \? GROUP BY kind, state"$/,
       /^"SELECT status, COUNT\(\*\) AS n FROM webhook_deliveries WHERE created_at >= \? GROUP BY status"$/,
       /^"SELECT \(SELECT COUNT\(\*\) FROM organizations\) AS orgs, \(SELECT COUNT\(\*\) FROM users\) AS users, \(SELECT COUNT\(\*\) FROM jobs\) AS jobs, \(SELECT COUNT\(\*\) FROM audit_logs\) AS audit_rows"$/,
+      // Public /estado (lib/status.ts): platform-wide health COUNTs of stuck and failed jobs, no rows.
+      /^"SELECT COUNT\(\*\) AS n FROM jobs WHERE state IN \('queued','validating','running'\) AND created_at < \?"$/,
+      /^"SELECT SUM\(state = 'failed'\) AS failed, SUM\(state = 'completed'\) AS done FROM jobs WHERE kind IN \('gsc_sync','ga4_sync'\) AND created_at > \?"$/,
       // Google disconnect: a COUNT of other live connections of the SAME Google account (revoking at
       // Google kills the whole grant, so it must not break another organisation). No rows are returned.
       /^`SELECT COUNT\(\*\) AS n FROM integrations WHERE id != \? AND status IN \('connected','error','reauth_required'\)\s+AND provider IN \(\$\{GOOGLE_PROVIDERS\.map\(\(\) => "\?"\)\.join\(","\)\}\) AND lower\(account_ref\) = lower\(\?\)`$/,

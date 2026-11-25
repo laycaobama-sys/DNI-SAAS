@@ -47,10 +47,10 @@ describe("public blog and dynamic sitemap", () => {
     const map = await anon.get("/sitemap.xml");
     expect(map.status).toBe(200);
     expect(map.headers.get("content-type")).toContain("application/xml");
-    // While the blog is empty it is noindex and out of the sitemap (no thin page offered to search engines).
-    expect(blog.json).toContain('<meta name="robots" content="noindex">');
-    expect(map.json).not.toContain("<loc>http://localhost:8787/blog</loc>");
-    for (const p of ["/", "/legal/privacidad", "/legal/aviso-legal", "/legal/condiciones", "/legal/eliminacion-datos"]) expect(map.json).toContain(`<loc>http://localhost:8787${p}</loc>`);
+    // Even empty, the blog page carries real content (what we will publish and how), never a thin page.
+    expect(blog.json).toContain("Qué vas a encontrar aquí");
+    expect(blog.json).not.toContain('content="noindex"');
+    for (const p of ["/", "/blog", "/legal/privacidad", "/legal/aviso-legal", "/legal/condiciones", "/legal/eliminacion-datos"]) expect(map.json).toContain(`<loc>http://localhost:8787${p}</loc>`);
     expect((await anon.get("/blog/no-existe")).status).toBe(404);
     expect((await anon.get("/blog/feed.xml")).json).toContain("<rss version=\"2.0\">");
   });
@@ -82,8 +82,6 @@ describe("public blog and dynamic sitemap", () => {
     expect(page.json).not.toContain('href="javascript:');
     expect((await anon.get("/blog")).json).toContain('href="/blog/como-preparar-la-imagen-social-de-tu-web"');
     const map = (await anon.get("/sitemap.xml")).json as string;
-    expect(map).toContain("<loc>http://localhost:8787/blog</loc>");
-    expect((await anon.get("/blog")).json).not.toContain('content="noindex"');
     expect(map).toContain("<loc>http://localhost:8787/blog/como-preparar-la-imagen-social-de-tu-web</loc><lastmod>");
     expect((await anon.get("/blog/feed.xml")).json).toContain("<title>Cómo preparar la imagen social de tu web</title>");
 

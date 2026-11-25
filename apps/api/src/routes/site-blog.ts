@@ -15,7 +15,7 @@ import { requireScope } from "../middleware";
  */
 
 /** Public pages listed in the sitemap besides the blog posts. */
-export const SITE_PAGES = ["/", "/precios", "/blog", "/seguridad", "/legal/garantia", "/legal/privacidad", "/legal/aviso-legal", "/legal/condiciones", "/legal/eliminacion-datos", "/subencargados", "/legal/encargo-tratamiento"];
+export const SITE_PAGES = ["/", "/precios", "/blog", "/seguridad", "/legal/garantia", "/legal/privacidad", "/legal/aviso-legal", "/legal/condiciones", "/legal/eliminacion-datos", "/subencargados", "/legal/encargo-tratamiento", "/estado"];
 
 interface PostRow {
   id: string;
@@ -74,7 +74,7 @@ export const PAGE_HEADERS = { "content-type": "text/html; charset=utf-8", ...SIT
 const FALLBACK_SHELL = `<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Blog · DNI Growth</title><meta name="description" content=""><link rel="canonical" href=""><meta property="og:type" content="website"><meta property="og:title" content=""><meta property="og:description" content=""><meta property="og:url" content=""></head><body><main id="main" class="legal blog" data-blog-main></main></body></html>`;
 
 /** The built blog.html (header, footer, hashed CSS) is the template; the Worker fills title, meta and main. */
-async function shell(c: Context<AppEnv>): Promise<string> {
+export async function shell(c: Context<AppEnv>): Promise<string> {
   if (!c.env.ASSETS) return FALLBACK_SHELL;
   try {
     const res = await c.env.ASSETS.fetch(new Request(new URL("/blog", c.req.url)));
@@ -85,7 +85,7 @@ async function shell(c: Context<AppEnv>): Promise<string> {
   }
 }
 
-function fill(tpl: string, p: { title: string; description: string; canonical: string; main: string; ogType: "website" | "article"; jsonLd: unknown; noindex?: boolean }): string {
+export function fill(tpl: string, p: { title: string; description: string; canonical: string; main: string; ogType: "website" | "article"; jsonLd: unknown; noindex?: boolean }): string {
   const ld = JSON.stringify(p.jsonLd).replace(/</g, "\\u003c");
   return tpl
     .replace(/<title>[^<]*<\/title>/, `<title>${esc(p.title)}</title>`)
@@ -137,8 +137,6 @@ export function registerPublicBlog(app: Hono<AppEnv>) {
       canonical: `${origin}/blog`,
       ogType: "website",
       main: `${intro}${list}<p class="blog-feed"><a href="/blog/feed.xml">Suscribirse por RSS</a></p>`,
-      // An empty blog is not offered to search engines (and is left out of the sitemap) until the first post.
-      noindex: results.length === 0,
       jsonLd: {
         "@context": "https://schema.org",
         "@type": "Blog",
@@ -215,7 +213,7 @@ export function registerPublicBlog(app: Hono<AppEnv>) {
     const { results } = await publishedPosts(c.env.DB, 5000);
     const latest = results[0]?.updated_at;
     const urls = [
-      ...SITE_PAGES.filter((p) => p !== "/blog" || results.length > 0).map((p) => `  <url><loc>${origin}${p}</loc>${p === "/blog" && latest ? `<lastmod>${latest.slice(0, 10)}</lastmod>` : ""}</url>`),
+      ...SITE_PAGES.map((p) => `  <url><loc>${origin}${p}</loc>${p === "/blog" && latest ? `<lastmod>${latest.slice(0, 10)}</lastmod>` : ""}</url>`),
       ...results.map((p) => `  <url><loc>${origin}/blog/${esc(p.slug)}</loc><lastmod>${p.updated_at.slice(0, 10)}</lastmod></url>`),
     ];
     const xml = `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${urls.join("\n")}\n</urlset>\n`;

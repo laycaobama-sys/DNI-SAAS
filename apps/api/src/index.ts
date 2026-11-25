@@ -14,6 +14,8 @@ import { maybeAutoSyncStripe } from "./lib/stripe";
 import { billingMaintenance, reconcileStripe } from "./routes/billing";
 import { deliverWebhooks, scanOverdueTasks } from "./lib/rules";
 import { log } from "./lib/util";
+import { dailyBackup } from "./lib/backup";
+import { runStatusChecks } from "./lib/status";
 
 const deps: Deps = {
   fetchImpl: (...args) => fetch(...args),
@@ -70,5 +72,8 @@ export default {
     await sendLifecycleEmails(env).catch((e) => log("error", "lifecycle.cron_failed", { error: String(e).slice(0, 120) }));
     // Retention of the cookieless product analytics (13 months).
     await purgeProductEvents(env.DB).catch((e) => log("error", "product_events.purge_failed", { error: String(e).slice(0, 120) }));
+    // Daily D1 backup to R2 (30 days) and the /estado checks (every 5 minutes, alerts after two failures).
+    await dailyBackup(env).catch((e) => log("error", "backup.failed", { error: String(e).slice(0, 120) }));
+    await runStatusChecks(env, deps).catch((e) => log("error", "status.checks_failed", { error: String(e).slice(0, 120) }));
   },
 } satisfies ExportedHandler<Env, QueueMessage>;

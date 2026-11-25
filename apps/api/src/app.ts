@@ -27,6 +27,7 @@ import { geo } from "./routes/geo";
 import { reports } from "./routes/reports";
 import { searchConsole } from "./routes/searchConsole";
 import { registerPublicBlog, siteBlog } from "./routes/site-blog";
+import { registerStatusPage } from "./routes/status-page";
 import { activationRoutes, publicAudits, registerAuditPage } from "./routes/public-audit";
 import { eventsPublic } from "./routes/events";
 import { FALLBACK_404_HTML, SITE_CSP, SITE_SECURITY_HEADERS } from "./lib/site-headers";
@@ -69,7 +70,7 @@ export function canonicalRedirect(url: URL, canon: URL): string | null {
   if (path.startsWith("/api/") && path !== "/api/v1/auth/google/start") return null;
   let clean = path;
   if (clean === "/index.html") clean = "/";
-  else if (/^\/(legal\/[a-z-]+|blog|blog\/[a-z0-9-]+|seguridad|precios|subencargados)(\.html|\/)$/.test(clean)) clean = clean.replace(/(\.html|\/)$/, "");
+  else if (/^\/(legal\/[a-z-]+|blog|blog\/[a-z0-9-]+|seguridad|precios|subencargados|estado)(\.html|\/)$/.test(clean)) clean = clean.replace(/(\.html|\/)$/, "");
   const offHost = url.host !== canon.host || url.protocol !== canon.protocol;
   if (!offHost && clean === path) return null;
   return `${canon.origin}${clean}${url.search}`;
@@ -107,6 +108,7 @@ export function createApp(deps: Deps) {
       { "cache-control": "public, max-age=300" },
     ),
   );
+  registerStatusPage(app);
   app.route("/api/v1/public", crmPublic);
   app.route("/api/v1/public", eventsPublic);
   app.route("/api/v1/public", billingPublic);
