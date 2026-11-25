@@ -31,6 +31,7 @@ export * from "./pricing";
 export * from "./public-audit";
 export * from "./social";
 export * from "./cms";
+export * from "./cms-external";
 export * from "./free-tools";
 export * from "./site-tools";
 export * from "./provenance";

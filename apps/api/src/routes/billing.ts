@@ -955,7 +955,21 @@ export function providerManifest(env: Env): ProviderManifestEntry[] {
       name: "WordPress",
       category: "CMS",
       status: /^[0-9a-f]{64}$/i.test(env.DATA_ENC_KEY ?? "") ? "available" : "not_configured",
-      note: "Disponible desde Starter: abre un contenido y usa «Publicar en WordPress» para conectar tu web con una contraseña de aplicación. Solo se envía lo aprobado.",
+      note: "Disponible desde Starter: abre un contenido y usa «Publicar en WordPress» para conectar tu web con una contraseña de aplicación. Solo se envía lo aprobado. Plugin opcional para correcciones técnicas (abajo).",
+    },
+    {
+      key: "ghost",
+      name: "Ghost",
+      category: "CMS",
+      status: /^[0-9a-f]{64}$/i.test(env.DATA_ENC_KEY ?? "") ? "available" : "not_configured",
+      note: "Disponible desde Starter: abre un contenido aprobado y conecta Ghost con la Admin API key de una integración personalizada. Publica, actualiza y retira a borrador sin duplicar.",
+    },
+    {
+      key: "cms_webhook",
+      name: "Webhook de publicación (Webflow con Make o Zapier, n8n, tu servidor)",
+      category: "CMS",
+      status: /^[0-9a-f]{64}$/i.test(env.DATA_ENC_KEY ?? "") ? "available" : "not_configured",
+      note: "Disponible desde Starter: envía lo aprobado firmado (HMAC) a una dirección https. Formato en /openapi/webhook-publicacion.yaml. Webflow directo y Shopify, en desarrollo.",
     },
     {
       key: "meta_social",

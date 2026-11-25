@@ -30,6 +30,7 @@ import { registerPublicBlog, siteBlog } from "./routes/site-blog";
 import { registerStatusPage } from "./routes/status-page";
 import { registerMetaPublic, social } from "./routes/social";
 import { cms } from "./routes/cms";
+import { cmsExternal } from "./routes/cms-external";
 import { activationRoutes, publicAudits, registerAuditPage } from "./routes/public-audit";
 import { publicTools } from "./routes/public-tools";
 import { guideApi, registerGuidePages } from "./routes/guide";
@@ -137,6 +138,7 @@ export function createApp(deps: Deps) {
   tenant.route("/", siteBlog);
   tenant.route("/", social);
   tenant.route("/", cms);
+  tenant.route("/", cmsExternal);
   tenant.route("/", activationRoutes);
   tenant.route("/", searchConsole);
   tenant.route("/", analytics);

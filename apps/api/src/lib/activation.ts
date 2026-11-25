@@ -104,7 +104,7 @@ export async function activationFor(db: D1Database, orgId: string): Promise<Acti
       href: cmsAllowed ? `${base}/content` : `${base}/billing`,
       cta: cmsAllowed ? "Conectar WordPress" : "Ver planes",
       note: cmsAllowed
-        ? "Abre cualquier contenido y usa «Publicar en WordPress» con una contraseña de aplicación. Shopify, Ghost y Webflow están en desarrollo: mientras, exporta en HTML o Markdown."
+        ? "Abre cualquier contenido aprobado y publícalo en WordPress o Ghost, o envíalo con un webhook firmado (Webflow con Make o Zapier). Shopify está en desarrollo: mientras, exporta en HTML o Markdown."
         : "La publicación en WordPress está incluida desde el plan Starter. Mientras, exporta cada artículo aprobado en HTML o Markdown.",
     },
     {

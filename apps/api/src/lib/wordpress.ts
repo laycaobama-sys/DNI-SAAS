@@ -74,7 +74,18 @@ async function readCapped(res: Response): Promise<string> {
 export async function wpFetch<T = any>(
   deps: Deps,
   url: string,
-  opts: { method?: "GET" | "POST" | "DELETE"; creds?: Pick<WpCreds, "user" | "pass">; json?: unknown; timeoutMs?: number } = {},
+  opts: {
+    method?: "GET" | "POST" | "PUT" | "DELETE";
+    creds?: Pick<WpCreds, "user" | "pass">;
+    json?: unknown;
+    /** Exact body to send (already serialized JSON), e.g. when it is signed. */
+    rawJson?: string;
+    headers?: Record<string, string>;
+    userAgent?: string;
+    /** A 2xx answer that is not JSON counts as success (webhooks). */
+    lenient?: boolean;
+    timeoutMs?: number;
+  } = {},
 ): Promise<{ data: T; status: number; headers: Headers }> {
   let target: URL;
   try {
@@ -85,12 +96,12 @@ export async function wpFetch<T = any>(
     if (e instanceof WpError) throw e;
     throw new WpError(e instanceof UrlBlockedError ? `blocked_${e.reason}` : "invalid_url");
   }
-  const headers: Record<string, string> = { accept: "application/json", "user-agent": "DNIGrowth-WordPress/1.0 (+https://dnigrowth.com)" };
+  const headers: Record<string, string> = { accept: "application/json", "user-agent": opts.userAgent ?? "DNIGrowth-WordPress/1.0 (+https://dnigrowth.com)", ...opts.headers };
   if (opts.creds) headers.authorization = `Basic ${btoa(unescape(encodeURIComponent(`${opts.creds.user}:${opts.creds.pass.replace(/\s+/g, "")}`)))}`;
   let body: string | undefined;
-  if (opts.json !== undefined) {
+  if (opts.json !== undefined || opts.rawJson !== undefined) {
     headers["content-type"] = "application/json";
-    body = JSON.stringify(opts.json);
+    body = opts.rawJson ?? JSON.stringify(opts.json);
   }
   let res: Response;
   try {
@@ -107,6 +118,7 @@ export async function wpFetch<T = any>(
   try {
     data = text ? JSON.parse(text) : {};
   } catch {
+    if (res.ok && opts.lenient) return { data: null as T, status: res.status, headers: res.headers };
     throw new WpError(res.ok ? "not_json" : `http_${res.status}`, res.status);
   }
   if (!res.ok) {

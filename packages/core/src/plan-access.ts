@@ -118,7 +118,7 @@ const API_MODULES: Array<[RegExp, string]> = [
   [/^\/seo\//, "seo-tecnico"],
   [/^\/keywords(\/|\.csv|$)/, "keywords"],
   [/^\/brands\/[^/]+\/geo\//, "ai-visibility"],
-  [/^\/content\/[^/]+\/wordpress(\/|$)/, "cms"],
+  [/^\/content\/[^/]+\/(wordpress|external)(\/|$)/, "cms"],
   [/^\/cms(\/|$)/, "cms"],
   [/^\/content(\/|$)/, "content"],
   [/^\/landings(\/|$)/, "landings"],

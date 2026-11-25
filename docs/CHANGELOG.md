@@ -4,6 +4,17 @@ Formato: fecha, versión desplegada en Cloudflare y cambios visibles. Las prueba
 
 ## 2026-11-25
 
+### Publicación en Ghost y webhook firmado — versión `c3a16902`
+- **Ghost** (Starter o superior, [ADR 0028](adr/0028-publicacion-ghost-y-webhook.md)):
+  - se conecta desde cualquier contenido con la Admin API key de una integración personalizada;
+  - publica o guarda como borrador lo aprobado, actualiza la misma entrada sin duplicarla, aunque se repita un envío tras un corte, y «Retirar» la pasa a borrador.
+- **Webhook de publicación firmado:**
+  - envía lo aprobado a una dirección https, firmado con HMAC y con identificador de entrega estable;
+  - sirve para Webflow a través de Make o Zapier, n8n o un servidor propio;
+  - el formato está en [`/openapi/webhook-publicacion.yaml`](https://dnigrowth.com/openapi/webhook-publicacion.yaml) (OpenAPI 3.1).
+- `/precios`, Integraciones y la bienvenida lo reflejan. Shopify y Webflow directo siguen «En desarrollo».
+- Migración `0029` aditiva (copia previa `backups/dni-growth-db-pre-0029-20261125.sql`).
+
 ### Plugin de WordPress, correcciones reversibles, portada más rápida y comprobaciones nocturnas — versión `60c0846d`
 - **Plugin gratuito «DNI Growth Connector»** para WordPress, que se descarga desde Integraciones o en `/descargas/dni-growth-connector.zip` ([ADR 0027](adr/0027-plugin-wordpress-correcciones-y-fuentes-propias.md), [guía](WORDPRESS.md)). Con él:
   - cada artículo publicado lleva su título SEO, su descripción y sus datos estructurados (JSON-LD), copiados en Yoast SEO o Rank Math si están activos;

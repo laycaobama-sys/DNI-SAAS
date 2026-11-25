@@ -32,6 +32,7 @@ export const FEATURES: FeatureInfo[] = [
       "Borradores de corrección creados desde cada hallazgo (sin IA ni créditos), con comprobaciones antes de aprobar: campos pendientes, promesas de resultados, cifras sin fuente y precios sin verificar.",
       "Content Studio: borradores con IA o escritos a mano, versiones, revisión y aprobación por roles, exportación Markdown/HTML.",
       "Publicación en tu WordPress (plan Starter o superior): conexión con contraseña de aplicación, solo contenido aprobado, como borrador o publicado, sin duplicados y con opción de retirarlo a borrador.",
+      "Publicación en Ghost (Admin API key) y webhook firmado para cualquier otro sistema (Webflow con Make o Zapier, n8n o tu servidor), con las mismas reglas: solo lo aprobado, sin duplicados y con retirada.",
       "Plugin gratuito «DNI Growth Connector» para WordPress (opcional): título y descripción SEO compatibles con Yoast SEO y Rank Math, datos estructurados JSON-LD, llms.txt y correcciones técnicas que apruebas una a una y deshaces con un clic.",
       "Perfil de marca extraído con fuente de cada dato y confirmación humana; plan de crecimiento de 30 días editable y exportable.",
       "Asesor de crecimiento con IA que responde con los datos observados de tu auditoría y cita la URL de evidencia.",
@@ -113,7 +114,7 @@ export const FEATURE_STATUS_LABEL: Record<FeatureStatus, string> = { available: 
 
 /** Planned capabilities that are not part of any module yet. Listed as «no disponible todavía». */
 export const NOT_YET_AVAILABLE: string[] = [
-  "Publicación directa en Shopify, Ghost y Webflow. Hoy se exportan en Markdown o HTML (WordPress ya está disponible).",
+  "Publicación directa en Shopify y Webflow. Hoy: WordPress, Ghost y un webhook firmado (Webflow a través de Make o Zapier), o exportación en Markdown o HTML.",
   "Volumen y dificultad de búsqueda con un proveedor de datos licenciado. Hoy se usan las consultas reales de tu Search Console.",
 ];
 

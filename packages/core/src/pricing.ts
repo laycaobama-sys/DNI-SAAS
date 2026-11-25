@@ -89,7 +89,7 @@ export const PRICING_ROWS: PricingRow[] = [
   row("Perfil de marca y plan de 30 días", ["✓", "✓", "✓", "✓", "✓"]),
   row("Informe de auditoría y briefs (HTML/Markdown)", ["✓", "✓", "✓", "✓", "✓"]),
   row("Borradores de artículos al mes (revisión humana)", ["1 de prueba", "8", "30", "60", "30 por web"], "partial", "Content Studio redacta con IA y siempre pide revisión humana antes de aprobar. Proveedores en /subencargados."),
-  row("Publicación en tu blog o CMS", ["—", "✓", "✓", "✓", "✓"], "partial", "WordPress: se conecta con una contraseña de aplicación y publica solo lo aprobado; con el plugin gratuito también envía el título, la descripción SEO y los datos estructurados. Shopify, Ghost y Webflow están en desarrollo (mientras, exportación HTML/Markdown)."),
+  row("Publicación en tu blog o CMS", ["—", "✓", "✓", "✓", "✓"], "partial", "WordPress: se conecta con una contraseña de aplicación y publica solo lo aprobado; con el plugin gratuito también envía el título, la descripción SEO y los datos estructurados. También Ghost y un webhook firmado (Webflow a través de Make o Zapier). Shopify y Webflow directo están en desarrollo (mientras, exportación HTML/Markdown)."),
   row("Actualización de artículos que pierden tráfico", ["—", "—", "✓", "✓", "✓"], "building"),
   row("Google Search Console (solo lectura)", ["✓", "✓", "✓", "✓", "✓"]),
   row("Google Analytics 4 (solo lectura)", ["—", "✓", "✓", "✓", "✓"]),
