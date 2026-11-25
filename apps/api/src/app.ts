@@ -28,6 +28,7 @@ import { reports } from "./routes/reports";
 import { searchConsole } from "./routes/searchConsole";
 import { registerPublicBlog, siteBlog } from "./routes/site-blog";
 import { registerStatusPage } from "./routes/status-page";
+import { registerMetaPublic, social } from "./routes/social";
 import { activationRoutes, publicAudits, registerAuditPage } from "./routes/public-audit";
 import { eventsPublic } from "./routes/events";
 import { FALLBACK_404_HTML, SITE_CSP, SITE_SECURITY_HEADERS } from "./lib/site-headers";
@@ -97,6 +98,7 @@ export function createApp(deps: Deps) {
   app.get("/api/v1/health", (c) => c.json({ ok: true, environment: c.env.ENVIRONMENT, time: new Date().toISOString() }));
   app.get("/api/v1/providers", (c) => c.json({ items: providerManifest(c.env) }));
 
+  registerMetaPublic(app);
   app.route("/api/v1/auth", auth);
   app.route("/api/v1/auth", oauth);
   app.route("/api/v1/webhooks", webhooks);
@@ -126,6 +128,7 @@ export function createApp(deps: Deps) {
   tenant.route("/", usage);
   tenant.route("/", content);
   tenant.route("/", siteBlog);
+  tenant.route("/", social);
   tenant.route("/", activationRoutes);
   tenant.route("/", searchConsole);
   tenant.route("/", analytics);

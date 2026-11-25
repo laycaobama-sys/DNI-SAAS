@@ -29,3 +29,4 @@ export * from "./finding-draft";
 export * from "./audit-report";
 export * from "./pricing";
 export * from "./public-audit";
+export * from "./social";

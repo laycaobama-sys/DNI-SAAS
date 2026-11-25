@@ -12,6 +12,7 @@ import {
   FileSearch,
   FileText,
   Film,
+  Share2,
   Gauge,
   KeyRound,
   LayoutDashboard,
@@ -53,6 +54,7 @@ export const MODULES: Record<string, { label: string; description: string }> = {
   authority: { label: "Backlinks / Authority", description: "Menciones y relaciones editoriales legítimas. Nunca granjas ni intercambios masivos de enlaces." },
   creative: { label: "Creative Studio", description: "Banners y carruseles con brand kit, capas, safe areas y exportación por formato." },
   video: { label: "Video Studio", description: "Storyboard, voz con licencia, subtítulos y render asíncrono con coste reservado." },
+  social: { label: "Redes sociales", description: "Publicaciones en Facebook e Instagram con aprobación previa y programación." },
   ads: { label: "Ads Manager", description: "Borradores sin gasto, aprobación explícita, Spend Guardian con límites y kill switch." },
   landings: { label: "Landing Pages", description: "Constructor por bloques, dominio verificado, consentimiento y formularios anti-spam." },
   experiments: { label: "Experiments / CRO", description: "Tests A/B con hipótesis, muestra mínima y advertencias de significancia." },
@@ -72,7 +74,7 @@ export function navFor(orgId: string): Array<{ section: string; items: NavItem[]
   return [
     { section: "Crecimiento", items: [i("", "Command Center", LayoutDashboard, true), i("analyze", "Nueva auditoría", Sparkles), i("advisor", "Asesor IA", MessageSquareText), i("ai-hub", "Tu IA y consumo", Cpu), i("audits", "Auditoría web", FileSearch), i("brands", "Proyectos y marcas", Building2)] },
     { section: "Orgánico", items: [i("seo-tecnico", "SEO técnico", Gauge), i("search-console", "Search Console", TrendingUp), i("keywords", "Keywords y competencia", Search), i("ai-visibility", "AI Visibility (GEO)", Bot), i("content", "Content Studio", FileText), i("authority", "Backlinks / Authority", Link2)] },
-    { section: "Creatividad y pago", items: [i("creative", "Creative Studio", Palette), i("video", "Video Studio", Film), i("ads", "Ads Manager", Megaphone), i("landings", "Landing Pages y tests A/B", LayoutTemplate)] },
+    { section: "Creatividad y pago", items: [i("creative", "Creative Studio", Palette), i("video", "Video Studio", Film), i("social", "Redes sociales", Share2), i("ads", "Ads Manager", Megaphone), i("landings", "Landing Pages y tests A/B", LayoutTemplate)] },
     { section: "Ventas y datos", items: [i("crm", "CRM / Leads", Target), i("automations", "Automatizaciones", Workflow), i("attribution", "Atribución", FlaskConical), i("analytics", "Analytics (GA4)", BarChart3), i("reports", "Informes", FileBarChart), i("jobs", "AI Agent Center", Bot)] },
     { section: "Organización", items: [i("integrations", "Integraciones", Plug), i("team", "Equipo y accesos", Users), i("billing", "Plan, límites y créditos", CreditCard), i("agency", "Agencia y marca blanca", KeyRound), i("audit-log", "Logs de auditoría", ScrollText)] },
   ];

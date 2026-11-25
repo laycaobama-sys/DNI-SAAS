@@ -20,6 +20,10 @@ export interface Env {
   /** Max real emails per month (default 2500, under the 3,000 included in Workers Paid). */
   EMAIL_MONTHLY_CAP?: string;
   GOOGLE_CLIENT_ID?: string;
+  /** Meta app (Facebook Login for Business) for Facebook Pages + Instagram publishing. Public id. */
+  META_APP_ID?: string;
+  /** Optional Facebook Login for Business configuration id (public); without it the scope list is sent. */
+  META_LOGIN_CONFIG_ID?: string;
   /** Organisation whose approved articles can be published at APP_ORIGIN/blog (the site owner's own org). */
   SITE_BLOG_ORG_ID?: string;
   /** Stripe stays off until the owner decides: "true" enables checkout/webhook. */
@@ -41,6 +45,8 @@ export interface Env {
   IP_HASH_SALT?: string;
   DATA_ENC_KEY?: string;
   GOOGLE_CLIENT_SECRET?: string;
+  /** Meta app secret (wrangler secret put META_APP_SECRET). Never logged, never sent to the browser. */
+  META_APP_SECRET?: string;
   OPENROUTER_API_KEY?: string;
   GEMINI_API_KEY?: string;
   /** Optional free Groq key (secret). If present, Groq is the first free fallback after Workers AI. */

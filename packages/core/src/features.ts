@@ -55,6 +55,20 @@ export const FEATURES: FeatureInfo[] = [
     menu: ["video", "creative"],
   },
   {
+    key: "social",
+    label: "Publicación en Facebook e Instagram",
+    status: "partial",
+    limit: "Meta tiene que aprobar la app de DNI Growth para que cualquier cliente pueda conectar sus cuentas; hasta entonces solo funciona con las cuentas autorizadas en la app.",
+    summary: "Conecta tu página de Facebook y tu cuenta profesional de Instagram, prepara publicaciones con imagen, apruébalas y se publican solas a la hora programada.",
+    details: [
+      "Conexión con Facebook Login for Business: solo las páginas y cuentas de Instagram que tú eliges; los permisos se pueden retirar desde DNI Growth o desde Facebook.",
+      "Cada publicación pasa por aprobación de una persona con permiso de aprobar antes de llegar a Meta; botón de pausa para detener todas las publicaciones.",
+      "Comprobación previa de las reglas de Instagram (JPG, proporción 4:5 a 1,91:1, 2.200 caracteres, 30 hashtags) para que no falle al publicar.",
+      "Nunca se publica dos veces: reintentos seguros y aviso si no se puede confirmar el resultado.",
+    ],
+    menu: ["social"],
+  },
+  {
     key: "landings",
     label: "Landing pages",
     status: "available",
