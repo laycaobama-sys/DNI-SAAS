@@ -1,6 +1,6 @@
 import { Hono, type Context } from "hono";
 import { z } from "zod";
-import { can } from "@dni/core";
+import { can, DECLINE_DEFAULTS, DECLINE_REASON_LABEL, decliningPages, GSC_PAGE_ROWS } from "@dni/core";
 import type { AppEnv } from "../env";
 import { auditStmt } from "../lib/audit";
 import { GSC_SOURCE } from "../lib/google";
@@ -80,6 +80,25 @@ searchConsole.get("/search-console", requireScope("audit_results:read"), async (
           .all()
       ).results;
     const observedAt = daily.reduce<string | null>((a, r) => (!a || r.observed_at > a ? r.observed_at : a), null);
+    // Pages that lose clicks: current 28 days vs the 28 before, compared deterministically (no AI, nothing leaves the platform).
+    const pageRows = async (table: "gsc_top_rows" | "gsc_page_prev") =>
+      (
+        await db
+          .prepare(`SELECT key, clicks, impressions, position, period_start, period_end FROM ${table} WHERE organization_id = ? AND property_id = ?${table === "gsc_top_rows" ? " AND dimension = 'page'" : ""}`)
+          .bind(t.orgId, sel.id)
+          .all<{ key: string; clicks: number; impressions: number; position: number; period_start: string; period_end: string }>()
+      ).results;
+    const [curPages, prevPages] = await Promise.all([pageRows("gsc_top_rows"), pageRows("gsc_page_prev")]);
+    const declining = prevPages.length
+      ? {
+          source: "Google Search Console API · searchAnalytics.query por página",
+          measurement: "derived",
+          period: curPages[0] ? { start: curPages[0].period_start, end: curPages[0].period_end } : null,
+          previousPeriod: { start: prevPages[0]!.period_start, end: prevPages[0]!.period_end },
+          rule: `Pierde al menos ${DECLINE_DEFAULTS.minLostClicks} clics y al menos un ${Math.round(DECLINE_DEFAULTS.minDrop * 100)} % de los que tenía`,
+          pages: decliningPages(curPages, prevPages, { currentComplete: curPages.length < GSC_PAGE_ROWS }).map((d) => ({ ...d, advice: DECLINE_REASON_LABEL[d.reason] })),
+        }
+      : null;
     report = {
       propertyId: sel.id,
       siteUrl: sel.site_url,
@@ -94,6 +113,7 @@ searchConsole.get("/search-console", requireScope("audit_results:read"), async (
       daily,
       topQueries: await top("query"),
       topPages: await top("page"),
+      declining,
       caveats: GSC_CAVEATS,
     };
   }
@@ -205,6 +225,7 @@ searchConsole.delete("/search-console/property", requireScope("integrations:mana
       ? [
           db.prepare("DELETE FROM gsc_daily_metrics WHERE organization_id = ? AND property_id = ?").bind(t.orgId, p.id),
           db.prepare("DELETE FROM gsc_top_rows WHERE organization_id = ? AND property_id = ?").bind(t.orgId, p.id),
+          db.prepare("DELETE FROM gsc_page_prev WHERE organization_id = ? AND property_id = ?").bind(t.orgId, p.id),
           db.prepare("UPDATE gsc_properties SET last_sync_at = NULL, last_error = NULL WHERE organization_id = ? AND id = ?").bind(t.orgId, p.id),
         ]
       : []),

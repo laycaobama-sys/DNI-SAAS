@@ -78,7 +78,8 @@ guideApi.post(
     const db = c.env.DB;
     const ip = (await hashIp(c.env, c.req.header("cf-connecting-ip"))) ?? "noip";
     await rateLimit(db, `guide:ip:${ip}`, IP_PER_HOUR, 3600);
-    const emailHash = await sha256Hex(`guide:${input.email}`);
+    // Keyed (HMAC) so the stored fingerprint cannot be reversed by hashing a list of known emails.
+    const emailHash = await hmacSha256Hex(signKey(c.env), `email:${input.email}`);
     await rateLimit(db, `guide:email:${emailHash}`, EMAIL_PER_DAY, 86400);
     try {
       await rateLimit(db, "guide:global", GLOBAL_PER_DAY, 86400);

@@ -23,6 +23,10 @@ describe("guide «Cómo aparecer en ChatGPT» with double opt-in", () => {
     expect(row).toMatchObject({ status: "pending" });
     expect(row!.email_enc).not.toContain("ana@");
     expect(row!.email_hash).not.toContain("ana");
+    // The fingerprint is keyed: a plain SHA-256 of the email does not match it.
+    const plain = Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode("guide:ana@ejemplo.es"))), (b) => b.toString(16).padStart(2, "0")).join("");
+    expect(row!.email_hash).not.toBe(plain);
+    expect(row!.email_hash).toMatch(/^[0-9a-f]{64}$/);
     expect(row!.consent_text).toContain("guía");
     const mail = await lastMail(h, "ana@ejemplo.es");
     expect(mail!.subject).toContain("Confirma");

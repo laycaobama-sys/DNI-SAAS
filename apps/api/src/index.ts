@@ -18,6 +18,7 @@ import { dailyBackup } from "./lib/backup";
 import { runStatusChecks } from "./lib/status";
 import { publishDueSocialPosts } from "./lib/social-publish";
 import { guideMaintenance } from "./routes/guide";
+import { sendMonthlyReports } from "./lib/monthly-report";
 
 const deps: Deps = {
   fetchImpl: (...args) => fetch(...args),
@@ -74,6 +75,8 @@ export default {
     await guideMaintenance(env).catch((e) => log("error", "guide.maintenance_failed", { error: String(e).slice(0, 120) }));
     // Help emails 24 h and 72 h after signup (once each, never to users who opted out).
     await sendLifecycleEmails(env).catch((e) => log("error", "lifecycle.cron_failed", { error: String(e).slice(0, 120) }));
+    // Monthly report to owners/admins (days 1–7 of each month, once per organisation, month and person).
+    await sendMonthlyReports(env).catch((e) => log("error", "monthly_report.cron_failed", { error: String(e).slice(0, 120) }));
     // Retention of the cookieless product analytics (13 months).
     await purgeProductEvents(env.DB).catch((e) => log("error", "product_events.purge_failed", { error: String(e).slice(0, 120) }));
     // Facebook / Instagram: approved posts whose time has come (never twice; see lib/social-publish.ts).

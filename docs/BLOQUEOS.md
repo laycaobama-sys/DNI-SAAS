@@ -6,21 +6,9 @@ Reglas que siguen vigentes: nadie más que tú escribe claves, contraseñas o c�
 
 ---
 
-## 0. URGENTE (2 minutos) · Activar Facebook e Instagram: guarda la clave de la app de Meta
+## 0. HECHO · Clave de la app de Meta guardada (2026-11-25)
 
-Ya están construidos y desplegados la conexión de Facebook e Instagram, la aprobación y la publicación automática. En la app de Meta «DNI Growth» (2092022311512990) están configurados los casos de uso de Páginas e Instagram, la URL de redirección, la de retirada de permisos y la de borrado de datos. Solo falta la **clave secreta de la app**, y solo la puedes copiar tú.
-
-1. En developers.facebook.com → tu app «DNI Growth» → **Configuración de la aplicación → Información básica → Clave secreta de la aplicación** → «Mostrar» (Facebook te pedirá la contraseña) → cópiala.
-2. En PowerShell, dentro de la carpeta del proyecto:
-   ```powershell
-   cd "C:\Users\ibrag\Downloads\DNI SAAS\apps\api"
-   ```
-   ```powershell
-   npx.cmd wrangler secret put META_APP_SECRET
-   ```
-   Pega la clave cuando la pida y pulsa Enter. No la pegues en ningún chat.
-
-Al momento, la pantalla **Redes sociales** pasa de «Muy pronto» a «Conectar con Facebook». Con tu cuenta (tienes un rol en la app) ya puedes conectar tus páginas y publicar. Para que **cualquier cliente** pueda conectar las suyas falta lo del apartado 5.
+Guardaste `META_APP_SECRET` con wrangler. Comprobado el mismo día: `/estado` → «Facebook e Instagram» en verde, «Meta acepta las credenciales de la app» (la comprobación se repite cada hora). La pantalla **Redes sociales** ya ofrece «Conectar con Facebook». Con tu cuenta (tienes un rol en la app) puedes conectar tus páginas y publicar. Para que **cualquier cliente** pueda conectar las suyas falta lo del apartado 5; hasta entonces `/precios` sigue diciendo «En desarrollo».
 
 ## 1. HECHO · Stripe en real con la cuenta «DNI Growth-IA» (2026-11-23)
 
@@ -111,9 +99,12 @@ Pasos en [PENDIENTES_TITULAR.md §0](PENDIENTES_TITULAR.md). Ejecutas `node scri
 1. **IA en nivel gratuito (decisión tuya del 25 nov):** seguimos con proveedores gratuitos hasta que entren pagos. Riesgo: las condiciones de la API gratuita de Gemini no permiten usarla para servir a usuarios del Espacio Económico Europeo, y Google puede usar lo enviado para mejorar sus productos. Cuando haya ingresos, activa la facturación del proyecto de Google Cloud con un presupuesto y una alerta de 30 €/mes. El código ya tiene techos de gasto.
 2. **Abogado:** además de condiciones, garantía y privacidad, el borrador de DPA en `/legal/encargo-tratamiento` y `/subencargados`.
 3. **Google Auth Platform: `composio.dev`:** cuando termine la verificación, mira en *Clientes → URI de redirección autorizadas* si algún cliente OAuth redirige a composio.dev. Si DNI Growth no lo usa, quítalo. No lo toques mientras la verificación siga abierta.
-4. **Blog:** cuando estén preparados los 10 borradores, revísalos y apruébalos tú (30–60 minutos). Ninguno se publica sin tu aprobación.
+4. **Blog: 10 borradores esperando tu revisión.** En la organización «DNI Growth» → **Contenido**, filtro «En revisión»: cómo aparecer en ChatGPT, llms.txt, AEO para pymes, SEO para Shopify, SEO local en España, auditoría técnica paso a paso, datos estructurados, Search Console para principiantes, GEO frente a SEO y cómo elegir una herramienta de SEO con IA. Pasan el control del editor (sin cifras sin fuente, sin promesas, sin precios). Léelos, cambia lo que quieras y pulsa «Aprobar» en cada uno (30–60 minutos). Ninguno se publica sin tu aprobación. Copia de los textos en `docs/blog-borradores/articulos.json`.
 5. **Domicilio profesional o sociedad:** decide con tu gestor si quieres evitar que tu domicilio particular aparezca en el aviso legal y en las facturas.
 6. **TOTP del Control Center, Stripe Tax o IVA fijo, NIF en Stripe y VERI*FACTU:** siguen como estaban.
+7. **Abogado, también la guía:** la política de privacidad tiene un apartado nuevo para la guía «Cómo aparecer en ChatGPT» (doble confirmación, email borrado al confirmar salvo que acepten novedades, borrado a los 7 días si no confirman). Inclúyelo en la revisión.
+8. **Correo de prueba de la guía:** se probó el registro con soporte@dnigrowth.com. Si no confirmas ese correo, el registro se borra solo a los 7 días. No hay que hacer nada.
+9. **Comparativa con BabyLoveGrowth:** los datos están comprobados el 25 nov 2026 con enlace a su fuente. Revísalos cada 2–3 meses o si nos escriben una corrección (la página da soporte@dnigrowth.com para eso).
 
 ## 8. Más adelante
 

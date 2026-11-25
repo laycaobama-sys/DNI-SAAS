@@ -66,6 +66,11 @@ function setup(opts: FakeOpts = {}) {
         });
       }
       if (q.dimensions[0] === "query") return Response.json({ rows: [{ keys: ["dni growth"], clicks: 25, impressions: 100, ctr: 0.25, position: 1.5 }] });
+      // The 28 days before the current period (ends > 20 days ago): the home page had 100 clicks at position 2.
+      if (Date.parse(q.endDate) < Date.now() - 20 * 86_400_000) {
+        expect(q.rowLimit).toBe(250);
+        return Response.json({ rows: [{ keys: ["https://example.com/"], clicks: 100, impressions: 600, ctr: 0.17, position: 2 }, { keys: ["https://example.com/ok"], clicks: 5, impressions: 50, ctr: 0.1, position: 3 }] });
+      }
       return Response.json({ rows: [{ keys: ["https://example.com/"], clicks: 40, impressions: 500, ctr: 0.08, position: 5.6 }] });
     }
     return realFetch(input, init);
@@ -172,7 +177,12 @@ describe("Search Console (F3): OAuth de solo lectura", () => {
     expect(g.report.observedAt).toBeTruthy();
     // Fixed Google host, encoded property, bearer token only on Google API calls.
     const q = calls.filter((c) => c.url.includes("searchAnalytics"));
-    expect(q).toHaveLength(3);
+    expect(q).toHaveLength(4);
+    // Pages that lose clicks: current vs the 28 days before, derived without AI.
+    expect(g.report.declining).toMatchObject({ measurement: "derived" });
+    expect(g.report.declining.pages).toHaveLength(1);
+    expect(g.report.declining.pages[0]).toMatchObject({ page: "https://example.com/", clicksBefore: 100, clicksNow: 40, lostClicks: 60, reason: "position" });
+    expect(g.report.declining.pages[0].advice).toContain("posición");
     expect(q[0]!.url).toBe("https://www.googleapis.com/webmasters/v3/sites/sc-domain%3Aexample.com/searchAnalytics/query");
     expect(q.every((c) => c.auth === "Bearer at-2")).toBe(true);
     // Free job: no credit ledger rows.
@@ -370,7 +380,7 @@ describe("Search Console (F3): OAuth de solo lectura", () => {
     expect(g.connection.status).toBe("connected");
     expect(g.report).toBeNull();
     expect(g.properties.find((p: any) => p.id === pid)).toMatchObject({ selected: false, lastSyncAt: null });
-    for (const t of ["gsc_daily_metrics", "gsc_top_rows"]) expect((await h.db.prepare(`SELECT COUNT(*) AS n FROM ${t}`).first<{ n: number }>())!.n).toBe(0);
+    for (const t of ["gsc_daily_metrics", "gsc_top_rows", "gsc_page_prev"]) expect((await h.db.prepare(`SELECT COUNT(*) AS n FROM ${t}`).first<{ n: number }>())!.n).toBe(0);
     expect(await scheduleGscSyncs(h.env)).toHaveLength(0);
     const cancelled = await h.db.prepare("SELECT cancel_requested_at FROM jobs WHERE id = ?").bind(stale.json.jobId).first<{ cancel_requested_at: string | null }>();
     expect(cancelled!.cancel_requested_at).toBeTruthy();

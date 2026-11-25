@@ -4,6 +4,21 @@ Formato: fecha, versión desplegada en Cloudflare y cambios visibles. Las prueba
 
 ## 2026-11-25
 
+### Páginas que pierden clics e informe mensual por email — versión `f14057fe`
+- **Search Console → «Páginas que pierden clics»:** compara cada página en los últimos 28 días con los 28 anteriores. Avisa si pierde al menos 10 clics y un 30 % de los que tenía, y explica la causa probable: baja de posición, menos búsquedas, menos clics con las mismas búsquedas, o ya no aparece. Se calcula sin IA y estos datos no salen de la plataforma. La sincronización importa ahora 250 páginas (antes 25) y también el periodo anterior, con el mismo permiso de solo lectura.
+- **Informe mensual por email** a propietarios y administradores, entre el día 1 y el 7 de cada mes. Incluye el trabajo hecho (auditorías, contenidos aprobados, envíos a la web y publicaciones en redes) y los clics e impresiones de Search Console con fuente. Solo compara con el mes anterior si hay los mismos días. Nunca se envía dos veces; las organizaciones sin nada que contar no reciben nada. Baja en un clic. Añadido a la política de privacidad.
+- Migraciones `0026` y `0027` aditivas (copia previa `backups/dni-growth-db-pre-0026-20261125.sql`).
+
+### Herramientas que leen tu web, landings, comparativa, guía, blog y Meta activo — versión `6c8906bc`
+- **4 herramientas gratuitas más** en `/herramientas` (ya son 12): «¿Tu web está preparada para ChatGPT?» (12 comprobaciones), palabras clave frente a un competidor, comprobador de enlaces rotos e imagen al compartir. Leen la web desde nuestro servidor con protección SSRF y límites por IP y diarios ([ADR 0026](adr/0026-captacion-guia-herramientas-publicas-iptc.md)).
+- **12 landings**: SEO con IA, GEO en ChatGPT, auditoría SEO gratis, SEO para WordPress, SEO para Shopify (publicación directa «En desarrollo»), agencias y 6 sectores (clínicas, despachos, e-commerce, restaurantes, inmobiliarias, reformas). Todas con preguntas frecuentes, datos estructurados y el aviso de que nadie puede garantizar una posición.
+- **`/comparativa/babylovegrowth`**: 11 filas, cada una con enlace a su fuente y fecha de comprobación, una sección de en qué va por delante BabyLoveGrowth hoy y una dirección para pedir correcciones.
+- **Guía «Cómo aparecer en ChatGPT (2027)»** a cambio del email con doble confirmación. El email se borra al confirmar salvo que pidan novedades; los registros sin confirmar se borran a los 7 días. Política de privacidad actualizada. Migración `0025` aditiva (copia previa hecha).
+- **Imágenes creadas con IA marcadas** con el metadato IPTC «trainedAlgorithmicMedia» (PNG y JPEG).
+- **Meta activo:** la titular guardó la clave de la app y `/estado` comprueba cada hora que Meta la acepta (9 comprobaciones).
+- **Blog:** 10 borradores en revisión en la organización «DNI Growth». No se publica ninguno sin la aprobación de la titular.
+- Seguridad: la huella del email de la guía usa HMAC con clave, para que no se pueda revertir probando una lista de emails.
+
 ### WordPress y herramientas gratuitas — versión `a1038509`
 - **Publicación en WordPress** (Starter o superior, [ADR 0025](adr/0025-publicacion-externa-meta-y-wordpress.md), [guía](WORDPRESS.md)): se conecta con una contraseña de aplicación y solo envía contenido aprobado, como borrador o publicado. Envíos repetidos actualizan la misma entrada; un reintento tras un corte no la duplica; «Retirar» la pasa a borrador. Al desconectar se revoca la contraseña en WordPress. Probado contra un WordPress real (Playground).
 - `/precios`: «Publicación en tu blog o CMS» pasa de «En desarrollo» a **Parcial** (WordPress sí; Shopify, Ghost y Webflow en desarrollo). Integraciones y la bienvenida (paso «Conecta tu CMS») lo reflejan.

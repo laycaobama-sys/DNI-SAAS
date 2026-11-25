@@ -9,6 +9,7 @@ import {
   searchAnalytics,
   storeProperties,
 } from "../lib/gsc";
+import { GSC_PAGE_ROWS } from "@dni/core";
 import { nowIso } from "../lib/util";
 import { PermanentJobError, type JobContext } from "./consumer";
 
@@ -17,6 +18,7 @@ const BACKFILL_DAYS = 90;
 const REFRESH_DAYS = 30;
 const TOP_DAYS = 28;
 const TOP_ROWS = 25;
+const PAGE_ROWS = GSC_PAGE_ROWS;
 
 const PERMANENT = new Set(["not_connected", "secret_unreadable", "invalid_grant", "scope_not_granted", "PERMISSION_DENIED", "invalid_site_url", "UNAUTHENTICATED"]);
 
@@ -77,7 +79,7 @@ export async function runGscSync(ctx: JobContext, input: { propertyId: string })
     let queries = 0;
     let pages = 0;
     for (const dimension of ["query", "page"] as const) {
-      const rows = await searchAnalytics(deps, accessToken, prop.site_url, { startDate: topStart, endDate, dimensions: [dimension], rowLimit: TOP_ROWS });
+      const rows = await searchAnalytics(deps, accessToken, prop.site_url, { startDate: topStart, endDate, dimensions: [dimension], rowLimit: dimension === "page" ? PAGE_ROWS : TOP_ROWS });
       tops.push(db.prepare("DELETE FROM gsc_top_rows WHERE organization_id = ? AND property_id = ? AND dimension = ?").bind(orgId, prop.id, dimension));
       for (const r of rows) {
         tops.push(
@@ -90,6 +92,18 @@ export async function runGscSync(ctx: JobContext, input: { propertyId: string })
       }
       if (dimension === "query") queries = rows.length;
       else pages = rows.length;
+    }
+    // The 28 days before: same read-only query, kept only to show which pages lose clicks (never sent to an AI model).
+    const prevEnd = daysAgo(TOP_DAYS + 1);
+    const prevStart = daysAgo(TOP_DAYS * 2);
+    const prevRows = await searchAnalytics(deps, accessToken, prop.site_url, { startDate: prevStart, endDate: prevEnd, dimensions: ["page"], rowLimit: PAGE_ROWS });
+    tops.push(db.prepare("DELETE FROM gsc_page_prev WHERE organization_id = ? AND property_id = ?").bind(orgId, prop.id));
+    for (const r of prevRows) {
+      tops.push(
+        db
+          .prepare("INSERT OR REPLACE INTO gsc_page_prev (organization_id, property_id, key, clicks, impressions, ctr, position, period_start, period_end, observed_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
+          .bind(orgId, prop.id, r.keys[0], r.clicks, r.impressions, r.ctr, r.position, prevStart, prevEnd, observedAt),
+      );
     }
     await db.batch([
       ...tops,
