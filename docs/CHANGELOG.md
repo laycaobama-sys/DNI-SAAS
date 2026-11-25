@@ -2,6 +2,68 @@
 
 Formato: fecha, versión desplegada en Cloudflare y cambios visibles. Las pruebas de cada entrada están en [IMPLEMENTATION_STATUS.md](IMPLEMENTATION_STATUS.md) y el estado del plan en [STATUS.md](STATUS.md).
 
+## 2026-11-25
+
+### Publicación en Ghost y webhook firmado — versión `c3a16902`
+- **Ghost** (Starter o superior, [ADR 0028](adr/0028-publicacion-ghost-y-webhook.md)):
+  - se conecta desde cualquier contenido con la Admin API key de una integración personalizada;
+  - publica o guarda como borrador lo aprobado, actualiza la misma entrada sin duplicarla, aunque se repita un envío tras un corte, y «Retirar» la pasa a borrador.
+- **Webhook de publicación firmado:**
+  - envía lo aprobado a una dirección https, firmado con HMAC y con identificador de entrega estable;
+  - sirve para Webflow a través de Make o Zapier, n8n o un servidor propio;
+  - el formato está en [`/openapi/webhook-publicacion.yaml`](https://dnigrowth.com/openapi/webhook-publicacion.yaml) (OpenAPI 3.1).
+- `/precios`, Integraciones y la bienvenida lo reflejan. Shopify y Webflow directo siguen «En desarrollo».
+- Migración `0029` aditiva (copia previa `backups/dni-growth-db-pre-0029-20261125.sql`).
+
+### Plugin de WordPress, correcciones reversibles, portada más rápida y comprobaciones nocturnas — versión `60c0846d`
+- **Plugin gratuito «DNI Growth Connector»** para WordPress, que se descarga desde Integraciones o en `/descargas/dni-growth-connector.zip` ([ADR 0027](adr/0027-plugin-wordpress-correcciones-y-fuentes-propias.md), [guía](WORDPRESS.md)). Con él:
+  - cada artículo publicado lleva su título SEO, su descripción y sus datos estructurados (JSON-LD), copiados en Yoast SEO o Rank Math si están activos;
+  - desde **Integraciones → Correcciones técnicas en WordPress** se corrigen el título SEO, la descripción, la canónica, el JSON-LD y el texto alternativo de imágenes, y se publica `llms.txt`. Cada cambio lo aprueba una persona con permiso, guarda el valor anterior, queda en la auditoría y se deshace con un clic.
+  - Probado en un WordPress real con PHP 8.3 y 7.4 (`pnpm wp:plugin-test`, 28 comprobaciones).
+- `/precios`: «Correcciones técnicas en tu web» pasa de «En desarrollo» a **Parcial** (solo WordPress con el plugin). La landing `/seo-wordpress` explica el plugin.
+- **Portada más rápida y sin Google Fonts:**
+  - las fuentes se sirven desde dnigrowth.com y la CSP ya no permite fuentes de Google;
+  - se quita el desenfoque animado del fondo.
+  - Lighthouse en `/`, `/precios` y `/herramientas`: 100 en accesibilidad, buenas prácticas y SEO.
+- **Comprobaciones nocturnas** en GitHub (`nightly.yml`): smoke de producción, auditoría propia y Lighthouse. La auditoría propia también se ejecuta en cada push a `main`.
+- **Legal:** se quitan las notas de «borrador pendiente de abogado» del contrato de encargo, la garantía y `/subencargados`, porque la titular ya lo revisó con su abogado.
+- Migración `0028` aditiva (copia previa `backups/dni-growth-db-pre-0028-20261125.sql`).
+
+### Páginas que pierden clics e informe mensual por email — versión `f14057fe`
+- **Search Console → «Páginas que pierden clics»:** compara cada página en los últimos 28 días con los 28 anteriores. Avisa si pierde al menos 10 clics y un 30 % de los que tenía, y explica la causa probable: baja de posición, menos búsquedas, menos clics con las mismas búsquedas, o ya no aparece. Se calcula sin IA y estos datos no salen de la plataforma. La sincronización importa ahora 250 páginas (antes 25) y también el periodo anterior, con el mismo permiso de solo lectura.
+- **Informe mensual por email** a propietarios y administradores, entre el día 1 y el 7 de cada mes. Incluye el trabajo hecho (auditorías, contenidos aprobados, envíos a la web y publicaciones en redes) y los clics e impresiones de Search Console con fuente. Solo compara con el mes anterior si hay los mismos días. Nunca se envía dos veces; las organizaciones sin nada que contar no reciben nada. Baja en un clic. Añadido a la política de privacidad.
+- Migraciones `0026` y `0027` aditivas (copia previa `backups/dni-growth-db-pre-0026-20261125.sql`).
+
+### Herramientas que leen tu web, landings, comparativa, guía, blog y Meta activo — versión `6c8906bc`
+- **4 herramientas gratuitas más** en `/herramientas` (ya son 12): «¿Tu web está preparada para ChatGPT?» (12 comprobaciones), palabras clave frente a un competidor, comprobador de enlaces rotos e imagen al compartir. Leen la web desde nuestro servidor con protección SSRF y límites por IP y diarios ([ADR 0026](adr/0026-captacion-guia-herramientas-publicas-iptc.md)).
+- **12 landings**: SEO con IA, GEO en ChatGPT, auditoría SEO gratis, SEO para WordPress, SEO para Shopify (publicación directa «En desarrollo»), agencias y 6 sectores (clínicas, despachos, e-commerce, restaurantes, inmobiliarias, reformas). Todas con preguntas frecuentes, datos estructurados y el aviso de que nadie puede garantizar una posición.
+- **`/comparativa/babylovegrowth`**: 11 filas, cada una con enlace a su fuente y fecha de comprobación, una sección de en qué va por delante BabyLoveGrowth hoy y una dirección para pedir correcciones.
+- **Guía «Cómo aparecer en ChatGPT (2027)»** a cambio del email con doble confirmación. El email se borra al confirmar salvo que pidan novedades; los registros sin confirmar se borran a los 7 días. Política de privacidad actualizada. Migración `0025` aditiva (copia previa hecha).
+- **Imágenes creadas con IA marcadas** con el metadato IPTC «trainedAlgorithmicMedia» (PNG y JPEG).
+- **Meta activo:** la titular guardó la clave de la app y `/estado` comprueba cada hora que Meta la acepta (9 comprobaciones).
+- **Blog:** 10 borradores en revisión en la organización «DNI Growth». No se publica ninguno sin la aprobación de la titular.
+- Seguridad: la huella del email de la guía usa HMAC con clave, para que no se pueda revertir probando una lista de emails.
+
+### WordPress y herramientas gratuitas — versión `a1038509`
+- **Publicación en WordPress** (Starter o superior, [ADR 0025](adr/0025-publicacion-externa-meta-y-wordpress.md), [guía](WORDPRESS.md)): se conecta con una contraseña de aplicación y solo envía contenido aprobado, como borrador o publicado. Envíos repetidos actualizan la misma entrada; un reintento tras un corte no la duplica; «Retirar» la pasa a borrador. Al desconectar se revoca la contraseña en WordPress. Probado contra un WordPress real (Playground).
+- `/precios`: «Publicación en tu blog o CMS» pasa de «En desarrollo» a **Parcial** (WordPress sí; Shopify, Ghost y Webflow en desarrollo). Integraciones y la bienvenida (paso «Conecta tu CMS») lo reflejan.
+- **`/herramientas`** con 8 herramientas gratuitas que funcionan en el navegador del visitante (nada se envía): robots.txt y bots de IA, llms.txt, JSON-LD, FAQ para AEO, vista previa en Google, sitemap, Open Graph y valor del tráfico. Cada una tiene su página indexable con datos estructurados, preguntas frecuentes y llamada a la auditoría gratuita. Están en el sitemap y enlazadas desde la portada, precios, blog y 404.
+- Migración `0024` aditiva (copia previa `backups/dni-growth-db-pre-0024-20261125.sql`).
+
+### Facebook e Instagram — versión `aec5e64b`
+- Módulo **Redes sociales** (Starter o superior): conectar páginas de Facebook y cuentas profesionales de Instagram, escribir con imagen, aprobar y publicar solo a la hora programada. Botón de pausa, comprobación previa de las reglas de Instagram y nunca dos veces la misma publicación.
+- **Parcial** hasta que la titular guarde la clave de la app de Meta y Meta apruebe la app ([BLOQUEOS §0](BLOQUEOS.md)). Hasta entonces la pantalla dice «Muy pronto» y `/precios` dice «En desarrollo».
+- Migración `0023` aditiva (copia previa hecha).
+
+### Confianza: `/estado`, copias diarias y auditoría propia — versión `6f914e1f`
+- **`/estado`** público: 8 comprobaciones reales cada 5 minutos (web, API, auditoría, colas, pagos, Google, email y copias), con historial de 90 días. Aviso por email a la titular a la segunda caída seguida y al recuperarse.
+- **Copia diaria de la base de datos** a R2 en la UE (30 días). Restauración real probada ([RESTAURACION.md](RESTAURACION.md)).
+- Cada despliegue ejecuta la auditoría propia de dnigrowth.com y falla si baja de 100/100.
+
+### Precios honestos y base profesional — commit `3fe5365`
+- Lo que está «En desarrollo» se muestra como «Próximamente · incluida sin coste extra», nunca con ✓; un test lo impide.
+- Requisitos de la garantía con su estado y qué hacer. Buzones por función, `/subencargados`, borrador de DPA (pendiente de abogado) y `security.txt`.
+
 ## 2026-11-24
 
 ### Cada plan abre lo que se paga y cobros sin fallos — versión `8015e5ff`

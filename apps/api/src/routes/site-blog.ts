@@ -15,7 +15,7 @@ import { requireScope } from "../middleware";
  */
 
 /** Public pages listed in the sitemap besides the blog posts. */
-export const SITE_PAGES = ["/", "/precios", "/blog", "/seguridad", "/legal/garantia", "/legal/privacidad", "/legal/aviso-legal", "/legal/condiciones", "/legal/eliminacion-datos"];
+export const SITE_PAGES = ["/", "/precios", "/blog", "/seguridad", "/legal/garantia", "/legal/privacidad", "/legal/aviso-legal", "/legal/condiciones", "/legal/eliminacion-datos", "/subencargados", "/legal/encargo-tratamiento", "/estado", "/herramientas", "/herramientas/robots-txt-bots-ia", "/herramientas/generador-llms-txt", "/herramientas/generador-schema", "/herramientas/generador-faq-aeo", "/herramientas/vista-previa-google", "/herramientas/comprobador-sitemap", "/herramientas/etiquetas-open-graph", "/herramientas/calculadora-valor-trafico", "/herramientas/preparada-para-ia", "/herramientas/palabras-clave-competidor", "/herramientas/comprobador-enlaces-rotos", "/herramientas/comprobador-imagen-compartir", "/seo-con-ia", "/geo-posicionar-en-chatgpt", "/auditoria-seo-gratis", "/seo-wordpress", "/seo-shopify", "/para-agencias", "/sectores/clinicas", "/sectores/despachos", "/sectores/ecommerce", "/sectores/restaurantes", "/sectores/inmobiliarias", "/sectores/reformas", "/comparativa/babylovegrowth", "/guia-como-aparecer-en-chatgpt"];
 
 interface PostRow {
   id: string;
@@ -74,7 +74,7 @@ export const PAGE_HEADERS = { "content-type": "text/html; charset=utf-8", ...SIT
 const FALLBACK_SHELL = `<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Blog · DNI Growth</title><meta name="description" content=""><link rel="canonical" href=""><meta property="og:type" content="website"><meta property="og:title" content=""><meta property="og:description" content=""><meta property="og:url" content=""></head><body><main id="main" class="legal blog" data-blog-main></main></body></html>`;
 
 /** The built blog.html (header, footer, hashed CSS) is the template; the Worker fills title, meta and main. */
-async function shell(c: Context<AppEnv>): Promise<string> {
+export async function shell(c: Context<AppEnv>): Promise<string> {
   if (!c.env.ASSETS) return FALLBACK_SHELL;
   try {
     const res = await c.env.ASSETS.fetch(new Request(new URL("/blog", c.req.url)));
@@ -85,7 +85,7 @@ async function shell(c: Context<AppEnv>): Promise<string> {
   }
 }
 
-function fill(tpl: string, p: { title: string; description: string; canonical: string; main: string; ogType: "website" | "article"; jsonLd: unknown; noindex?: boolean }): string {
+export function fill(tpl: string, p: { title: string; description: string; canonical: string; main: string; ogType: "website" | "article"; jsonLd: unknown; noindex?: boolean }): string {
   const ld = JSON.stringify(p.jsonLd).replace(/</g, "\\u003c");
   return tpl
     .replace(/<title>[^<]*<\/title>/, `<title>${esc(p.title)}</title>`)
@@ -119,7 +119,18 @@ export function registerPublicBlog(app: Hono<AppEnv>) {
               `<li><article><h2><a href="/blog/${esc(p.slug)}">${esc(p.title)}</a></h2>${p.description ? `<p>${esc(p.description)}</p>` : ""}<p class="blog-meta"><time datetime="${esc(p.published_at)}">${esc(day(p.published_at))}</time></p></article></li>`,
           )
           .join("")}</ul>`
-      : `<div class="blog-empty" role="status"><p><strong>Todavía no hemos publicado artículos.</strong></p><p>Publicaremos solo contenido revisado por una persona y con fuentes, nunca textos en serie. Mientras tanto, puedes <a href="/app/register">auditar tu web gratis</a> o leer <a href="/#como-funciona">cómo funciona DNI Growth</a>.</p></div>`;
+      : `<div class="blog-empty" role="status"><p><strong>Todavía no hemos publicado artículos.</strong> Preferimos tardar a publicar textos en serie: cada guía la redacta Content Studio, la revisa una persona y lleva sus fuentes.</p></div>
+<h2>Qué vas a encontrar aquí</h2>
+<ul>
+<li><strong>Cómo aparecer en ChatGPT y otros asistentes:</strong> qué mira cada asistente, qué es el archivo llms.txt y cómo comprobar si te citan, sin prometer resultados.</li>
+<li><strong>SEO técnico paso a paso:</strong> títulos, descripciones, enlaces canónicos, datos estructurados y velocidad, con ejemplos reales de auditorías.</li>
+<li><strong>Search Console para principiantes:</strong> qué significan clics, impresiones, CTR y posición media, y qué decisiones tomar con ellos.</li>
+<li><strong>SEO local en España y para tiendas online:</strong> fichas, reseñas, páginas de categoría y producto.</li>
+<li><strong>GEO frente a SEO:</strong> en qué se parecen, en qué no y por qué ninguna herramienta puede garantizar posiciones.</li>
+</ul>
+<h2>Cómo escribimos</h2>
+<p>Cada artículo explica de dónde sale cada dato, separa lo observado de lo estimado y se revisa cuando cambian las reglas de Google o de los asistentes. No compramos enlaces ni publicamos contenido generado sin revisión.</p>
+<p>Mientras llegan los primeros artículos, puedes <a href="/#auditar">auditar tu web gratis en unos segundos</a>, ver <a href="/precios">los planes y lo que incluye cada uno</a> o leer <a href="/seguridad">cómo protegemos tus datos</a>.</p>`;
     const html = fill(await shell(c), {
       title: "Blog · DNI Growth",
       description: "Guías de SEO técnico, GEO y AEO revisadas por una persona y con fuentes. Sin promesas de posiciones.",

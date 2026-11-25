@@ -5,7 +5,7 @@
  * /api/v1/public/events), so script-src and connect-src stay 'self'.
  */
 export const SITE_CSP =
-  "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: https:; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'";
+  "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data: https:; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'";
 
 export const SITE_SECURITY_HEADERS: Record<string, string> = {
   "x-content-type-options": "nosniff",

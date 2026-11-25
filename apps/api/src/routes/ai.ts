@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import { AdvisorInput, buildAdvisorMessages, checkImagePrompt, classifyPage, ImageInput, organicPotential, validateAdvisorAnswer, type AdvisorContext, type ChatMessage } from "@dni/core";
+import { AdvisorInput, withAiProvenance, buildAdvisorMessages, checkImagePrompt, classifyPage, ImageInput, organicPotential, validateAdvisorAnswer, type AdvisorContext, type ChatMessage } from "@dni/core";
 import type { AppEnv } from "../env";
 import { aiApiError, AiUnavailableError, aiStatus, generateImage, generateText } from "../lib/ai";
 import { auditStmt } from "../lib/audit";
@@ -219,7 +219,9 @@ ai.post("/creative/images", requireScope("creative:generate"), async (c) => {
   const ext = img.contentType.split("/")[1];
   const key = `media/${t.orgId}/${id}.${ext}`;
   try {
-    await c.env.MEDIA.put(key, img.bytes, { httpMetadata: { contentType: img.contentType }, customMetadata: { organizationId: t.orgId, provider: img.provider } });
+    // Machine-readable "made with AI" mark (IPTC digital source type), kept when the image is published.
+    const bytes = withAiProvenance(img.bytes, img.contentType, `DNI Growth · ${img.model}`);
+    await c.env.MEDIA.put(key, bytes, { httpMetadata: { contentType: img.contentType }, customMetadata: { organizationId: t.orgId, provider: img.provider, aiGenerated: "true" } });
   } catch (e) {
     await usageLedgerStmt(db, { orgId: t.orgId, refId: id, kind: "release", amount: IMAGE_CREDITS, category: "ai_image" }).run();
     throw e;

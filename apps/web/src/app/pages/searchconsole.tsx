@@ -89,6 +89,48 @@ function TopTable({ title, rows, kind }: { title: string; rows: any[]; kind: "qu
   );
 }
 
+function DecliningCard({ data }: { data: any }) {
+  if (!data) {
+    return (
+      <Card title="Páginas que pierden clics" subtitle="Comparación de 28 días con los 28 anteriores">
+        <p className="text-sm text-mute">Todavía no hay datos de los 28 días anteriores para comparar (por ejemplo, si la web es nueva en Search Console). Aparecerá sola cuando los haya, tras una sincronización.</p>
+      </Card>
+    );
+  }
+  const pages: any[] = data.pages ?? [];
+  const period = data.period ? `${fmtDay(data.period.start)} – ${fmtDay(data.period.end)}` : "";
+  const prev = `${fmtDay(data.previousPeriod.start)} – ${fmtDay(data.previousPeriod.end)}`;
+  return (
+    <Card title="Páginas que pierden clics" subtitle={`${period} frente a ${prev} · calculado con datos observados`}>
+      {pages.length === 0 ? (
+        <p className="text-sm text-mute">Ninguna página pierde clics de forma clara en este periodo. Regla: {data.rule.toLowerCase()}.</p>
+      ) : (
+        <ul className="divide-y divide-line">
+          {pages.map((d) => (
+            <li key={d.page} className="py-3">
+              <div className="flex flex-wrap items-baseline justify-between gap-2">
+                <a className="min-w-0 max-w-full truncate font-medium underline-offset-2 hover:underline" href={/^https?:\/\//i.test(d.page) ? d.page : undefined} target="_blank" rel="noopener noreferrer" title={d.page}>
+                  {d.page}
+                </a>
+                <span className="text-sm tabular-nums">
+                  {nf.format(d.clicksBefore)} → {nf.format(d.clicksNow)} clics <Badge tone="danger">−{nf.format(d.lostClicks)}</Badge>
+                </span>
+              </div>
+              <p className="mt-1 text-xs text-mute">
+                Impresiones {nf.format(d.impressionsBefore)} → {nf.format(d.impressionsNow)} · posición {pos(d.positionBefore)} → {d.positionNow === null ? "—" : pos(d.positionNow)}
+              </p>
+              <p className="mt-1 text-sm">{d.advice}</p>
+            </li>
+          ))}
+        </ul>
+      )}
+      <p className="mt-3 text-xs text-mute">
+        {data.rule}. Fuente: {data.source}. Se calcula sin IA y estos datos no se envían a ningún modelo. Una bajada puede ser estacional: compárala con el mismo mes del año anterior en Search Console.
+      </p>
+    </Card>
+  );
+}
+
 export function SearchConsolePage() {
   const { orgId } = useParams();
   const [params, setParams] = useSearchParams();
@@ -415,6 +457,8 @@ export function SearchConsolePage() {
                 <TopTable title="Consultas principales" rows={report.topQueries} kind="query" />
                 <TopTable title="Páginas principales" rows={report.topPages} kind="page" />
               </div>
+
+              <DecliningCard data={report.declining} />
 
               <Card title="Cómo leer estos datos">
                 <ul className="list-disc space-y-1 pl-5 text-sm text-mute">

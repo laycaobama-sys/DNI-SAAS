@@ -950,7 +950,36 @@ export function providerManifest(env: Env): ProviderManifestEntry[] {
       note: gscReady(env) ? "Disponible: conecta tu cuenta de Google (solo lectura) desde «Analytics»." : "Falta la configuración de Google (cliente OAuth y clave de cifrado).",
     },
     { key: "keywords", name: "Proveedor de keywords/SERP", category: "SEO", status: "planned", note: "Sin proveedor no se muestran volúmenes ni dificultad." },
-    { key: "wordpress", name: "WordPress", category: "CMS", status: "planned", note: "Publicación solo tras aprobación; export HTML/Markdown sin credenciales." },
+    {
+      key: "wordpress",
+      name: "WordPress",
+      category: "CMS",
+      status: /^[0-9a-f]{64}$/i.test(env.DATA_ENC_KEY ?? "") ? "available" : "not_configured",
+      note: "Disponible desde Starter: abre un contenido y usa «Publicar en WordPress» para conectar tu web con una contraseña de aplicación. Solo se envía lo aprobado. Plugin opcional para correcciones técnicas (abajo).",
+    },
+    {
+      key: "ghost",
+      name: "Ghost",
+      category: "CMS",
+      status: /^[0-9a-f]{64}$/i.test(env.DATA_ENC_KEY ?? "") ? "available" : "not_configured",
+      note: "Disponible desde Starter: abre un contenido aprobado y conecta Ghost con la Admin API key de una integración personalizada. Publica, actualiza y retira a borrador sin duplicar.",
+    },
+    {
+      key: "cms_webhook",
+      name: "Webhook de publicación (Webflow con Make o Zapier, n8n, tu servidor)",
+      category: "CMS",
+      status: /^[0-9a-f]{64}$/i.test(env.DATA_ENC_KEY ?? "") ? "available" : "not_configured",
+      note: "Disponible desde Starter: envía lo aprobado firmado (HMAC) a una dirección https. Formato en /openapi/webhook-publicacion.yaml. Webflow directo y Shopify, en desarrollo.",
+    },
+    {
+      key: "meta_social",
+      name: "Facebook e Instagram (publicación)",
+      category: "Redes sociales",
+      status: env.META_APP_ID && env.META_APP_SECRET ? "blocked_external_approval" : "not_configured",
+      note: env.META_APP_ID && env.META_APP_SECRET
+        ? "Construida: funciona con las cuentas autorizadas en la app de DNI Growth; para el resto de clientes falta la revisión de la app por Meta."
+        : "Falta activar la clave de la app de Meta en DNI Growth.",
+    },
     {
       key: "geo_monitor",
       name: "Monitor de visibilidad en IA (Gemini, nivel gratuito)",

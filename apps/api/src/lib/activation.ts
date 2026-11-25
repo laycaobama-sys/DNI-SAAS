@@ -65,6 +65,7 @@ export async function activationFor(db: D1Database, orgId: string): Promise<Acti
   const brandHref = profile ? `${base}/brands/${profile.brand_id}` : brand ? `${base}/brands/${brand.id}` : `${base}/analyze`;
   const competitors = parseJson<unknown[]>(profile?.competitors_json, []);
   const contentAllowed = planIncludes(plan.code, "content");
+  const cmsAllowed = planIncludes(plan.code, "cms");
   const st = (key: ActivationStepKey, done: boolean): StepStatus => (done ? "done" : skipped.has(key) ? "skipped" : "pending");
 
   const steps: ActivationStep[] = [
@@ -99,10 +100,12 @@ export async function activationFor(db: D1Database, orgId: string): Promise<Acti
       key: "cms",
       title: "Conecta tu CMS",
       description: "Para publicar en tu web los artículos que apruebes.",
-      status: (cms?.n ?? 0) > 0 ? "done" : skipped.has("cms") ? "skipped" : "unavailable",
-      href: `${base}/integrations`,
-      cta: "Ver integraciones",
-      note: "En desarrollo: la conexión con WordPress todavía no está disponible. Mientras tanto, exporta cada artículo aprobado en HTML o Markdown y pégalo en tu web.",
+      status: (cms?.n ?? 0) > 0 ? "done" : skipped.has("cms") ? "skipped" : cmsAllowed ? "pending" : "locked",
+      href: cmsAllowed ? `${base}/content` : `${base}/billing`,
+      cta: cmsAllowed ? "Conectar WordPress" : "Ver planes",
+      note: cmsAllowed
+        ? "Abre cualquier contenido aprobado y publícalo en WordPress o Ghost, o envíalo con un webhook firmado (Webflow con Make o Zapier). Shopify está en desarrollo: mientras, exporta en HTML o Markdown."
+        : "La publicación en WordPress está incluida desde el plan Starter. Mientras, exporta cada artículo aprobado en HTML o Markdown.",
     },
     {
       key: "mode",

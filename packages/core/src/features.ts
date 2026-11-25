@@ -31,6 +31,9 @@ export const FEATURES: FeatureInfo[] = [
       "Informe de auditoría y brief de cada mejora descargables en Markdown o HTML, sin IA y en todos los planes.",
       "Borradores de corrección creados desde cada hallazgo (sin IA ni créditos), con comprobaciones antes de aprobar: campos pendientes, promesas de resultados, cifras sin fuente y precios sin verificar.",
       "Content Studio: borradores con IA o escritos a mano, versiones, revisión y aprobación por roles, exportación Markdown/HTML.",
+      "Publicación en tu WordPress (plan Starter o superior): conexión con contraseña de aplicación, solo contenido aprobado, como borrador o publicado, sin duplicados y con opción de retirarlo a borrador.",
+      "Publicación en Ghost (Admin API key) y webhook firmado para cualquier otro sistema (Webflow con Make o Zapier, n8n o tu servidor), con las mismas reglas: solo lo aprobado, sin duplicados y con retirada.",
+      "Plugin gratuito «DNI Growth Connector» para WordPress (opcional): título y descripción SEO compatibles con Yoast SEO y Rank Math, datos estructurados JSON-LD, llms.txt y correcciones técnicas que apruebas una a una y deshaces con un clic.",
       "Perfil de marca extraído con fuente de cada dato y confirmación humana; plan de crecimiento de 30 días editable y exportable.",
       "Asesor de crecimiento con IA que responde con los datos observados de tu auditoría y cita la URL de evidencia.",
       "Conexión de solo lectura con Google Search Console y Google Analytics 4: datos observados de tu propia cuenta, con fuente y fecha.",
@@ -53,6 +56,20 @@ export const FEATURES: FeatureInfo[] = [
     summary: "Vídeos cortos por escenas con texto, imágenes, música y subtítulos, creados en tu navegador.",
     details: ["Creative Studio: imágenes creadas con IA a partir de una descripción, guardadas en privado en tu cuenta y con su coste en créditos."],
     menu: ["video", "creative"],
+  },
+  {
+    key: "social",
+    label: "Publicación en Facebook e Instagram",
+    status: "partial",
+    limit: "Meta tiene que aprobar la app de DNI Growth para que cualquier cliente pueda conectar sus cuentas; hasta entonces solo funciona con las cuentas autorizadas en la app.",
+    summary: "Conecta tu página de Facebook y tu cuenta profesional de Instagram, prepara publicaciones con imagen, apruébalas y se publican solas a la hora programada.",
+    details: [
+      "Conexión con Facebook Login for Business: solo las páginas y cuentas de Instagram que tú eliges; los permisos se pueden retirar desde DNI Growth o desde Facebook.",
+      "Cada publicación pasa por aprobación de una persona con permiso de aprobar antes de llegar a Meta; botón de pausa para detener todas las publicaciones.",
+      "Comprobación previa de las reglas de Instagram (JPG, proporción 4:5 a 1,91:1, 2.200 caracteres, 30 hashtags) para que no falle al publicar.",
+      "Nunca se publica dos veces: reintentos seguros y aviso si no se puede confirmar el resultado.",
+    ],
+    menu: ["social"],
   },
   {
     key: "landings",
@@ -97,7 +114,7 @@ export const FEATURE_STATUS_LABEL: Record<FeatureStatus, string> = { available: 
 
 /** Planned capabilities that are not part of any module yet. Listed as «no disponible todavía». */
 export const NOT_YET_AVAILABLE: string[] = [
-  "Publicación directa en el CMS de tus clientes (WordPress primero). Hoy los artículos aprobados se exportan en Markdown o HTML.",
+  "Publicación directa en Shopify y Webflow. Hoy: WordPress, Ghost y un webhook firmado (Webflow a través de Make o Zapier), o exportación en Markdown o HTML.",
   "Volumen y dificultad de búsqueda con un proveedor de datos licenciado. Hoy se usan las consultas reales de tu Search Console.",
 ];
 

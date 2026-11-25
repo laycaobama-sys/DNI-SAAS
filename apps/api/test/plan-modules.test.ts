@@ -12,6 +12,8 @@ const PROBE: Record<string, string> = {
   authority: "/backlinks",
   creative: "/creative/images",
   video: "/video/projects",
+  social: "/social",
+  cms: "/cms",
   automations: "/automations/rules",
   attribution: "/crm/attribution",
   analytics: "/analytics",
@@ -48,6 +50,9 @@ describe("plan module matrix", () => {
     expect(moduleForApiPath("/analytics")).toBe("analytics");
     expect(moduleForApiPath("/analytics", "DELETE")).toBeNull();
     expect(moduleForApiPath("/backlinks/x", "DELETE")).toBeNull();
+    expect(moduleForApiPath("/content/abc/wordpress", "POST")).toBe("cms");
+    expect(moduleForApiPath("/content/abc/wordpress/unpublish", "POST")).toBe("cms");
+    expect(moduleForApiPath("/content/abc")).toBe("content");
   });
 });
 

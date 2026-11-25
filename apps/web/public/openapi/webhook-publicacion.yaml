@@ -1,0 +1,149 @@
+openapi: 3.1.0
+info:
+  title: DNI Growth · Webhook de publicación
+  version: 1.0.0
+  summary: Eventos que DNI Growth envía a tu servidor cuando publicas o retiras contenido aprobado.
+  description: |
+    Conecta el webhook en DNI Growth (un contenido aprobado → «Publicar en otro destino» → Webhook) con una
+    dirección https pública. Al conectar te mostramos una sola vez el secreto de firma (`whsec_…`) y enviamos
+    un evento `ping`: tu servidor tiene que responder con un código 2xx.
+
+    **Firma.** Cada petición lleva `x-dni-signature: t=<segundos unix>,v1=<hex>`, donde `v1` es el
+    HMAC-SHA256 con tu secreto de la cadena `"<t>.<cuerpo exacto>"`. Comprueba la firma con el cuerpo sin
+    reformatear, compara en tiempo constante y rechaza firmas con `t` de hace más de 5 minutos.
+
+    **Duplicados.** `x-dni-delivery` (y `deliveryId` en el cuerpo) es el mismo en los reintentos del mismo
+    envío. Guarda los que ya procesaste y responde 2xx sin repetir el trabajo.
+
+    **Respuesta.** Responde 2xx en menos de 15 segundos. Si devuelves JSON con `url` (https) e `id`, DNI Growth
+    los guarda y enseña el enlace publicado. Las redirecciones no se siguen y solo se aceptan direcciones
+    públicas.
+
+    Sirve para Webflow (a través de Make, Zapier o n8n), cualquier CMS sin conector propio o tu backend.
+  contact:
+    name: DNI Growth
+    url: https://dnigrowth.com/seguridad
+webhooks:
+  ping:
+    post:
+      summary: Comprobación al conectar
+      parameters:
+        - $ref: "#/components/parameters/Signature"
+        - $ref: "#/components/parameters/Event"
+        - $ref: "#/components/parameters/Delivery"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              allOf:
+                - $ref: "#/components/schemas/Envelope"
+                - type: object
+                  properties:
+                    event: { const: ping }
+                    data:
+                      type: object
+                      properties:
+                        organizationId: { type: string, format: uuid }
+      responses:
+        "200": { description: Cualquier 2xx confirma la conexión. }
+  content.publish:
+    post:
+      summary: Contenido aprobado enviado como borrador o para publicar
+      parameters:
+        - $ref: "#/components/parameters/Signature"
+        - $ref: "#/components/parameters/Event"
+        - $ref: "#/components/parameters/Delivery"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              allOf:
+                - $ref: "#/components/schemas/Envelope"
+                - type: object
+                  properties:
+                    event: { const: content.publish }
+                    data: { $ref: "#/components/schemas/Content" }
+      responses:
+        "200":
+          description: Recibido. Opcionalmente, dónde quedó publicado.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Receipt" }
+  content.unpublish:
+    post:
+      summary: Retirar el contenido (pasarlo a borrador o despublicarlo en tu sistema)
+      parameters:
+        - $ref: "#/components/parameters/Signature"
+        - $ref: "#/components/parameters/Event"
+        - $ref: "#/components/parameters/Delivery"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              allOf:
+                - $ref: "#/components/schemas/Envelope"
+                - type: object
+                  properties:
+                    event: { const: content.unpublish }
+                    data:
+                      type: object
+                      required: [contentId]
+                      properties:
+                        contentId: { type: string, format: uuid }
+                        externalId: { type: [string, "null"], description: El `id` que devolviste al publicar. }
+                        url: { type: [string, "null"], format: uri }
+      responses:
+        "200": { description: Recibido. }
+components:
+  parameters:
+    Signature:
+      name: x-dni-signature
+      in: header
+      required: true
+      schema: { type: string, pattern: "^t=\\d+,v1=[0-9a-f]{64}$" }
+      example: t=1795600000,v1=5d41402abc4b2a76b9719d911017c592ae0f6a7d2c1e1b6f3a8e2c4d5b6a7f80
+    Event:
+      name: x-dni-event
+      in: header
+      required: true
+      schema: { type: string, enum: [ping, content.publish, content.unpublish] }
+    Delivery:
+      name: x-dni-delivery
+      in: header
+      required: true
+      description: Igual en los reintentos del mismo envío.
+      schema: { type: string, maxLength: 120 }
+  schemas:
+    Envelope:
+      type: object
+      required: [event, deliveryId, sentAt, data]
+      properties:
+        event: { type: string }
+        deliveryId: { type: string }
+        sentAt: { type: string, format: date-time }
+        data: { type: object }
+    Content:
+      type: object
+      required: [contentId, kind, version, status, title, slug, excerpt, html, markdown, jsonld, approvedAt]
+      properties:
+        contentId: { type: string, format: uuid }
+        kind: { type: string, enum: [blog_article, faq_aeo, landing_copy] }
+        version: { type: integer, minimum: 1 }
+        status: { type: string, enum: [draft, publish], description: "«draft»: guárdalo sin publicar; «publish»: publícalo." }
+        title: { type: string }
+        slug: { type: string }
+        excerpt: { type: string, description: Descripción breve para buscadores (hasta unos 160 caracteres). }
+        html: { type: string, description: Cuerpo en HTML seguro (sin scripts ni atributos de eventos), sin el H1. }
+        markdown: { type: string, description: El mismo cuerpo en Markdown. }
+        jsonld:
+          type: object
+          description: Datos estructurados schema.org Article listos para insertar.
+        approvedAt: { type: string, format: date-time }
+    Receipt:
+      type: object
+      properties:
+        id: { type: [string, number], description: Tu identificador del contenido (máx. 40 caracteres). }
+        url: { type: string, format: uri, description: Dirección pública https donde quedó publicado. }

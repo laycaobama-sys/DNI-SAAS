@@ -131,3 +131,22 @@ Copias exportadas antes de cada migración en `backups/` (fuera de git).
 - Comprobación de backlinks a páginas de dnigrowth.com: devuelve «error» (HTTP 522, el Worker no puede leer su propia zona). Comprobar con páginas de otros dominios.
 - Spend Guardian: tras pruebas dejar topes 0/0 e interruptor de corte activado.
 - Probar planes en Stripe (modo prueba, sin tarjeta): Panel de Stripe → Suscripciones → «Crear suscripción de prueba», cliente de prueba, cobro por factura, metadatos `organization_id` y `plan_code`; cambiar de precio con «Actualizar suscripción → Inmediatamente»; cancelar al terminar. Cada evento queda en la auditoría como `billing.subscription_sync` / `billing.subscription_canceled`.
+
+## Auditoría propia y comprobaciones nocturnas en CI
+La auditoría propia 100/100 de dnigrowth.com se ejecuta en cada `pnpm deploy` (`scripts/audit-own.mjs`), en cada push a `main` (job `own-site-audit` de `ci.yml`) y cada noche a las 03:30 UTC en `.github/workflows/nightly.yml`. Ese workflow también ejecuta `scripts/smoke-prod.mjs` (páginas públicas, `/estado`, pagos abiertos, herramienta pública) y `scripts/lighthouse-check.mjs` (mínimo 95 en SEO, accesibilidad y buenas prácticas; rendimiento con `LH_MIN_PERF`, 50 por defecto). Se puede lanzar a mano desde GitHub → Actions → «Nightly» → «Run workflow». Si falla, GitHub avisa por email a la persona dueña del repositorio. El token de `gh` no tiene el permiso `workflow`, así que los cambios en `.github/workflows` se suben desde la web de GitHub. Este es el job, por referencia:
+
+```yaml
+  own-site-audit:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm audit:own
+```

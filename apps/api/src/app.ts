@@ -1,5 +1,5 @@
 import { Hono, type Context } from "hono";
-import { FEATURE_STATUS_LABEL, FEATURES } from "@dni/core";
+import { FEATURE_STATUS_LABEL, FEATURES, buildZip } from "@dni/core";
 import { bodyLimit } from "hono/body-limit";
 import type { AppEnv, Deps } from "./env";
 import { ApiError, problem } from "./lib/http";
@@ -27,7 +27,14 @@ import { geo } from "./routes/geo";
 import { reports } from "./routes/reports";
 import { searchConsole } from "./routes/searchConsole";
 import { registerPublicBlog, siteBlog } from "./routes/site-blog";
+import { registerStatusPage } from "./routes/status-page";
+import { registerMetaPublic, social } from "./routes/social";
+import { cms } from "./routes/cms";
+import { cmsExternal } from "./routes/cms-external";
 import { activationRoutes, publicAudits, registerAuditPage } from "./routes/public-audit";
+import { publicTools } from "./routes/public-tools";
+import { guideApi, registerGuidePages } from "./routes/guide";
+import { WP_PLUGIN_FILES, WP_PLUGIN_VERSION } from "./lib/wp-plugin-source";
 import { eventsPublic } from "./routes/events";
 import { FALLBACK_404_HTML, SITE_CSP, SITE_SECURITY_HEADERS } from "./lib/site-headers";
 import { org, orgsPublic } from "./routes/orgs";
@@ -69,7 +76,7 @@ export function canonicalRedirect(url: URL, canon: URL): string | null {
   if (path.startsWith("/api/") && path !== "/api/v1/auth/google/start") return null;
   let clean = path;
   if (clean === "/index.html") clean = "/";
-  else if (/^\/(legal\/[a-z-]+|blog|blog\/[a-z0-9-]+|seguridad|precios)(\.html|\/)$/.test(clean)) clean = clean.replace(/(\.html|\/)$/, "");
+  else if (/^\/(legal\/[a-z-]+|blog|blog\/[a-z0-9-]+|seguridad|precios|subencargados|estado)(\.html|\/)$/.test(clean)) clean = clean.replace(/(\.html|\/)$/, "");
   const offHost = url.host !== canon.host || url.protocol !== canon.protocol;
   if (!offHost && clean === path) return null;
   return `${canon.origin}${clean}${url.search}`;
@@ -88,6 +95,7 @@ export function createApp(deps: Deps) {
 
   app.use("/api/*", requestId, securityHeaders, async (c, next) => {
     c.set("deps", deps);
+    c.set("selfFetch", async (r: Request) => app.fetch(r, c.env, c.executionCtx));
     await next();
   });
   app.use("/api/*", bodyLimit({ maxSize: 1024 * 1024, onError: () => { throw new ApiError(413, "payload_too_large", "Petición demasiado grande."); } }));
@@ -96,6 +104,7 @@ export function createApp(deps: Deps) {
   app.get("/api/v1/health", (c) => c.json({ ok: true, environment: c.env.ENVIRONMENT, time: new Date().toISOString() }));
   app.get("/api/v1/providers", (c) => c.json({ items: providerManifest(c.env) }));
 
+  registerMetaPublic(app);
   app.route("/api/v1/auth", auth);
   app.route("/api/v1/auth", oauth);
   app.route("/api/v1/webhooks", webhooks);
@@ -107,10 +116,13 @@ export function createApp(deps: Deps) {
       { "cache-control": "public, max-age=300" },
     ),
   );
+  registerStatusPage(app);
   app.route("/api/v1/public", crmPublic);
   app.route("/api/v1/public", eventsPublic);
   app.route("/api/v1/public", billingPublic);
   app.route("/api/v1/public", publicAudits);
+  app.route("/api/v1/public", publicTools);
+  app.route("/api/v1/public", guideApi);
 
   // Every tenant route: authenticated user + active membership resolved from the path.
   const tenant = new Hono<AppEnv>();
@@ -124,6 +136,9 @@ export function createApp(deps: Deps) {
   tenant.route("/", usage);
   tenant.route("/", content);
   tenant.route("/", siteBlog);
+  tenant.route("/", social);
+  tenant.route("/", cms);
+  tenant.route("/", cmsExternal);
   tenant.route("/", activationRoutes);
   tenant.route("/", searchConsole);
   tenant.route("/", analytics);
@@ -192,6 +207,19 @@ export function createApp(deps: Deps) {
   registerPublicBlog(app);
   // Free audit without an account: /auditoria/{id} (ADR 0023).
   registerAuditPage(app, (c) => notFoundPage(c));
+  // Guide in exchange for an email with double opt-in: /guia/* (ADR 0026).
+  registerGuidePages(app, (c) => notFoundPage(c));
+
+  // «DNI Growth Connector» WordPress plugin, built on the fly from its source (reproducible bytes, cached a day).
+  app.get("/descargas/dni-growth-connector.zip", (c) => {
+    const zip = buildZip(WP_PLUGIN_FILES);
+    return c.body(zip.buffer as ArrayBuffer, 200, {
+      "content-type": "application/zip",
+      "content-disposition": `attachment; filename="dni-growth-connector-${WP_PLUGIN_VERSION}.zip"`,
+      "cache-control": "public, max-age=86400",
+      "x-content-type-options": "nosniff",
+    });
+  });
 
   // Non-API routes: static landing + SPA shell served from Workers Static Assets.
   app.get("*", async (c) => {

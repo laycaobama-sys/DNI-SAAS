@@ -1,0 +1,6 @@
+{
+  "steps": [
+    { "step": "activatePlugin", "pluginPath": "dni-growth-connector/dni-growth-connector.php" },
+    { "step": "runPHP", "code": "<?php require '/wordpress/wptest/test.php';" }
+  ]
+}

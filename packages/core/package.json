@@ -10,7 +10,8 @@
     "./plan-access": "./src/plan-access.ts",
     "./features": "./src/features.ts",
     "./organic": "./src/organic.ts",
-    "./pricing": "./src/pricing.ts"
+    "./pricing": "./src/pricing.ts",
+    "./free-tools": "./src/free-tools.ts"
   },
   "scripts": {
     "typecheck": "tsc -p tsconfig.json",

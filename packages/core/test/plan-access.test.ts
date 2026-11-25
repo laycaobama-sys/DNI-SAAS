@@ -48,6 +48,8 @@ describe("what /precios sells is what each plan opens", () => {
     "Visibilidad en IA (prompts en seguimiento)": "ai-visibility",
     "Oportunidades de autoridad y enlaces seguros": "authority",
     "Vídeos y piezas sociales": "video",
+    "Publicación en tu blog o CMS": "cms",
+    "Publicación programada en Facebook e Instagram (con aprobación)": "social",
     "CRM y atribución de clic a venta": "attribution",
     "Informe mensual": "reports",
     "Portal de cliente con marca blanca": "agency",

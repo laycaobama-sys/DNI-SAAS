@@ -70,9 +70,13 @@ export interface PricingRow {
   note?: string;
 }
 
+/** What a plan shows for a feature that is still being built: never a tick, always this. */
+export const COMING_SOON = "Próximamente · incluida sin coste extra";
+
 const row = (label: string, v: [string, string, string, string, string], status: RowStatus = "available", note?: string): PricingRow => ({
   label,
-  values: { free: v[0], starter: v[1], growth: v[2], pro: v[3], agency: v[4] },
+  // A feature still in development is never sold with a tick: the plans that will get it say so.
+  values: Object.fromEntries((["free", "starter", "growth", "pro", "agency"] as const).map((k, i) => [k, status === "building" && v[i] !== "—" ? COMING_SOON : v[i]!])) as Record<PlanCode, string>,
   status,
   ...(note ? { note } : {}),
 });
@@ -84,15 +88,16 @@ export const PRICING_ROWS: PricingRow[] = [
   row("Páginas por auditoría", ["10", "100", "250", "500", "500"], "available", "Límite técnico actual de 500 páginas por rastreo."),
   row("Perfil de marca y plan de 30 días", ["✓", "✓", "✓", "✓", "✓"]),
   row("Informe de auditoría y briefs (HTML/Markdown)", ["✓", "✓", "✓", "✓", "✓"]),
-  row("Borradores de artículos al mes (revisión humana)", ["1 de prueba", "8", "30", "60", "30 por web"], "partial", "Content Studio redacta con IA gratuita y siempre pide revisión antes de aprobar."),
-  row("Publicación en tu blog o CMS", ["—", "✓", "✓", "✓", "✓"], "building", "Hoy: exportación HTML/Markdown y blog propio; la publicación automática en WordPress, Shopify y otros está en desarrollo."),
+  row("Borradores de artículos al mes (revisión humana)", ["1 de prueba", "8", "30", "60", "30 por web"], "partial", "Content Studio redacta con IA y siempre pide revisión humana antes de aprobar. Proveedores en /subencargados."),
+  row("Publicación en tu blog o CMS", ["—", "✓", "✓", "✓", "✓"], "partial", "WordPress: se conecta con una contraseña de aplicación y publica solo lo aprobado; con el plugin gratuito también envía el título, la descripción SEO y los datos estructurados. También Ghost y un webhook firmado (Webflow a través de Make o Zapier). Shopify y Webflow directo están en desarrollo (mientras, exportación HTML/Markdown)."),
   row("Actualización de artículos que pierden tráfico", ["—", "—", "✓", "✓", "✓"], "building"),
   row("Google Search Console (solo lectura)", ["✓", "✓", "✓", "✓", "✓"]),
   row("Google Analytics 4 (solo lectura)", ["—", "✓", "✓", "✓", "✓"]),
   row("Visibilidad en IA (prompts en seguimiento)", ["—", "10", "30", "100", "30 por web"], "partial", "Muestreo con Gemini; ChatGPT, Claude y Perplexity se añadirán cuando estén conectados."),
-  row("Correcciones técnicas automáticas", ["—", "✓", "✓", "✓", "✓"], "building"),
+  row("Correcciones técnicas en tu web", ["—", "✓", "✓", "✓", "✓"], "partial", "En WordPress, con el plugin gratuito «DNI Growth Connector»: título SEO, descripción, URL canónica, JSON-LD, texto alternativo de imágenes y llms.txt. Cada corrección la apruebas tú, queda registrada y se deshace con un clic. Todavía no se aplican solas desde la auditoría ni en otros CMS."),
   row("Oportunidades de autoridad y enlaces seguros", ["—", "10/mes", "40/mes", "120/mes", "40 por web"], "partial", "Comprobación de enlaces y oportunidades; sin redes de intercambio de enlaces."),
-  row("Vídeos y piezas sociales", ["—", "4/mes", "12/mes", "30/mes", "12 por web"], "partial", "Estudio de vídeo en el navegador; la publicación directa en redes requiere la aprobación de Meta."),
+  row("Vídeos y piezas sociales", ["—", "4/mes", "12/mes", "30/mes", "12 por web"], "partial", "Estudio de vídeo en el navegador."),
+  row("Publicación programada en Facebook e Instagram (con aprobación)", ["—", "✓", "✓", "✓", "✓"], "building", "Construida y en pruebas con nuestras propias cuentas; se abre a todos los clientes cuando Meta apruebe la app."),
   row("CRM y atribución de clic a venta", ["—", "—", "✓", "✓", "✓"], "partial", "Atribución con el valor de venta que declaras en el CRM."),
   row("Informe mensual", ["—", "✓", "✓", "Con tu marca", "Marca blanca"], "partial", "Exportación desde Informes; el envío automático por email está en desarrollo."),
   row("Portal de cliente con marca blanca", ["—", "—", "—", "—", "✓"], "partial", "Organizaciones de cliente con tu marca; el dominio propio está en desarrollo."),
@@ -144,6 +149,8 @@ export interface GuaranteeRequirement {
   label: string;
   met: boolean;
   detail: string;
+  /** What the customer can do today, with what exists, to meet it (shown while not met). */
+  todo: string;
 }
 
 export type GuaranteeStatus = "not_applicable" | "in_progress" | "requirements_missing" | "growth_achieved" | "refund_available" | "data_missing";
@@ -173,7 +180,7 @@ export function evaluateGuarantee(i: GuaranteeInput): GuaranteeResult {
   const gscOnTime = !!i.gscConnectedAt && Number.isFinite(since) && Date.parse(i.gscConnectedAt) <= since + DAY;
   const share = i.articlesProposed > 0 ? i.articlesApproved / i.articlesProposed : 0;
   const requirements: GuaranteeRequirement[] = [
-    { key: "plan", label: "Plan Growth o superior", met: eligiblePlan, detail: eligiblePlan ? "Plan incluido en la garantía." : "La garantía cubre Growth, Pro y Agency." },
+    { key: "plan", label: "Plan Growth o superior", met: eligiblePlan, detail: eligiblePlan ? "Plan incluido en la garantía." : "La garantía cubre Growth, Pro y Agency.", todo: "Cambia a Growth, Pro o Agency desde esta página." },
     {
       key: "days",
       label: "90 días seguidos de suscripción",
@@ -185,24 +192,28 @@ export function evaluateGuarantee(i: GuaranteeInput): GuaranteeResult {
           : day >= GUARANTEE.days
             ? "Cumplido."
             : `Día ${day} de ${GUARANTEE.days}.`,
+      todo: "Mantén la suscripción activa, sin pausas ni impagos, hasta el día 90.",
     },
     {
       key: "gsc",
       label: "Search Console conectado desde el primer día",
       met: gscOnTime,
       detail: !i.gscConnectedAt ? "Search Console no está conectado." : gscOnTime ? "Conectado a tiempo." : "Se conectó después del primer día de suscripción.",
+      todo: "Menú «Search Console» → «Conectar con Google (solo lectura)» y elige la propiedad de tu web.",
     },
     {
       key: "articles",
-      label: "Al menos el 80 % de los artículos propuestos aprobados o publicados",
+      label: "Al menos el 80 % de los artículos propuestos aprobados en Content Studio",
       met: i.articlesProposed > 0 && share >= GUARANTEE.minApprovedShare,
       detail: i.articlesProposed === 0 ? "Todavía no hay artículos propuestos." : `${i.articlesApproved} de ${i.articlesProposed} (${Math.round(share * 100)} %).`,
+      todo: "En Content Studio, revisa cada borrador y pulsa «Aprobar». No hace falta publicarlo en tu web: cuenta la aprobación.",
     },
     {
       key: "technical",
-      label: "Correcciones técnicas críticas aplicadas",
+      label: "Sin problemas técnicos críticos en la última auditoría",
       met: i.criticalOpen === 0,
       detail: i.criticalOpen === 0 ? "Sin problemas críticos abiertos en la última auditoría." : `${i.criticalOpen} problema(s) crítico(s) sin corregir en la última auditoría.`,
+      todo: "Corrige los problemas críticos en tu web (a mano o con tu desarrollador, siguiendo el brief de cada uno) y lanza una nueva auditoría para comprobarlo.",
     },
   ];
   const changePct =

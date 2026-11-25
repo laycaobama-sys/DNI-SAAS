@@ -24,6 +24,7 @@ import { LandingsPage } from "./pages/landings";
 import { AuthorityPage, KeywordsPage, SeoTecnicoPage } from "./pages/organic";
 import { AttributionPage, AutomationsPage } from "./pages/automation";
 import { AdsPage, VideoPage } from "./pages/studio";
+import { SocialPage } from "./pages/social";
 import { AgencyPage } from "./pages/agency";
 import { ContentDetailPage, ContentListPage } from "./pages/content";
 import { AuditDetailPage, AuditsPage, BrandPage, BrandsPage, PlanPage } from "./pages/insights";
@@ -113,6 +114,7 @@ function App() {
           <Route path="attribution" element={<AttributionPage />} />
           <Route path="ads" element={<AdsPage />} />
           <Route path="video" element={<VideoPage />} />
+          <Route path="social" element={<SocialPage />} />
           <Route path="agency" element={<AgencyPage />} />
           <Route path="audit-log" element={<AuditLogPage />} />
           <Route path="m/:moduleKey" element={<ModulePage />} />

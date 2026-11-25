@@ -333,6 +333,7 @@ export function GuaranteeCard({ orgId, canManage }: { orgId: string; canManage: 
                 <span>
                   <span className="font-medium">{r.label}</span>
                   <span className="block text-xs text-mute">{r.detail}</span>
+                  {!r.met && r.todo ? <span className="block text-xs text-ink">Qué hacer: {r.todo}</span> : null}
                 </span>
                 <span className="sr-only">{r.met ? "cumplido" : "pendiente"}</span>
               </li>

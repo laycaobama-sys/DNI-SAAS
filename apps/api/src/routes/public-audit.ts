@@ -8,6 +8,7 @@ import { activationFor, SKIPPABLE_STEPS, type ActivationStepKey } from "../lib/a
 import { auditStmt } from "../lib/audit";
 import { ApiError, assertUuid, notFound, parseBody } from "../lib/http";
 import { verifyUnsubscribeToken } from "../lib/lifecycle";
+import { verifyReportUnsubscribeToken } from "../lib/monthly-report";
 import { loadSession } from "../lib/session";
 import { trackFromRequest } from "../lib/product-events";
 import { rateLimit } from "../lib/ratelimit";
@@ -216,6 +217,31 @@ publicAudits.post("/lifecycle/unsubscribe", small, async (c) => {
   if (!p.success || !(await verifyUnsubscribeToken(c.env, p.data.u, p.data.t))) return c.body(unsubPage("Enlace no válido", "<h1>Enlace no válido</h1><p>No hemos podido darte de baja con este enlace.</p>"), 400, headers);
   await c.env.DB.prepare("UPDATE users SET lifecycle_emails_opt_out_at = COALESCE(lifecycle_emails_opt_out_at, ?) WHERE id = ?").bind(nowIso(), p.data.u).run();
   return c.body(unsubPage("Baja hecha", `<h1>Hecho</h1><p>No te enviaremos más consejos de configuración.</p><p><a href="/">Volver a DNI Growth</a></p>`), 200, headers);
+});
+
+// Monthly report: same two-step opt-out (GET confirms, POST unsubscribes) so link scanners change nothing.
+publicAudits.get("/monthly-report/unsubscribe", async (c) => {
+  const p = UnsubInput.safeParse({ u: c.req.query("u"), t: c.req.query("t") });
+  const headers = { "content-type": "text/html; charset=utf-8", ...SITE_SECURITY_HEADERS, "cache-control": "no-store" };
+  if (!p.success || !(await verifyReportUnsubscribeToken(c.env, p.data.u, p.data.t))) return c.body(unsubPage("Enlace no válido", `<h1>Enlace no válido</h1><p>Este enlace para darte de baja no es correcto o está incompleto. Puedes escribirnos a hola@dnigrowth.com.</p>`), 400, headers);
+  return c.body(
+    unsubPage(
+      "Dejar de recibir el informe mensual",
+      `<h1>¿Dejar de recibir el informe mensual?</h1><p>No te enviaremos más el resumen mensual de tus organizaciones. Los correos de tu cuenta (como recuperar la contraseña) seguirán llegando.</p><form method="post" action="/api/v1/public/monthly-report/unsubscribe"><input type="hidden" name="u" value="${p.data.u}"><input type="hidden" name="t" value="${p.data.t}"><button type="submit">Sí, darme de baja</button></form>`,
+    ),
+    200,
+    headers,
+  );
+});
+
+publicAudits.post("/monthly-report/unsubscribe", small, async (c) => {
+  sameOrigin(c);
+  const form = await c.req.parseBody().catch(() => ({}) as Record<string, unknown>);
+  const p = UnsubInput.safeParse({ u: form["u"], t: form["t"] });
+  const headers = { "content-type": "text/html; charset=utf-8", ...SITE_SECURITY_HEADERS, "cache-control": "no-store" };
+  if (!p.success || !(await verifyReportUnsubscribeToken(c.env, p.data.u, p.data.t))) return c.body(unsubPage("Enlace no válido", "<h1>Enlace no válido</h1><p>No hemos podido darte de baja con este enlace.</p>"), 400, headers);
+  await c.env.DB.prepare("UPDATE users SET monthly_report_opt_out_at = COALESCE(monthly_report_opt_out_at, ?) WHERE id = ?").bind(nowIso(), p.data.u).run();
+  return c.body(unsubPage("Baja hecha", `<h1>Hecho</h1><p>No te enviaremos más el informe mensual.</p><p><a href="/">Volver a DNI Growth</a></p>`), 200, headers);
 });
 
 // ── Inside an organisation: claim the free audit, guided set-up state and choices ──────────────────────

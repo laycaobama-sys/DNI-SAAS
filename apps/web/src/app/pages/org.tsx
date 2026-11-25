@@ -11,6 +11,7 @@ import { PlanModulesTable } from "../planaccess";
 import { Entitlements } from "./agency";
 import { Badge, Button, Card, EmptyState, ErrorState, Input, Notice, PageHeader, Select, Spinner, TextField } from "../ui";
 import { clearWantedPlan, GuaranteeCard, PlanPicker, SubscriptionPanel } from "./billing";
+import { WordPressPluginPanel } from "./wordpress";
 
 export const ROLE_LABELS: Record<string, string> = {
   owner: "Propietario",
@@ -643,12 +644,20 @@ export function IntegrationsPage() {
           ))}
         </div>
       )}
+      {orgId && (
+        <div className="mt-6">
+          <WordPressPluginPanel orgId={orgId} />
+        </div>
+      )}
     </>
   );
 }
 
 const ACTION_LABEL: Record<string, string> = {
   "billing.terms_accepted": "Condiciones de contratación aceptadas",
+  "cms.wordpress_fix": "Corrección aplicada en WordPress",
+  "cms.wordpress_fix_revert": "Corrección deshecha en WordPress",
+  "cms.wordpress_llms": "llms.txt actualizado en WordPress",
   "billing.paused": "Suscripción pausada",
   "billing.resumed": "Suscripción reanudada",
   "billing.cancel_flow": "Cancelación o alternativa elegida",

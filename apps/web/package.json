@@ -12,6 +12,9 @@
   },
   "dependencies": {
     "@dni/core": "workspace:*",
+    "@fontsource/instrument-serif": "5.3.0",
+    "@fontsource/inter": "5.3.0",
+    "@fontsource/jetbrains-mono": "5.3.0",
     "lucide-react": "^1.70.0",
     "qrcode-generator": "2.0.4",
     "react": "19.3.1",
