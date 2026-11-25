@@ -31,6 +31,7 @@ import { registerStatusPage } from "./routes/status-page";
 import { registerMetaPublic, social } from "./routes/social";
 import { cms } from "./routes/cms";
 import { activationRoutes, publicAudits, registerAuditPage } from "./routes/public-audit";
+import { publicTools } from "./routes/public-tools";
 import { eventsPublic } from "./routes/events";
 import { FALLBACK_404_HTML, SITE_CSP, SITE_SECURITY_HEADERS } from "./lib/site-headers";
 import { org, orgsPublic } from "./routes/orgs";
@@ -91,6 +92,7 @@ export function createApp(deps: Deps) {
 
   app.use("/api/*", requestId, securityHeaders, async (c, next) => {
     c.set("deps", deps);
+    c.set("selfFetch", async (r: Request) => app.fetch(r, c.env, c.executionCtx));
     await next();
   });
   app.use("/api/*", bodyLimit({ maxSize: 1024 * 1024, onError: () => { throw new ApiError(413, "payload_too_large", "Petición demasiado grande."); } }));
@@ -116,6 +118,7 @@ export function createApp(deps: Deps) {
   app.route("/api/v1/public", eventsPublic);
   app.route("/api/v1/public", billingPublic);
   app.route("/api/v1/public", publicAudits);
+  app.route("/api/v1/public", publicTools);
 
   // Every tenant route: authenticated user + active membership resolved from the path.
   const tenant = new Hono<AppEnv>();

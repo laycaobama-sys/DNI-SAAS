@@ -28,11 +28,12 @@ export function fillPageMeta(html: string, siteUrl: string): string {
       `<meta property="og:image:width" content="1200" />`,
       `<meta property="og:image:height" content="630" />`,
       `<meta property="og:image:alt" content="DNI Growth: crece con pruebas, no con promesas." />`,
-      `<meta name="twitter:card" content="summary_large_image" />`,
     ]
       .filter(Boolean)
       .join("\n    ");
   }
+  // Large preview on X also on pages that set their own og:image (found by our own share-image tool).
+  if (!/name="twitter:card"/.test(html)) extra += `${extra ? "\n    " : ""}<meta name="twitter:card" content="summary_large_image" />`;
   if (!/application\/ld\+json/.test(html)) {
     const ld = {
       "@context": "https://schema.org",

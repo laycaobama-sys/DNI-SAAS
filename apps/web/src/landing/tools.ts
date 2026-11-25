@@ -1,7 +1,8 @@
 /**
  * Free tools (/herramientas/*): each page has <main data-tool="slug"> with a form [data-form] and an
- * output [data-out]. Everything runs here, in the visitor's browser (nothing is sent anywhere). The logic
- * is in @dni/core/free-tools (unit-tested). Output is built only with DOM nodes and text, never raw HTML
+ * output [data-out]. Most tools run here, in the visitor's browser (nothing is sent anywhere); the logic is
+ * in @dni/core/free-tools (unit-tested). The four that read a public web page ask our API
+ * (/api/v1/public/tools/*, SSRF-protected and rate-limited) and only draw its answer. Output is built only with DOM nodes and text, never raw HTML
  * strings from user input.
  */
 import {
@@ -51,7 +52,22 @@ const field = (form: HTMLFormElement, name: string) => {
 };
 const problemsList = (items: string[]) => h("ul", { class: "tool-problems" }, ...items.map((p) => h("li", {}, p)));
 
-const TOOLS: Record<string, (form: HTMLFormElement, out: HTMLElement) => void> = {
+class ToolError extends Error {}
+/** POST to the free-tools API; throws the API's Spanish message on error. */
+async function api<T>(path: string, body: unknown): Promise<T> {
+  const res = await fetch(`/api/v1/public/tools/${path}`, { method: "POST", headers: { "content-type": "application/json", accept: "application/json" }, body: JSON.stringify(body) });
+  const json = (await res.json().catch(() => ({}))) as T & { title?: string };
+  if (!res.ok) throw new ToolError(json.title ?? (res.status === 429 ? "Has hecho muchas comprobaciones seguidas. Espera un rato y vuelve a probar." : "No se pudo comprobar. Inténtalo de nuevo."));
+  return json;
+}
+const urlOf = (form: HTMLFormElement, name = "url") => {
+  const v = field(form, name);
+  return v && !/^https?:\/\//i.test(v) ? `https://${v}` : v;
+};
+const stateMark = { ok: "✓", warn: "!", bad: "✗" } as const;
+const when = (iso: string) => new Date(iso).toLocaleString("es-ES", { dateStyle: "short", timeStyle: "short" });
+
+const TOOLS: Record<string, (form: HTMLFormElement, out: HTMLElement) => void | Promise<void>> = {
   "robots-txt-bots-ia": (form, out) => {
     const txt = field(form, "robots");
     if (!txt) return void out.replaceChildren(h("p", {}, "Pega primero el contenido de tu robots.txt."));
@@ -164,6 +180,85 @@ const TOOLS: Record<string, (form: HTMLFormElement, out: HTMLElement) => void> =
       h("p", {}, `${eur(r.yearly)} al año en anuncios por las mismas visitas. Es una estimación (media de visitas × media de coste por clic), no una cifra medida.`),
     );
   },
+  "preparada-para-ia": async (form, out) => {
+    const url = urlOf(form);
+    if (!url) return void out.replaceChildren(h("p", {}, "Escribe la dirección de tu web."));
+    const r = await api<{ url: string; checks: Array<{ label: string; state: "ok" | "warn" | "bad"; detail: string }>; ok: number; total: number; checkedAt: string }>("ai-readiness", { url });
+    out.replaceChildren(
+      h("h2", {}, "Resultado"),
+      h("p", { class: "tool-big" }, `${r.ok} de ${r.total}`, h("span", {}, " requisitos cumplidos")),
+      h("ul", { class: "tool-checks" }, ...r.checks.map((c) => h("li", {}, h("strong", { class: c.state }, `${stateMark[c.state]} ${c.label}`), h("br"), h("span", {}, c.detail)))),
+      h("p", { class: "tool-note" }, `${r.url} · comprobado el ${when(r.checkedAt)}. Son requisitos técnicos; no miden cuántas veces te citan.`),
+    );
+  },
+  "palabras-clave-competidor": async (form, out) => {
+    const mine = urlOf(form, "mine");
+    const competitor = urlOf(form, "competitor");
+    if (!mine || !competitor) return void out.replaceChildren(h("p", {}, "Escribe las dos direcciones."));
+    type Item = { term: string; score: number; places: string[] };
+    const r = await api<{ missing: Item[]; weaker: Item[]; shared: number; yourWords: number; competitorWords: number }>("keyword-gap", { mine, competitor });
+    const table = (items: Item[]) =>
+      h("div", { class: "tw" }, h("table", {}, h("thead", {}, h("tr", {}, h("th", {}, "Término"), h("th", {}, "Dónde lo usa el competidor"))), h("tbody", {}, ...items.map((i) => h("tr", {}, h("td", {}, h("strong", {}, i.term)), h("td", {}, i.places.join(", ")))))));
+    out.replaceChildren(
+      h("h2", {}, "Términos que destaca tu competidor y tú no mencionas"),
+      r.missing.length ? table(r.missing) : h("p", { class: "ok" }, "No vemos términos importantes del competidor que te falten."),
+      r.weaker.length ? h("h3", {}, "Los usas, pero sin destacarlos (él los pone en el título o en encabezados)") : "",
+      r.weaker.length ? table(r.weaker) : "",
+      h("p", { class: "tool-note" }, `Tu página: ${r.yourWords} palabras. La del competidor: ${r.competitorWords}. Términos en común: ${r.shared}. Comparamos lo que está escrito; no son datos de búsquedas de Google.`),
+    );
+  },
+  "comprobador-enlaces-rotos": async (form, out) => {
+    const url = urlOf(form);
+    if (!url) return void out.replaceChildren(h("p", {}, "Escribe la dirección de la página."));
+    const list = await api<{ url: string; links: Array<{ url: string; text: string; internal: boolean }>; total: number; batch: number }>("links", { url });
+    if (!list.links.length) return void out.replaceChildren(h("p", {}, "No encontramos enlaces en esa página."));
+    const label = { ok: "Funciona", redirect: "Redirige", broken: "Roto", blocked: "No deja comprobarlo", error: "No responde" } as const;
+    const cls = { ok: "ok", redirect: "warn", broken: "bad", blocked: "warn", error: "warn" } as const;
+    const progress = h("p", { "aria-live": "polite" }, `Comprobando ${list.links.length} enlaces…`);
+    const tbody = h("tbody");
+    const cells = new Map<string, HTMLElement>();
+    for (const l of list.links) {
+      const status = h("td", {}, "…");
+      cells.set(l.url, status);
+      tbody.append(h("tr", {}, h("td", {}, h("a", { href: l.url, rel: "nofollow noopener noreferrer", target: "_blank" }, l.url), l.text ? h("br") : "", l.text ? h("span", { class: "tool-note" }, l.text) : ""), h("td", {}, l.internal ? "Tu web" : "Externo"), status));
+    }
+    out.replaceChildren(h("h2", {}, "Resultado"), progress, h("div", { class: "tw" }, h("table", {}, h("thead", {}, h("tr", {}, h("th", {}, "Enlace"), h("th", {}, "Tipo"), h("th", {}, "Estado"))), tbody)));
+    const counts = { ok: 0, redirect: 0, broken: 0, blocked: 0, error: 0 };
+    for (let i = 0; i < list.links.length; i += list.batch) {
+      const batch = list.links.slice(i, i + list.batch).map((l) => l.url);
+      const r = await api<{ results: Array<{ url: string; status: number | null; verdict: keyof typeof label; location?: string | null }> }>("links/check", { urls: batch });
+      for (const x of r.results) {
+        counts[x.verdict]++;
+        cells.get(x.url)?.replaceChildren(h("span", { class: cls[x.verdict] }, `${label[x.verdict]}${x.status ? ` (${x.status})` : ""}`), x.location ? h("br") : "", x.location ? h("span", { class: "tool-note" }, `→ ${x.location}`) : "");
+      }
+      progress.textContent = `Comprobados ${Math.min(i + list.batch, list.links.length)} de ${list.links.length}…`;
+    }
+    progress.replaceChildren(
+      h("strong", { class: counts.broken ? "bad" : "ok" }, counts.broken ? `${counts.broken} enlace(s) roto(s)` : "Ningún enlace roto"),
+      ` · ${counts.ok} funcionan · ${counts.redirect} redirigen · ${counts.blocked + counts.error} sin confirmar${list.total > list.links.length ? ` · la página tiene ${list.total} enlaces; hemos comprobado los ${list.links.length} primeros` : ""}.`,
+    );
+  },
+  "comprobador-imagen-compartir": async (form, out) => {
+    const url = urlOf(form);
+    if (!url) return void out.replaceChildren(h("p", {}, "Escribe la dirección de la página."));
+    type Img = { url: string; status: number | null; contentType: string; info: { format: string; width: number | null; height: number | null } | null; problems: string[] };
+    const r = await api<{ url: string; pageTitle: string | null; tags: Record<string, string | null>; image: Img | null; problems: string[]; checkedAt: string }>("og-image", { url });
+    const all = [...r.problems, ...(r.image?.problems ?? [])];
+    const showImg = !!r.image && r.image.status !== null && r.image.status < 400 && r.image.info?.format !== "svg" && r.image.info?.format !== "unknown";
+    const card = h(
+      "div",
+      { class: "og-card" },
+      showImg ? h("img", { src: r.image!.url, alt: "", loading: "lazy", referrerpolicy: "no-referrer" }) : h("div", { class: "og-empty" }, "Sin imagen"),
+      h("div", { class: "og-text" }, h("p", { class: "og-host" }, new URL(r.url).hostname), h("p", { class: "og-title" }, r.tags.title ?? r.pageTitle ?? "(sin título)"), h("p", { class: "og-desc" }, r.tags.description ?? "")),
+    );
+    out.replaceChildren(
+      h("h2", {}, "Así se vería al compartirla (aproximado)"),
+      card,
+      r.image?.info?.width ? h("p", {}, `Imagen: ${r.image.info.format.toUpperCase()}, ${r.image.info.width}×${r.image.info.height} px.`) : "",
+      all.length ? problemsList(all) : h("p", { class: "ok" }, "Todo correcto: imagen, título, descripción y tarjeta de X."),
+      h("p", { class: "tool-note" }, `Comprobado el ${when(r.checkedAt)}. Cada red recorta y guarda en caché a su manera.`),
+    );
+  },
 };
 
 (() => {
@@ -173,12 +268,21 @@ const TOOLS: Record<string, (form: HTMLFormElement, out: HTMLElement) => void> =
     const out = main?.querySelector<HTMLElement>("[data-out]");
     const run = main ? TOOLS[main.dataset.tool ?? ""] : undefined;
     if (!main || !form || !out || !run) return;
-    const go = () => {
+    const button = form.querySelector<HTMLButtonElement>("button[type=submit]");
+    const go = async () => {
+      if (button?.disabled) return;
       try {
-        run(form, out);
+        const pending = run(form, out);
+        if (pending) {
+          if (button) button.disabled = true;
+          out.replaceChildren(h("p", { class: "tool-note" }, "Comprobando… puede tardar unos segundos."));
+          await pending;
+        }
       } catch (e) {
-        console.warn("[herramientas]", e);
-        out.replaceChildren(h("p", {}, "No se pudo procesar. Revisa lo que has pegado."));
+        if (!(e instanceof ToolError)) console.warn("[herramientas]", e);
+        out.replaceChildren(h("p", { class: "bad" }, e instanceof ToolError ? e.message : "No se pudo procesar. Revisa lo que has escrito."));
+      } finally {
+        if (button) button.disabled = false;
       }
     };
     const type = form.querySelector<HTMLSelectElement>("select[name=type]");
@@ -187,12 +291,12 @@ const TOOLS: Record<string, (form: HTMLFormElement, out: HTMLElement) => void> =
     sync();
     form.addEventListener("submit", (e) => {
       e.preventDefault();
-      go();
+      void go();
     });
     // Live tools (no button): preview and calculator update as you type.
     if (!form.querySelector("button[type=submit]")) {
-      form.addEventListener("input", go);
-      go();
+      form.addEventListener("input", () => void go());
+      void go();
     }
   } catch (e) {
     console.warn("[herramientas] init failed", e);

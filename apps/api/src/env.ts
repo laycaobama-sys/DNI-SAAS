@@ -109,6 +109,8 @@ export type AppEnv = {
     user: SessionUser | null;
     tenant: Tenant;
     deps: Deps;
+    /** Serves a request with this same Worker (Cloudflare does not let a Worker fetch its own zone). */
+    selfFetch?: (req: Request) => Promise<Response>;
   };
 };
 

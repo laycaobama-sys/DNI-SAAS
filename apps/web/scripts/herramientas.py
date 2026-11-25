@@ -58,6 +58,7 @@ CTA = """      <aside class="tool-cta">
       </aside>"""
 
 PRIVACY = '<p class="tool-note">Funciona en tu navegador: lo que escribes o pegas aquí no se envía a DNI Growth ni a nadie.</p>'
+PRIVACY_SERVER = '<p class="tool-note">Para leer la página, nuestro servidor la descarga una vez, como cualquier visitante. Solo puede leer webs públicas, no guardamos la dirección que escribes y hay un límite de usos por hora.</p>'
 
 TOOLS = [
     {
@@ -255,7 +256,103 @@ TOOLS = [
             ("¿Por qué el resultado es una estimación?", "Porque multiplica dos medias. El valor real depende de qué búsquedas te traen cada visita y de cuántas acaban en venta."),
         ],
     },
+    {
+        "slug": "comprobador-imagen-compartir",
+        "server": True,
+        "title": "Comprobador de la imagen al compartir (og:image)",
+        "desc": "Escribe la dirección de una página y comprueba gratis qué imagen, título y descripción mostrarán WhatsApp, LinkedIn, Facebook y X al compartirla.",
+        "lead": "Escribe la dirección de una página. Leemos sus etiquetas Open Graph, descargamos la imagen y te decimos si tiene el tamaño y el formato que usan las redes sociales y las apps de mensajería.",
+        "ui": """      <form class="tool-form" data-form novalidate>
+        <label for="url">Dirección de la página</label>
+        <input id="url" name="url" type="url" inputmode="url" autocomplete="url" placeholder="https://tuweb.com/servicios" required />
+        <button class="btn btn-accent" type="submit">Comprobar</button>
+      </form>
+      <div class="tool-out" data-out aria-live="polite"></div>""",
+        "how": """      <h2>Qué comprobamos</h2>
+      <p>Que exista <code>og:image</code> (o <code>twitter:image</code>), que la imagen se descargue, que sea PNG, JPG o WebP (las redes no muestran SVG) y que mida al menos 1200 × 630 píxeles, el tamaño recomendado para la vista grande.</p>
+      <p>También miramos <code>og:title</code>, <code>og:description</code> y <code>twitter:card</code>. Si te faltan, el <a href="/herramientas/etiquetas-open-graph">generador de etiquetas Open Graph</a> te las prepara.</p>
+      <p>Las redes guardan en caché la vista previa. Si cambias la imagen, puede tardar en actualizarse; Facebook y LinkedIn tienen herramientas para volver a leer la página.</p>""",
+        "faq": [
+            ("¿Por qué WhatsApp no muestra la imagen de mi página?", "Las causas más comunes son que no hay og:image, que la imagen es un SVG, que pesa demasiado o que la dirección de la imagen no es pública (por ejemplo, está detrás de un inicio de sesión)."),
+            ("¿Qué tamaño debe tener la imagen?", "1200 × 630 píxeles (proporción 1,91:1) funciona bien en casi todas las redes. Pon el texto importante en el centro, porque algunas apps recortan los bordes."),
+        ],
+    },
+    {
+        "slug": "comprobador-enlaces-rotos",
+        "server": True,
+        "title": "Comprobador de enlaces rotos",
+        "desc": "Comprueba gratis hasta 50 enlaces de una página: cuáles funcionan, cuáles redirigen y cuáles están rotos (404). Sin registro.",
+        "lead": "Escribe la dirección de una página. Sacamos sus enlaces (hasta 50, primero los de tu propia web) y comprobamos uno a uno si funcionan, redirigen o están rotos.",
+        "ui": """      <form class="tool-form" data-form novalidate>
+        <label for="url">Dirección de la página</label>
+        <input id="url" name="url" type="url" inputmode="url" autocomplete="url" placeholder="https://tuweb.com/blog/mi-articulo" required />
+        <button class="btn btn-accent" type="submit">Comprobar enlaces</button>
+      </form>
+      <div class="tool-out" data-out aria-live="polite"></div>""",
+        "how": """      <h2>Cómo leer el resultado</h2>
+      <ul>
+        <li><strong>Roto:</strong> la página enlazada responde 404, 410 u otro error de cliente. Corrige el enlace o quítalo.</li>
+        <li><strong>Redirige:</strong> funciona, pero pasa por otra dirección. Si el enlace es de tu web, enlaza directamente a la dirección final.</li>
+        <li><strong>No deja comprobarlo:</strong> la web enlazada bloquea a los robots (pasa con LinkedIn, Instagram y algunas tiendas). Ábrelo tú para confirmarlo.</li>
+        <li><strong>No responde:</strong> la web tardó demasiado o falló en ese momento. Vuelve a probar más tarde.</li>
+      </ul>
+      <p>Comprobamos los enlaces de una sola página, sin seguir más allá. Para revisar toda tu web, usa la auditoría gratuita.</p>""",
+        "faq": [
+            ("¿Los enlaces rotos afectan al SEO?", "Un enlace roto suelto no hunde una web, pero empeora la experiencia y desperdicia el rastreo. En tu propia web, un enlace interno roto puede dejar páginas importantes sin enlaces que lleguen a ellas."),
+            ("¿Por qué solo 50 enlaces?", "Para no cargar las webs que comprobamos y mantener la herramienta gratuita. Los enlaces se comprueban de pocos en pocos."),
+        ],
+    },
+    {
+        "slug": "palabras-clave-competidor",
+        "server": True,
+        "title": "Palabras clave que te faltan frente a un competidor",
+        "desc": "Compara tu página con la de un competidor y descubre gratis qué términos destaca él en títulos y encabezados que tú ni mencionas.",
+        "lead": "Escribe tu página y la de un competidor que te gane en Google para el mismo tema. Comparamos el vocabulario de las dos y te enseñamos los términos que él destaca y tú no usas.",
+        "ui": """      <form class="tool-form" data-form novalidate>
+        <label for="mine">Tu página</label>
+        <input id="mine" name="mine" type="url" inputmode="url" placeholder="https://tuweb.com/servicio" required />
+        <label for="competitor">Página del competidor</label>
+        <input id="competitor" name="competitor" type="url" inputmode="url" placeholder="https://competidor.com/servicio" required />
+        <button class="btn btn-accent" type="submit">Comparar</button>
+      </form>
+      <div class="tool-out" data-out aria-live="polite"></div>""",
+        "how": """      <h2>Cómo funciona</h2>
+      <p>Leemos el título, la descripción, los encabezados (H1, H2, H3) y el texto de las dos páginas, sin menús ni pies de página. Contamos palabras y parejas de palabras, y damos más peso a las que están en el título y los encabezados.</p>
+      <p>No usamos datos de Google ni volúmenes de búsqueda: comparamos lo que está escrito en las dos páginas. Úsalo como lista de ideas: añade solo los términos que de verdad describen lo que ofreces, escritos de forma natural.</p>""",
+        "faq": [
+            ("¿Esto me dice por qué el competidor está por delante?", "No del todo. El texto es solo una parte: también cuentan los enlaces, la autoridad de la web, la experiencia de usuario y otros factores. Esta herramienta mira solo el vocabulario."),
+            ("¿Debo copiar todas las palabras que me faltan?", "No. Repetir palabras clave sin aportar nada no ayuda y puede perjudicar. Elige las que encajan con tu servicio y escribe sobre ellas con información útil."),
+        ],
+    },
+    {
+        "slug": "preparada-para-ia",
+        "server": True,
+        "title": "¿Tu web está preparada para ChatGPT y otros asistentes de IA?",
+        "seo": "¿Tu web está preparada para ChatGPT y la IA?",
+        "desc": "Comprueba gratis si ChatGPT, Perplexity, Claude y Google pueden leer y citar tu página: robots.txt, texto sin JavaScript, datos estructurados y llms.txt.",
+        "lead": "Escribe la dirección de tu web. Revisamos los requisitos técnicos para que los asistentes con IA puedan leer tu página, entender qué haces y citarla en sus respuestas.",
+        "ui": """      <form class="tool-form" data-form novalidate>
+        <label for="url">Dirección de tu web</label>
+        <input id="url" name="url" type="url" inputmode="url" autocomplete="url" placeholder="https://tuweb.com" required />
+        <button class="btn btn-accent" type="submit">Comprobar</button>
+      </form>
+      <div class="tool-out" data-out aria-live="polite"></div>""",
+        "how": """      <h2>Qué significa el resultado</h2>
+      <p>Son <strong>requisitos técnicos</strong>, no una medida de cuántas veces te mencionan. Una web que los cumple puede ser leída y citada; que la citen depende también de lo útil, clara y conocida que sea.</p>
+      <p>Para saber si de verdad apareces en las respuestas hay que hacer preguntas reales a los asistentes y mirar si te nombran. DNI Growth lo hace con muestras periódicas: son una foto de esas preguntas, no una garantía de todas las búsquedas que hace la gente.</p>""",
+        "faq": [
+            ("¿Qué es el GEO?", "GEO (Generative Engine Optimization) es preparar tu web y tu marca para que los asistentes con IA, como ChatGPT, Perplexity o Gemini, la entiendan y la recomienden en sus respuestas."),
+            ("¿Necesito un llms.txt?", "No es obligatorio y ningún buscador ha confirmado que lo use para posicionar. Es una propuesta reciente que ayuda a que una IA encuentre tus páginas importantes. Puedes crearlo con nuestro generador de llms.txt."),
+        ],
+    },
 ]
+
+
+def seo_title(t):
+    """Title tag: the tool name plus the brand when it fits in 65 characters (otherwise Google cuts it)."""
+    base = t.get("seo", t["title"])
+    full = f"{base} · DNI Growth"
+    return full if len(full) <= 65 else base
 
 
 def ld(tool_name, desc, path, faq):
@@ -292,7 +389,7 @@ for t in TOOLS:
     body = f"""      <p class="tool-crumbs"><a href="/herramientas">← Herramientas gratuitas</a></p>
       <h1>{html.escape(t['title'])}</h1>
       <p class="lead-in">{html.escape(t['lead'])}</p>
-      {PRIVACY}
+      {PRIVACY_SERVER if t.get('server') else PRIVACY}
 {t['ui']}
 {t['how']}
       <h2>Preguntas frecuentes</h2>
@@ -301,7 +398,7 @@ for t in TOOLS:
       </div>
 {CTA}"""
     page = HEAD.format(
-        title=html.escape(f"{t['title']} · DNI Growth"),
+        title=html.escape(seo_title(t)),
         desc=html.escape(t["desc"]),
         path=path,
         script='<script type="module" src="/src/landing/tools.ts"></script>',
@@ -316,7 +413,7 @@ cards = "\n".join(
     f'        <li><article><h2><a href="/herramientas/{t["slug"]}">{html.escape(t["title"])}</a></h2><p>{html.escape(t["desc"])}</p></article></li>' for t in TOOLS
 )
 hub_body = f"""      <h1>Herramientas SEO y GEO gratuitas</h1>
-      <p class="lead-in">Herramientas sencillas para revisar y preparar tu web para Google y para los buscadores con IA. Gratis, sin registro y sin enviar tus datos: funcionan en tu navegador.</p>
+      <p class="lead-in">Herramientas sencillas para revisar y preparar tu web para Google y para los buscadores con IA. Gratis y sin registro. Las que trabajan con lo que pegas funcionan en tu navegador; las que leen una web pública la descargan desde nuestro servidor, sin guardar la dirección.</p>
       <ul class="blog-list tool-list">
 {cards}
       </ul>
@@ -336,7 +433,7 @@ hub_ld = json.dumps(
 (ROOT / "herramientas.html").write_text(
     HEAD.format(
         title="Herramientas SEO y GEO gratuitas · DNI Growth",
-        desc="Herramientas gratuitas para tu web: robots.txt y bots de IA, llms.txt, datos estructurados, FAQ, vista previa en Google, sitemap, Open Graph y valor del tráfico.",
+        desc="12 herramientas gratuitas para tu web: preparación para ChatGPT, bots de IA, llms.txt, datos estructurados, enlaces rotos, palabras clave y más.",
         path="/herramientas",
         script="",
         ld=hub_ld,

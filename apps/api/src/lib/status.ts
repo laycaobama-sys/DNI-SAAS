@@ -4,7 +4,7 @@
  * Every check reads real state (pages served, database, queues, payments, Google syncs, email,
  * backups); nothing is assumed. Results are public without personal data.
  */
-import { buildPublicAuditResult, runSeoRules } from "@dni/core";
+import { buildPublicAuditResult, META_GRAPH_VERSION, runSeoRules } from "@dni/core";
 import type { Deps, Env } from "../env";
 import { crawlSite } from "../jobs/crawl";
 import { emailHtml, sendMail } from "./mail";
@@ -26,6 +26,7 @@ export const STATUS_CHECKS: CheckDef[] = [
   { key: "google", label: "Search Console y Analytics", description: "Las sincronizaciones diarias con Google terminan sin errores." },
   { key: "email", label: "Correo", description: "Los correos de la plataforma salen sin quedarse atascados." },
   { key: "backup", label: "Copias de seguridad", description: "Hay una copia de la base de datos de las últimas 26 horas." },
+  { key: "meta", label: "Facebook e Instagram", description: "Meta acepta las credenciales de la app de DNI Growth (cada hora)." },
 ];
 
 export const STATUS_INTERVAL_MIN = 5;
@@ -112,6 +113,25 @@ async function runCheck(key: string, env: Env, deps: Deps, last: Map<string, { o
         const fresh = !!r?.at && Date.now() - Date.parse(r.at) < 26 * 3_600_000;
         return { ok: fresh, detail: r?.at ? `Última copia: ${r.at.slice(0, 16).replace("T", " ")} UTC.` : "Todavía no hay copias." };
       });
+    case "meta": {
+      const prev = last.get("meta");
+      if (prev && prev.ok === 1 && Date.now() - Date.parse(prev.checked_at) < 55 * 60_000) return null;
+      const appId = env.META_APP_ID;
+      const appSecret = env.META_APP_SECRET;
+      if (!appId || !appSecret) return null; // not set up in this environment
+      return timed(async () => {
+        // App access token request: only succeeds when the app id and secret match. The token is discarded.
+        const res = await deps.fetchImpl(`https://graph.facebook.com/${META_GRAPH_VERSION}/oauth/access_token`, {
+          method: "POST",
+          headers: { "content-type": "application/x-www-form-urlencoded" },
+          body: new URLSearchParams({ client_id: appId, client_secret: appSecret, grant_type: "client_credentials" }).toString(),
+          signal: AbortSignal.timeout(10_000),
+        });
+        const j = (await res.json().catch(() => ({}))) as { access_token?: string; error?: { code?: number } };
+        const ok = res.ok && typeof j.access_token === "string" && j.access_token.length > 10;
+        return { ok, detail: ok ? "Meta acepta las credenciales de la app." : `Meta rechaza las credenciales (HTTP ${res.status}${j.error?.code ? `, código ${j.error.code}` : ""}).` };
+      });
+    }
     default:
       return null;
   }

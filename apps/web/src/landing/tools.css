@@ -28,3 +28,16 @@
 .tools .tool-cta{margin-top:48px;padding:24px;border:1px solid #2a2a33;border-radius:16px;background:#141416}
 .tools .tool-cta h2{margin-top:0}
 .tools.blog .tool-list{margin-top:32px}
+.tools .warn{color:#f0b45a}
+.tools .tool-checks{list-style:none;padding:0;display:grid;gap:10px}
+.tools .tool-checks li{padding:12px 14px;border:1px solid #2a2a33;border-radius:12px;background:#141416}
+.tools .tool-checks li span{color:#c9c9d1}
+.tools .tool-out td a{word-break:break-all}
+.tools .og-card{max-width:520px;border:1px solid #3a3a44;border-radius:12px;overflow:hidden;background:#1c1c20}
+.tools .og-card img{display:block;width:100%;aspect-ratio:1.91/1;object-fit:cover;background:#0f0f11}
+.tools .og-empty{display:grid;place-items:center;aspect-ratio:1.91/1;color:#9a9aa6;background:#0f0f11}
+.tools .og-text{padding:10px 14px}
+.tools .og-text p{margin:2px 0}
+.tools .og-host{font-size:13px;color:#9a9aa6;text-transform:uppercase}
+.tools .og-title{font-weight:600;color:#f5f5f4}
+.tools .og-desc{font-size:14px;color:#c9c9d1}

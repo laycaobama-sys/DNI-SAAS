@@ -28,6 +28,17 @@ describe("/herramientas", () => {
     }
   });
 
+  it("titles and descriptions fit in Google's results (our own audit checks the same)", () => {
+    const decode = (x: string) => x.replace(/&amp;/g, "&").replace(/&quot;/g, '"').replace(/&#x27;|&#39;/g, "'").replace(/&lt;/g, "<").replace(/&gt;/g, ">");
+    for (const f of ["herramientas.html", ...FREE_TOOLS.map((t) => `herramientas/${t.slug}.html`)]) {
+      const html = readFileSync(web(f), "utf8");
+      const title = decode(html.match(/<title>([^<]*)<\/title>/)![1]!);
+      const desc = decode(html.match(/<meta name="description" content="([^"]*)"/)![1]!);
+      expect(title.length, f).toBeLessThanOrEqual(65);
+      expect(desc.length, f).toBeLessThanOrEqual(160);
+    }
+  });
+
   it("the browser script wires every tool and never writes user text as HTML", () => {
     const src = readFileSync(web("src/landing/tools.ts"), "utf8");
     for (const t of FREE_TOOLS) expect(src).toContain(`"${t.slug}"`);

@@ -89,12 +89,39 @@ describe("/estado (B2.6)", () => {
     expect(String(page.json)).not.toMatch(/@dnigrowth\.test/);
     const api = await anon.get("/api/v1/public/status");
     expect(api.status).toBe(200);
-    expect(api.json.checks).toHaveLength(8);
+    expect(api.json.checks).toHaveLength(9); // «meta» shows without data where Meta is not set up
     expect(api.json.measurement.type).toBe("observed");
     expect(api.json.allOk).toBe(false);
     const canon = new URL("https://dnigrowth.com");
     expect(canonicalRedirect(new URL("https://dnigrowth.com/estado/"), canon)).toBe("https://dnigrowth.com/estado");
     expect(canonicalRedirect(new URL("https://dnigrowth.com/estado"), canon)).toBeNull();
+  });
+
+  it("checks with Meta that the app credentials are valid, without storing the token", async () => {
+    const h = createHarness();
+    const env = { ...h.env, META_APP_ID: "123", META_APP_SECRET: "s3cret-for-test" };
+    let reply = { access_token: "123|app-token-value" } as Record<string, unknown>;
+    let sent = "";
+    const site = h.deps.fetchImpl;
+    h.deps.fetchImpl = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.includes("graph.facebook.com") && url.endsWith("/oauth/access_token")) {
+        sent = String(init?.body ?? "");
+        return new Response(JSON.stringify(reply), { status: "access_token" in reply ? 200 : 400, headers: { "content-type": "application/json" } });
+      }
+      return site(input, init);
+    }) as typeof fetch;
+    await runStatusChecks(env, h.deps, { force: true });
+    expect(sent).toContain("grant_type=client_credentials");
+    let row = await h.db.prepare("SELECT ok, detail FROM status_checks WHERE check_key = 'meta'").first<{ ok: number; detail: string }>();
+    expect(row).toMatchObject({ ok: 1 });
+    expect(row!.detail).not.toContain("app-token-value");
+    reply = { error: { code: 101, message: "Error validating client secret." } };
+    await h.db.prepare("DELETE FROM status_checks").run();
+    await runStatusChecks(env, h.deps, { force: true });
+    row = await h.db.prepare("SELECT ok, detail FROM status_checks WHERE check_key = 'meta'").first<{ ok: number; detail: string }>();
+    expect(row).toMatchObject({ ok: 0 });
+    expect(row!.detail).toContain("101");
   });
 
   it("alerts the platform owners after two failures in a row and once on recovery", async () => {

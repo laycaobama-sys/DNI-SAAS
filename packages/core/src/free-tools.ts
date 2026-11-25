@@ -1,6 +1,7 @@
 /**
  * Free public tools (/herramientas). Pure, deterministic functions: no AI, no network, no cost. They run
- * in the visitor's browser, so what the visitor pastes never leaves their device. The same functions are
+ * in the visitor's browser, so what the visitor pastes never leaves their device. The four tools that read a public
+ * URL call the API instead (routes/public-tools.ts, logic in site-tools.ts). The same functions are
  * unit-tested here and bundled into the public pages.
  */
 
@@ -20,6 +21,10 @@ export const FREE_TOOLS: FreeTool[] = [
   { slug: "comprobador-sitemap", name: "Comprobador de sitemap.xml", summary: "Pega tu sitemap y detecta direcciones duplicadas, sin https, fechas mal escritas y límites superados." },
   { slug: "etiquetas-open-graph", name: "Generador de etiquetas Open Graph", summary: "Las etiquetas para que tu página se vea bien al compartirla en WhatsApp, LinkedIn, Facebook o X." },
   { slug: "calculadora-valor-trafico", name: "Calculadora del valor de tu tráfico orgánico", summary: "Cuánto costaría conseguir con anuncios las visitas que ya te llegan desde Google." },
+  { slug: "preparada-para-ia", name: "¿Tu web está preparada para ChatGPT y otros asistentes de IA?", summary: "Revisa si los asistentes con IA pueden leer, entender y citar tu página." },
+  { slug: "palabras-clave-competidor", name: "Palabras clave que te faltan frente a un competidor", summary: "Compara tu página con la de un competidor y mira qué términos destaca él y tú no usas." },
+  { slug: "comprobador-enlaces-rotos", name: "Comprobador de enlaces rotos", summary: "Comprueba hasta 50 enlaces de una página: cuáles funcionan, redirigen o están rotos." },
+  { slug: "comprobador-imagen-compartir", name: "Comprobador de la imagen al compartir (og:image)", summary: "Mira qué imagen, título y descripción salen al compartir tu página en redes y WhatsApp." },
 ];
 
 // ── robots.txt and AI crawlers ────────────────────────────────────────────────────────────────────
