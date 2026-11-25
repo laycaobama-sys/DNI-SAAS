@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { annualSaving, CANCEL_REASONS, evaluateGuarantee, PLAN_OFFERS, PRICING_ROWS, periodAmountCents, type GuaranteeInput } from "../src/pricing";
+import { annualSaving, CANCEL_REASONS, evaluateGuarantee, PLAN_OFFERS, PRICING_ROWS, periodAmountCents, COMING_SOON, type GuaranteeInput } from "../src/pricing";
 import { FEATURES } from "../src/features";
+import { PLAN_PITCH } from "../src/plan-access";
 
 describe("commercial catalogue", () => {
   it("annual prices are about two months free and add up exactly", () => {
@@ -33,6 +34,17 @@ describe("commercial catalogue", () => {
     // Rows that depend on unbuilt integrations are not marked available.
     expect(PRICING_ROWS.find((r) => r.label.startsWith("Publicación en tu blog"))!.status).not.toBe("available");
     expect(PRICING_ROWS.find((r) => r.label.startsWith("Correcciones técnicas automáticas"))!.status).toBe("building");
+  });
+
+  it("a feature still in development is never sold with a tick in any plan (only «Próximamente»)", () => {
+    for (const r of PRICING_ROWS.filter((x) => x.status === "building"))
+      for (const [plan, v] of Object.entries(r.values)) {
+        expect(v, `${r.label} · ${plan}`).not.toContain("✓");
+        expect([COMING_SOON, "—"]).toContain(v);
+      }
+    // And no paid-plan pitch promises a feature that is still being built.
+    const buildingWords = ["wordpress", "shopify", "publicación automática", "correcciones automáticas", "correcciones técnicas automáticas"];
+    for (const pitch of Object.values(PLAN_PITCH)) for (const w of buildingWords) expect(pitch.toLowerCase()).not.toContain(w);
   });
 
   it("each cancellation reason maps to a valid Stripe feedback value and at most one offer", () => {

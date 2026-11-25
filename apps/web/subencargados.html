@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Subencargados del tratamiento · DNI Growth</title>
+    <meta name="description" content="Proveedores que tratan datos para prestar DNI Growth: alojamiento, pagos, inteligencia artificial, Google y correo, con su ubicación, finalidad y fecha de alta." />
+    <link rel="canonical" href="__SITE_URL__/subencargados" />
+    <meta name="theme-color" content="#0b0b0c" />
+    <link rel="icon" href="/favicon.ico" sizes="48x48" />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="icon" href="/icon-192.png" type="image/png" sizes="192x192" />
+    <link rel="stylesheet" href="/src/landing/landing.css" />
+    <link rel="stylesheet" href="/src/landing/legal.css" />
+  </head>
+  <body>
+    <a class="skip" href="#main">Saltar al contenido</a>
+    <header class="nav is-solid"><a class="brand" href="/" aria-label="DNI Growth, inicio"><span class="brand-mark" aria-hidden="true">DNI</span><span class="brand-word">Growth</span></a><a class="btn" href="/app/register">Auditar mi web gratis</a></header>
+    <main class="legal" id="main">
+      <h1>Subencargados del tratamiento</h1>
+      <p>Última actualización: 25 de noviembre de 2026.</p>
+      <p>Estos son los proveedores que tratan datos por cuenta de DNI Growth para prestar el servicio. Cada uno trata solo lo necesario para su finalidad. No vendemos datos ni los cedemos para publicidad. Si añadimos o cambiamos un proveedor, actualizamos esta página antes de usarlo y lo indicamos en la fecha de arriba.</p>
+
+      <h2 id="lista">Lista de proveedores</h2>
+      <div class="tw"><table>
+        <thead><tr><th scope="col">Proveedor</th><th scope="col">Finalidad</th><th scope="col">Datos</th><th scope="col">Ubicación</th><th scope="col">Desde</th></tr></thead>
+        <tbody>
+          <tr><td>Cloudflare, Inc.</td><td>Alojamiento de la web y la aplicación, base de datos, archivos, colas de trabajo, correo transaccional y modelo de IA principal (Workers AI)</td><td>Cuenta, organizaciones, contenido de trabajo, registros técnicos, textos que envías a la IA</td><td>Base de datos y archivos en la UE; red global de Cloudflare para servir la web</td><td>Nov 2026</td></tr>
+          <tr><td>Stripe Payments Europe, Ltd.</td><td>Pagos, suscripciones, facturas e impuestos</td><td>Nombre, correo, dirección de facturación, NIF-IVA y datos de pago (la tarjeta solo la ve Stripe)</td><td>Irlanda (UE); algunos servicios en EE. UU.</td><td>Nov 2026</td></tr>
+          <tr><td>Google LLC / Google Ireland Ltd.</td><td>Inicio de sesión con Google; lectura de Search Console y Analytics si los conectas; respaldo de IA (Gemini) y muestreo de visibilidad en IA</td><td>Correo e identificador de la cuenta; métricas de Search Console y Analytics; textos y preguntas que envías a la IA (nunca datos de Search Console ni de Analytics)</td><td>EE. UU. y UE</td><td>Nov 2026</td></tr>
+          <tr><td>Groq, Inc.</td><td>Respaldo de IA, solo si el modelo principal no está disponible</td><td>Textos que envías a la IA</td><td>EE. UU.</td><td>Nov 2026</td></tr>
+          <tr><td>OpenRouter, Inc.</td><td>Respaldo de IA con modelos de distintos fabricantes, solo si los anteriores no están disponibles</td><td>Textos que envías a la IA</td><td>EE. UU.</td><td>Nov 2026</td></tr>
+        </tbody>
+      </table></div>
+
+      <h2 id="ia">Cómo usamos la inteligencia artificial</h2>
+      <ul>
+        <li>El modelo principal es <strong>Cloudflare Workers AI</strong>. Si no está disponible o se agota su cupo, la petición pasa automáticamente al siguiente proveedor de la lista (Groq, Google Gemini u OpenRouter), en ese orden.</li>
+        <li>Hoy usamos los <strong>niveles gratuitos</strong> de Groq, Gemini y OpenRouter. En esos niveles el proveedor puede conservar las peticiones y usarlas para mejorar sus productos según sus propias condiciones. Por eso <strong>no escribas datos personales sensibles</strong> en las funciones de IA; si detectamos datos como DNI, IBAN o contraseñas, la petición solo la procesa Cloudflare.</li>
+        <li>Nunca enviamos a la IA tus contraseñas, tus tokens ni datos de Google Search Console o Google Analytics.</li>
+        <li>Lo que genera la IA es siempre un borrador que revisa una persona antes de aprobarse.</li>
+      </ul>
+
+      <h2 id="transferencias">Transferencias fuera del Espacio Económico Europeo</h2>
+      <p>Cuando un proveedor trata datos fuera del EEE se aplican las garantías del RGPD: el Marco de Privacidad de Datos UE-EE. UU. para las empresas adheridas o las cláusulas contractuales tipo de la Comisión Europea.</p>
+
+      <h2 id="contrato">Contrato de encargo del tratamiento</h2>
+      <p>Si usas DNI Growth con datos de tus clientes, puedes consultar el <a href="/legal/encargo-tratamiento">contrato de encargo del tratamiento</a>. Es un borrador pendiente de revisión por un abogado y así se indica en la propia página.</p>
+
+      <h2 id="contacto">Contacto</h2>
+      <p>Para cualquier duda sobre estos proveedores, escribe a <a href="mailto:privacidad@dnigrowth.com">privacidad@dnigrowth.com</a>. Más detalle en la <a href="/legal/privacidad">política de privacidad</a> y en <a href="/seguridad">seguridad</a>.</p>
+    </main>
+    <nav class="legal-foot" aria-label="Más páginas">
+      <a href="/">Inicio</a>
+      <a href="/seguridad">Seguridad</a>
+      <a href="/subencargados" aria-current="page">Subencargados</a>
+      <a href="/legal/aviso-legal">Aviso legal</a>
+      <a href="/legal/privacidad">Privacidad</a>
+      <a href="/legal/condiciones">Condiciones de uso</a>
+      <a href="/legal/eliminacion-datos">Eliminación de datos</a>
+    </nav>
+  </body>
+</html>

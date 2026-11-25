@@ -69,7 +69,7 @@ export function canonicalRedirect(url: URL, canon: URL): string | null {
   if (path.startsWith("/api/") && path !== "/api/v1/auth/google/start") return null;
   let clean = path;
   if (clean === "/index.html") clean = "/";
-  else if (/^\/(legal\/[a-z-]+|blog|blog\/[a-z0-9-]+|seguridad|precios)(\.html|\/)$/.test(clean)) clean = clean.replace(/(\.html|\/)$/, "");
+  else if (/^\/(legal\/[a-z-]+|blog|blog\/[a-z0-9-]+|seguridad|precios|subencargados)(\.html|\/)$/.test(clean)) clean = clean.replace(/(\.html|\/)$/, "");
   const offHost = url.host !== canon.host || url.protocol !== canon.protocol;
   if (!offHost && clean === path) return null;
   return `${canon.origin}${clean}${url.search}`;

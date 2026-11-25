@@ -47,20 +47,26 @@ export const fullAddress = (i: LegalIdentity) => `${i.streetAddress}, ${i.postal
 const emailLink = (i: LegalIdentity) => `<a href="mailto:${esc(i.email)}">${esc(i.email)}</a>`;
 const phoneLink = (i: LegalIdentity) => `<a href="tel:${esc(i.phone.replace(/\s+/g, ""))}">${esc(i.phone)}</a>`;
 
+/** Mailboxes by purpose (Cloudflare Email Routing → the owner's inbox). Not personal data. */
+export const MAILBOXES = { support: "soporte@dnigrowth.com", billing: "facturacion@dnigrowth.com", legal: "legal@dnigrowth.com", security: "seguridad@dnigrowth.com" } as const;
+const mailto = (m: string) => `<a href="mailto:${m}">${m}</a>`;
+const MAILBOX_TOKENS = { __MAIL_SUPPORT__: mailto(MAILBOXES.support), __MAIL_BILLING__: mailto(MAILBOXES.billing), __MAIL_LEGAL__: mailto(MAILBOXES.legal), __MAIL_SECURITY__: mailto(MAILBOXES.security) };
+
 /** HTML fragments for the `<!--LEGAL:...-->` / `__LEGAL_...__` tokens used in apps/web/legal/*.html. */
 export function legalTokens(i: LegalIdentity | null): Record<string, string> {
   if (!i) {
     const na = `<span class="draft-inline">[datos del titular no configurados en esta compilación]</span>`;
-    return { "<!--LEGAL:TITULAR-->": `<p>${na}</p>`, "<!--LEGAL:RESPONSABLE-->": `<p>${na}</p>`, __LEGAL_HOLDER__: na, __LEGAL_EMAIL_LINK__: na };
+    return { "<!--LEGAL:TITULAR-->": `<p>${na}</p>`, "<!--LEGAL:RESPONSABLE-->": `<p>${na}</p>`, __LEGAL_HOLDER__: na, __LEGAL_EMAIL_LINK__: na, ...MAILBOX_TOKENS };
   }
   return {
+    ...MAILBOX_TOKENS,
     "<!--LEGAL:TITULAR-->": `<dl class="idbox">
         <dt>Titular y prestador del servicio</dt><dd>${esc(i.legalName)} (persona física)</dd>
         <dt>Nombre comercial</dt><dd>${esc(i.commercialName)}</dd>
         <dt>${esc(i.taxIdLabel)}</dt><dd>${esc(i.taxId)}</dd>
         <dt>Domicilio</dt><dd>${esc(fullAddress(i))}</dd>
         <dt>Sitio web</dt><dd><a href="${esc(i.siteUrl)}">${esc(i.siteUrl.replace(/^https?:\/\//, ""))}</a></dd>
-        <dt>Correo de contacto</dt><dd>${emailLink(i)}</dd>
+        <dt>Correo de contacto</dt><dd>${mailto(MAILBOXES.legal)} (soporte: ${mailto(MAILBOXES.support)}; facturación: ${mailto(MAILBOXES.billing)}; privacidad: ${emailLink(i)})</dd>
         <dt>Teléfono de contacto</dt><dd>${phoneLink(i)}</dd>
       </dl>`,
     "<!--LEGAL:RESPONSABLE-->": `<dl class="idbox">
