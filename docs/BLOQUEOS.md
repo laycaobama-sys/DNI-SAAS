@@ -22,14 +22,9 @@ No tienes que hacer nada más aquí. Comprobación cuando quieras: **Facturació
 
 Nota: tu organización «DNI GYM» tiene una suscripción Starter creada **en modo prueba** y ya cancelada (termina el 2026-12-18). Con la clave real, Stripe no enviará su aviso de fin; la plataforma la pasa sola a Free el 2026-12-20. No hay que hacer nada.
 
-## 2. URGENTE · Revisión legal antes del primer cobro real
+## 2. HECHO · Revisión legal (2026-11-25)
 
-Están redactadas, pero las debe revisar un abogado:
-- `/legal/condiciones` (contratación, renovación, cancelación, renuncia al desistimiento al empezar el servicio, aviso de 30 días antes de cambiar precios).
-- `/legal/garantia` (condiciones exactas de la garantía de 90 días).
-- Política de privacidad.
-
-El texto que acepta el cliente queda guardado con su versión (`termsVersion 2026-11-23`).
+La titular confirma que revisó con su abogado las condiciones, la garantía, la privacidad (también los apartados nuevos de la guía y del informe mensual), el contrato de encargo del tratamiento y `/subencargados`. Se han quitado de la web los avisos de «pendiente de revisión por un abogado». Si el abogado pide cambios de redacción, se aplican sobre los textos actuales.
 
 ## 3. IMPORTANTE · IVA y facturas (decisión con tu gestor)
 
@@ -97,18 +92,18 @@ Pasos en [PENDIENTES_TITULAR.md §0](PENDIENTES_TITULAR.md). Ejecutas `node scri
 ## 7 bis. Notas de la Entrega 2 (25 nov)
 
 1. **IA en nivel gratuito (decisión tuya del 25 nov):** seguimos con proveedores gratuitos hasta que entren pagos. Riesgo: las condiciones de la API gratuita de Gemini no permiten usarla para servir a usuarios del Espacio Económico Europeo, y Google puede usar lo enviado para mejorar sus productos. Cuando haya ingresos, activa la facturación del proyecto de Google Cloud con un presupuesto y una alerta de 30 €/mes. El código ya tiene techos de gasto.
-2. **Abogado:** además de condiciones, garantía y privacidad, el borrador de DPA en `/legal/encargo-tratamiento` y `/subencargados`.
+2. **Abogado:** HECHO (la titular lo revisó con su abogado el 25 nov).
 3. **Google Auth Platform: `composio.dev`:** cuando termine la verificación, mira en *Clientes → URI de redirección autorizadas* si algún cliente OAuth redirige a composio.dev. Si DNI Growth no lo usa, quítalo. No lo toques mientras la verificación siga abierta.
 4. **Blog: 10 borradores esperando tu revisión.** En la organización «DNI Growth» → **Contenido**, filtro «En revisión»: cómo aparecer en ChatGPT, llms.txt, AEO para pymes, SEO para Shopify, SEO local en España, auditoría técnica paso a paso, datos estructurados, Search Console para principiantes, GEO frente a SEO y cómo elegir una herramienta de SEO con IA. Pasan el control del editor (sin cifras sin fuente, sin promesas, sin precios). Léelos, cambia lo que quieras y pulsa «Aprobar» en cada uno (30–60 minutos). Ninguno se publica sin tu aprobación. Copia de los textos en `docs/blog-borradores/articulos.json`.
 5. **Domicilio profesional o sociedad:** decide con tu gestor si quieres evitar que tu domicilio particular aparezca en el aviso legal y en las facturas.
 6. **TOTP del Control Center, Stripe Tax o IVA fijo, NIF en Stripe y VERI*FACTU:** siguen como estaban.
-7. **Abogado, también la guía:** la política de privacidad tiene un apartado nuevo para la guía «Cómo aparecer en ChatGPT» (doble confirmación, email borrado al confirmar salvo que acepten novedades, borrado a los 7 días si no confirman). Inclúyelo en la revisión.
+7. **Abogado, también la guía (HECHO):** la política de privacidad tiene un apartado nuevo para la guía «Cómo aparecer en ChatGPT» (doble confirmación, email borrado al confirmar salvo que acepten novedades, borrado a los 7 días si no confirman). Inclúyelo en la revisión.
 8. **Correo de prueba de la guía:** se probó el registro con soporte@dnigrowth.com. Si no confirmas ese correo, el registro se borra solo a los 7 días. No hay que hacer nada.
 9. **Comparativa con BabyLoveGrowth:** los datos están comprobados el 25 nov 2026 con enlace a su fuente. Revísalos cada 2–3 meses o si nos escriben una corrección (la página da soporte@dnigrowth.com para eso).
 
 ## 8. Más adelante
 
-- Shopify (app pública en su tienda de apps) y el directorio de plugins de WordPress: requieren sus revisiones. La publicación en WordPress **ya funciona** sin el directorio, con una contraseña de aplicación.
+- Shopify (app pública en su tienda de apps) y el directorio de plugins de WordPress: requieren sus revisiones. La publicación en WordPress **ya funciona** sin el directorio, con una contraseña de aplicación, y el plugin «DNI Growth Connector» se descarga desde dnigrowth.com y se sube a mano.
 - Perfiles en G2, Capterra y Trustpilot.
 - Vídeo demo de 90 s.
 - Primeros clientes beta para casos verificados (nunca testimonios inventados).

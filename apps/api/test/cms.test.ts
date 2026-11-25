@@ -14,13 +14,18 @@ interface WpState {
   posts: Map<number, { id: number; slug: string; status: string; title: string; content: string; excerpt: string }>;
   nextId: number;
   revoked: boolean;
+  /** «DNI Growth Connector» plugin (absent unless set). */
+  plugin?: { version: string; seoPlugin: string | null; canLlms: boolean };
+  meta: Map<number, Record<string, string>>;
+  fixLog: Array<{ id: string; ref: string; postId: number; field: string; before: string; after: string; reverted?: string }>;
+  llms: string;
 }
 
 /** In-memory WordPress REST API (wp/v2 posts, users/me, application-passwords introspect). */
 function setup(opts: Partial<WpState> = {}) {
   const h = createHarness({ dns: { "intranet.example.com": ["10.0.0.5"] } });
   Object.assign(h.env, { DATA_ENC_KEY: KEY });
-  const wp: WpState = { pretty: true, capabilities: { publish_posts: true, edit_posts: true }, posts: new Map(), nextId: 100, revoked: false, ...opts };
+  const wp: WpState = { pretty: true, capabilities: { publish_posts: true, edit_posts: true }, posts: new Map(), nextId: 100, revoked: false, meta: new Map(), fixLog: [], llms: "", ...opts };
   const calls: Array<{ method: string; url: string; auth: string | null; body: string }> = [];
   const realFetch = h.deps.fetchImpl;
   h.deps.fetchImpl = (async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -54,6 +59,7 @@ function setup(opts: Partial<WpState> = {}) {
       if (id && !prev) return Response.json({ code: "rest_post_invalid_id", message: "Invalid post ID." }, { status: 404 });
       const p = { id: id ?? wp.nextId++, slug: j.slug ?? prev!.slug, status: j.status ?? prev!.status, title: j.title ?? prev!.title, content: j.content ?? prev!.content, excerpt: j.excerpt ?? prev!.excerpt };
       wp.posts.set(p.id, p);
+      if (j.meta) wp.meta.set(p.id, { ...(wp.meta.get(p.id) ?? {}), ...(j.meta as unknown as Record<string, string>) });
       return Response.json({ id: p.id, status: p.status, link: p.status === "publish" ? `${SITE}/${p.slug}/` : `${SITE}/?p=${p.id}` }, { status: id ? 200 : 201 });
     };
     if (route === "/wp/v2/posts" && method === "POST") {
@@ -68,6 +74,36 @@ function setup(opts: Partial<WpState> = {}) {
     }
     const m = route.match(/^\/wp\/v2\/posts\/(\d+)$/);
     if (m && method === "POST") return save(Number(m[1]));
+    if (route.startsWith("/dni-growth/v1/") && wp.plugin) {
+      const j = body ? (JSON.parse(body) as Record<string, any>) : {};
+      if (route === "/dni-growth/v1/status") return Response.json({ plugin: "dni-growth-connector", version: wp.plugin.version, seoPlugin: wp.plugin.seoPlugin, llmsTxt: wp.llms !== "", canLlmsTxt: wp.plugin.canLlms });
+      const keys: Record<string, string> = { title: "_dni_seo_title", description: "_dni_seo_description", canonical: "_dni_canonical", jsonld: "_dni_jsonld", alt: "_wp_attachment_image_alt" };
+      if (route === "/dni-growth/v1/fix" && method === "POST") {
+        // Only the site's own page /sobre-nosotros/ (post 5) and image 9 exist; anything else is refused like WordPress does.
+        const postId = j.attachment_id === 9 ? 9 : j.url === `${SITE}/sobre-nosotros/` ? 5 : 0;
+        if (!postId) return Response.json({ code: "rest_forbidden", message: "Sorry, you are not allowed to do that." }, { status: 403 });
+        const done = wp.fixLog.find((f) => f.ref === j.ref);
+        if (done) return Response.json({ ...done, repeated: true });
+        const m = wp.meta.get(postId) ?? {};
+        const entry = { id: `fix-${wp.fixLog.length + 1}`, ref: j.ref, postId, field: j.field, before: m[keys[j.field]!] ?? "", after: j.value };
+        wp.meta.set(postId, { ...m, [keys[j.field]!]: j.value });
+        wp.fixLog.push(entry);
+        return Response.json({ ...entry, url: `${SITE}/sobre-nosotros/` });
+      }
+      if (route === "/dni-growth/v1/fix/revert" && method === "POST") {
+        const f = wp.fixLog.find((x) => x.id === j.fix_id && x.postId === j.post_id);
+        if (!f) return Response.json({ code: "dni_growth_fix_not_found" }, { status: 404 });
+        wp.meta.set(f.postId, { ...(wp.meta.get(f.postId) ?? {}), [keys[f.field]!]: f.before });
+        f.reverted = "now";
+        return Response.json(f);
+      }
+      if (route === "/dni-growth/v1/llms" && method === "POST") {
+        if (!wp.plugin.canLlms) return Response.json({ code: "rest_forbidden" }, { status: 403 });
+        const before = wp.llms;
+        wp.llms = j.content;
+        return Response.json({ field: "llms", before, after: wp.llms, url: `${SITE}/llms.txt` });
+      }
+    }
     return Response.json({ code: "rest_no_route", message: "No route was found matching the URL and request method." }, { status: 404 });
   }) as typeof fetch;
 
@@ -257,5 +293,95 @@ describe("WordPress helpers", () => {
     expect(wpRoute("https://a.es/wp-json/", "wp/v2/posts", { slug: "x" })).toBe("https://a.es/wp-json/wp/v2/posts?slug=x");
     expect(wpRoute("https://a.es/?rest_route=/", "wp/v2/posts/5")).toBe("https://a.es/?rest_route=/wp/v2/posts/5");
     expect(wpSlug("¿Qué es el SEO técnico? Guía 2027")).toBe("que-es-el-seo-tecnico-guia-2027");
+  });
+});
+
+describe("WordPress: «DNI Growth Connector» plugin", () => {
+  it("downloads a valid zip of the plugin", async () => {
+    const { h } = setup();
+    const r = await h.app.request("/descargas/dni-growth-connector.zip", {}, h.env, h.ctx);
+    expect(r.status).toBe(200);
+    expect(r.headers.get("content-type")).toBe("application/zip");
+    expect(r.headers.get("content-disposition")).toContain("dni-growth-connector-");
+    const bytes = new Uint8Array(await r.arrayBuffer());
+    expect([...bytes.slice(0, 4)]).toEqual([0x50, 0x4b, 0x03, 0x04]);
+    const text = new TextDecoder().decode(bytes);
+    expect(text).toContain("dni-growth-connector/dni-growth-connector.php");
+    expect(text).toContain("Plugin Name:       DNI Growth Connector");
+    expect(text).toContain("JSON_HEX_TAG");
+    expect(text).not.toContain("${");
+  });
+
+  it("without the plugin: publishing works as before and fixes ask to install it", async () => {
+    const { wp, ownerOrg, approvedArticle, connect } = setup();
+    const { owner, O } = await ownerOrg();
+    await connect(owner, O);
+    const id = await approvedArticle(owner, O);
+    expect((await owner.post(`${O}/content/${id}/wordpress`, { status: "publish" })).status).toBe(200);
+    expect(wp.meta.size).toBe(0);
+    expect((await owner.get(`${O}/cms/wordpress/plugin`)).json).toMatchObject({ installed: null, connected: true });
+    const f = await owner.post(`${O}/cms/wordpress/fixes`, { field: "description", url: `${SITE}/sobre-nosotros/`, value: "Panadería artesana en Valencia." });
+    expect(f.status).toBe(409);
+    expect(f.json.code).toBe("wordpress_plugin_missing");
+  });
+
+  it("with the plugin: sends SEO meta and JSON-LD on publish; applies, audits and reverts fixes; refuses other sites", async () => {
+    const { h, wp, ownerOrg, approvedArticle, connect, calls } = setup({ plugin: { version: "1.0.0", seoPlugin: "yoast", canLlms: true } });
+    const { owner, orgId, O } = await ownerOrg();
+    await connect(owner, O);
+    expect((await owner.get(`${O}/cms/wordpress/plugin`)).json).toMatchObject({ installed: { version: "1.0.0", seoPlugin: "yoast" }, outdated: false });
+
+    const id = await approvedArticle(owner, O);
+    const pub = await owner.post(`${O}/content/${id}/wordpress`, { status: "publish" });
+    const postId = Number(pub.json.publication.postId);
+    const meta = wp.meta.get(postId)!;
+    expect(meta._dni_seo_title).toBe("Cómo conservar el pan de masa madre");
+    expect(meta._dni_seo_description).toContain("paño de algodón");
+    expect(JSON.parse(meta._dni_jsonld!)).toMatchObject({ "@type": "Article", headline: "Cómo conservar el pan de masa madre" });
+
+    // A fix: before/after recorded, audited with the approver, idempotent by our id.
+    const f = await owner.post(`${O}/cms/wordpress/fixes`, { field: "description", url: `${SITE}/sobre-nosotros/`, value: "Panadería artesana en Valencia con masa madre." });
+    expect(f.status, JSON.stringify(f.json)).toBe(201);
+    expect(f.json.fix).toMatchObject({ state: "applied", field: "description", label: "Meta descripción", before: "", after: "Panadería artesana en Valencia con masa madre." });
+    expect(wp.meta.get(5)!._dni_seo_description).toBe("Panadería artesana en Valencia con masa madre.");
+    const fixCall = calls.find((c) => c.url.includes("dni-growth/v1/fix"))!;
+    expect(JSON.parse(fixCall.body).ref).toBe(f.json.fix.id);
+    const audit = await h.db.prepare("SELECT approved_by FROM audit_logs WHERE organization_id = ? AND action = 'cms.wordpress_fix'").bind(orgId).first<{ approved_by: string }>();
+    expect(audit!.approved_by).toBeTruthy();
+
+    // Undo: the plugin restores the previous value; a second undo changes nothing.
+    const rv = await owner.post(`${O}/cms/wordpress/fixes/${f.json.fix.id}/revert`);
+    expect(rv.json.fix.state).toBe("reverted");
+    expect(wp.meta.get(5)!._dni_seo_description).toBe("");
+    expect((await owner.post(`${O}/cms/wordpress/fixes/${f.json.fix.id}/revert`)).json.fix.state).toBe("reverted");
+
+    // Image alt text by attachment id; invalid JSON-LD and other sites are refused before calling WordPress.
+    expect((await owner.post(`${O}/cms/wordpress/fixes`, { field: "alt", attachmentId: 9, value: "Hogaza de masa madre" })).status).toBe(201);
+    expect((await owner.post(`${O}/cms/wordpress/fixes`, { field: "jsonld", url: `${SITE}/sobre-nosotros/`, value: "{no es json" })).status).toBe(422);
+    const other = await owner.post(`${O}/cms/wordpress/fixes`, { field: "title", url: "https://otra-web.es/", value: "x" });
+    expect(other.status).toBe(422);
+    // A URL of the site that is not a post/page: WordPress refuses, the fix is stored as failed.
+    const bad = await owner.post(`${O}/cms/wordpress/fixes`, { field: "title", url: `${SITE}/no-existe/`, value: "Título" });
+    expect(bad.status).toBe(403);
+
+    // llms.txt: applied and reversible.
+    const l1 = await owner.post(`${O}/cms/wordpress/llms`, { content: "# Panadería Luna\n\n> Pan de masa madre en Valencia." });
+    expect(l1.status).toBe(201);
+    expect(wp.llms).toContain("Panadería Luna");
+    await owner.post(`${O}/cms/wordpress/fixes/${l1.json.fix.id}/revert`);
+    expect(wp.llms).toBe("");
+
+    const list = (await owner.get(`${O}/cms/wordpress/fixes`)).json.fixes;
+    expect(list.map((x: { state: string }) => x.state).sort()).toEqual(["applied", "failed", "reverted", "reverted"]);
+  });
+
+  it("only roles with content:approve apply or revert fixes", async () => {
+    const { h, ownerOrg, connect } = setup({ plugin: { version: "1.0.0", seoPlugin: null, canLlms: true } });
+    const { owner, orgId, O } = await ownerOrg("growth");
+    await connect(owner, O);
+    const editor = await h.invite(owner, orgId, "editor@panaderia-luna.es", "editor");
+    expect((await editor.post(`${O}/cms/wordpress/fixes`, { field: "title", url: `${SITE}/sobre-nosotros/`, value: "x" })).status).toBe(403);
+    expect((await editor.post(`${O}/cms/wordpress/llms`, { content: "# Panadería Luna llms" })).status).toBe(403);
+    expect((await editor.get(`${O}/cms/wordpress/fixes`)).status).toBe(200);
   });
 });

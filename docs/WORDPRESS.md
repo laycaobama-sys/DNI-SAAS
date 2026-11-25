@@ -13,6 +13,26 @@ Requisitos:
 - API REST no bloqueada por un plugin de seguridad;
 - plan Starter o superior.
 
+## Plugin «DNI Growth Connector» (opcional)
+Diseño: [ADR 0027](adr/0027-plugin-wordpress-correcciones-y-fuentes-propias.md). Código: `apps/api/src/lib/wp-plugin-source.ts`.
+
+1. En DNI Growth: **Integraciones → Correcciones técnicas en WordPress → Descargar plugin** (o `https://dnigrowth.com/descargas/dni-growth-connector.zip`).
+2. En WordPress: **Plugins → Añadir nuevo → Subir plugin**, elegir el .zip, **Instalar ahora** y **Activar**.
+3. De vuelta en Integraciones aparece «Plugin activo». Desde ahí se aplica una corrección (título SEO, descripción, canónica, JSON-LD de una página o texto alternativo de una imagen) o se guarda `llms.txt`. Para `llms.txt`, el usuario conectado tiene que ser Administrador. Cada fila del historial tiene «Deshacer».
+
+Qué hace en la web:
+- imprime la descripción y la canónica si no hay Yoast SEO ni Rank Math (si los hay, copia los valores en sus campos);
+- imprime siempre el JSON-LD;
+- sirve `/llms.txt` si no existe un archivo real con ese nombre.
+
+Al desinstalarlo borra sus datos.
+
+Probar el plugin en un WordPress real (PHP 8.3; `WP_PHP=7.4` para la versión mínima):
+
+```bash
+pnpm wp:plugin-test
+```
+
 ## Prueba contra un WordPress real (sin Docker)
 WordPress Playground ejecuta WordPress en Node:
 

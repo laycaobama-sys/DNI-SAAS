@@ -33,7 +33,8 @@ describe("commercial catalogue", () => {
     for (const r of PRICING_ROWS.filter((x) => x.status === "available")) for (const b of building) expect(r.label.toLowerCase()).not.toContain(b);
     // Rows that depend on unbuilt integrations are not marked available.
     expect(PRICING_ROWS.find((r) => r.label.startsWith("Publicación en tu blog"))!.status).not.toBe("available");
-    expect(PRICING_ROWS.find((r) => r.label.startsWith("Correcciones técnicas automáticas"))!.status).toBe("building");
+    // Fixes work only in WordPress, with the plugin and one approval per fix: never «available» until other CMS exist.
+    expect(PRICING_ROWS.find((r) => r.label.startsWith("Correcciones técnicas"))!.status).toBe("partial");
   });
 
   it("a feature still in development is never sold with a tick in any plan (only «Próximamente»)", () => {

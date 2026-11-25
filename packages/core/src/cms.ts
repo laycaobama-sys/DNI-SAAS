@@ -72,3 +72,38 @@ export function wpSlug(title: string): string {
       .replace(/-+$/, "") || "articulo"
   );
 }
+
+/** Technical fixes sent through the «DNI Growth Connector» plugin (each one reversible, with before/after). */
+export const WP_FIX_FIELDS = ["title", "description", "canonical", "jsonld", "alt"] as const;
+export type WpFixField = (typeof WP_FIX_FIELDS)[number] | "llms";
+export const WP_FIX_LABEL: Record<WpFixField, string> = {
+  title: "Título SEO",
+  description: "Meta descripción",
+  canonical: "URL canónica",
+  jsonld: "Datos estructurados (JSON-LD)",
+  alt: "Texto alternativo de imagen",
+  llms: "llms.txt",
+};
+export const WordPressFixInput = z
+  .object({
+    field: z.enum(WP_FIX_FIELDS),
+    /** A post or page of the connected site (resolved by the plugin), or an image (attachment id) for «alt». */
+    url: z.url({ protocol: /^https?$/ }).max(2000).optional(),
+    attachmentId: z.number().int().positive().optional(),
+    value: z.string().max(20000),
+  })
+  .refine((v) => (v.field === "alt" ? v.attachmentId !== undefined && v.url === undefined : v.url !== undefined && v.attachmentId === undefined), {
+    message: "Indica la URL de la página (o el id de la imagen para el texto alternativo).",
+  })
+  .refine((v) => v.field !== "jsonld" || v.value.trim() === "" || isJsonObject(v.value), { message: "El JSON-LD no es un JSON válido." })
+  .refine((v) => v.field !== "canonical" || v.value === "" || /^https?:\/\//i.test(v.value), { message: "La URL canónica debe empezar por https://." });
+export const WordPressLlmsInput = z.object({ content: z.string().trim().min(10, "El llms.txt está vacío.").max(100_000) });
+
+function isJsonObject(s: string): boolean {
+  try {
+    const v = JSON.parse(s) as unknown;
+    return typeof v === "object" && v !== null;
+  } catch {
+    return false;
+  }
+}

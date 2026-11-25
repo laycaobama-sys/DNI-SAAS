@@ -208,3 +208,37 @@ export function wpFriendly(e: unknown): string {
       return e.userMessage ? `WordPress: ${e.userMessage}` : `WordPress respondió con un error (${e.code}).`;
   }
 }
+
+/** «DNI Growth Connector» plugin on the customer's site, or null when it is not installed/active. */
+export interface WpPluginStatus {
+  plugin: "dni-growth-connector";
+  version: string;
+  seoPlugin: "yoast" | "rank-math" | null;
+  llmsTxt: boolean;
+  canLlmsTxt: boolean;
+}
+export async function wpPluginStatus(deps: Deps, creds: WpCreds): Promise<WpPluginStatus | null> {
+  try {
+    const { data } = await wpFetch<WpPluginStatus>(deps, wpRoute(creds.api, "dni-growth/v1/status"), { creds, timeoutMs: 10_000 });
+    return data && data.plugin === "dni-growth-connector" ? data : null;
+  } catch (e) {
+    if (e instanceof WpError && (e.status === 404 || e.code === "rest_no_route")) return null;
+    throw e;
+  }
+}
+export interface WpFixResult {
+  id: string;
+  field: string;
+  before: string;
+  after: string;
+  postId: number;
+  url?: string;
+  repeated?: boolean;
+  reverted?: string;
+}
+export const wpPluginFix = (deps: Deps, creds: WpCreds, body: { field: string; value: string; url?: string; attachment_id?: number; ref: string }) =>
+  wpFetch<WpFixResult>(deps, wpRoute(creds.api, "dni-growth/v1/fix"), { method: "POST", creds, json: body }).then((r) => r.data);
+export const wpPluginRevert = (deps: Deps, creds: WpCreds, postId: number, fixId: string) =>
+  wpFetch<WpFixResult>(deps, wpRoute(creds.api, "dni-growth/v1/fix/revert"), { method: "POST", creds, json: { post_id: postId, fix_id: fixId } }).then((r) => r.data);
+export const wpPluginLlms = (deps: Deps, creds: WpCreds, content: string) =>
+  wpFetch<{ before: string; after: string; url: string }>(deps, wpRoute(creds.api, "dni-growth/v1/llms"), { method: "POST", creds, json: { content } }).then((r) => r.data);

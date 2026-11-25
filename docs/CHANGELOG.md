@@ -4,6 +4,20 @@ Formato: fecha, versión desplegada en Cloudflare y cambios visibles. Las prueba
 
 ## 2026-11-25
 
+### Plugin de WordPress, correcciones reversibles, portada más rápida y comprobaciones nocturnas — versión `60c0846d`
+- **Plugin gratuito «DNI Growth Connector»** para WordPress, que se descarga desde Integraciones o en `/descargas/dni-growth-connector.zip` ([ADR 0027](adr/0027-plugin-wordpress-correcciones-y-fuentes-propias.md), [guía](WORDPRESS.md)). Con él:
+  - cada artículo publicado lleva su título SEO, su descripción y sus datos estructurados (JSON-LD), copiados en Yoast SEO o Rank Math si están activos;
+  - desde **Integraciones → Correcciones técnicas en WordPress** se corrigen el título SEO, la descripción, la canónica, el JSON-LD y el texto alternativo de imágenes, y se publica `llms.txt`. Cada cambio lo aprueba una persona con permiso, guarda el valor anterior, queda en la auditoría y se deshace con un clic.
+  - Probado en un WordPress real con PHP 8.3 y 7.4 (`pnpm wp:plugin-test`, 28 comprobaciones).
+- `/precios`: «Correcciones técnicas en tu web» pasa de «En desarrollo» a **Parcial** (solo WordPress con el plugin). La landing `/seo-wordpress` explica el plugin.
+- **Portada más rápida y sin Google Fonts:**
+  - las fuentes se sirven desde dnigrowth.com y la CSP ya no permite fuentes de Google;
+  - se quita el desenfoque animado del fondo.
+  - Lighthouse en `/`, `/precios` y `/herramientas`: 100 en accesibilidad, buenas prácticas y SEO.
+- **Comprobaciones nocturnas** en GitHub (`nightly.yml`): smoke de producción, auditoría propia y Lighthouse. La auditoría propia también se ejecuta en cada push a `main`.
+- **Legal:** se quitan las notas de «borrador pendiente de abogado» del contrato de encargo, la garantía y `/subencargados`, porque la titular ya lo revisó con su abogado.
+- Migración `0028` aditiva (copia previa `backups/dni-growth-db-pre-0028-20261125.sql`).
+
 ### Páginas que pierden clics e informe mensual por email — versión `f14057fe`
 - **Search Console → «Páginas que pierden clics»:** compara cada página en los últimos 28 días con los 28 anteriores. Avisa si pierde al menos 10 clics y un 30 % de los que tenía, y explica la causa probable: baja de posición, menos búsquedas, menos clics con las mismas búsquedas, o ya no aparece. Se calcula sin IA y estos datos no salen de la plataforma. La sincronización importa ahora 250 páginas (antes 25) y también el periodo anterior, con el mismo permiso de solo lectura.
 - **Informe mensual por email** a propietarios y administradores, entre el día 1 y el 7 de cada mes. Incluye el trabajo hecho (auditorías, contenidos aprobados, envíos a la web y publicaciones en redes) y los clics e impresiones de Search Console con fuente. Solo compara con el mes anterior si hay los mismos días. Nunca se envía dos veces; las organizaciones sin nada que contar no reciben nada. Baja en un clic. Añadido a la política de privacidad.

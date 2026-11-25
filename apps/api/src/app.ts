@@ -1,5 +1,5 @@
 import { Hono, type Context } from "hono";
-import { FEATURE_STATUS_LABEL, FEATURES } from "@dni/core";
+import { FEATURE_STATUS_LABEL, FEATURES, buildZip } from "@dni/core";
 import { bodyLimit } from "hono/body-limit";
 import type { AppEnv, Deps } from "./env";
 import { ApiError, problem } from "./lib/http";
@@ -33,6 +33,7 @@ import { cms } from "./routes/cms";
 import { activationRoutes, publicAudits, registerAuditPage } from "./routes/public-audit";
 import { publicTools } from "./routes/public-tools";
 import { guideApi, registerGuidePages } from "./routes/guide";
+import { WP_PLUGIN_FILES, WP_PLUGIN_VERSION } from "./lib/wp-plugin-source";
 import { eventsPublic } from "./routes/events";
 import { FALLBACK_404_HTML, SITE_CSP, SITE_SECURITY_HEADERS } from "./lib/site-headers";
 import { org, orgsPublic } from "./routes/orgs";
@@ -206,6 +207,17 @@ export function createApp(deps: Deps) {
   registerAuditPage(app, (c) => notFoundPage(c));
   // Guide in exchange for an email with double opt-in: /guia/* (ADR 0026).
   registerGuidePages(app, (c) => notFoundPage(c));
+
+  // «DNI Growth Connector» WordPress plugin, built on the fly from its source (reproducible bytes, cached a day).
+  app.get("/descargas/dni-growth-connector.zip", (c) => {
+    const zip = buildZip(WP_PLUGIN_FILES);
+    return c.body(zip.buffer as ArrayBuffer, 200, {
+      "content-type": "application/zip",
+      "content-disposition": `attachment; filename="dni-growth-connector-${WP_PLUGIN_VERSION}.zip"`,
+      "cache-control": "public, max-age=86400",
+      "x-content-type-options": "nosniff",
+    });
+  });
 
   // Non-API routes: static landing + SPA shell served from Workers Static Assets.
   app.get("*", async (c) => {

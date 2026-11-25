@@ -1,5 +1,5 @@
 import { Hono, type Context } from "hono";
-import { checkDraft, markdownToSafeHtml, normalizeWpSite, WordPressConnectInput, WordPressPublishInput, WP_PUBLISHABLE_KINDS, wpMarker, wpSlug } from "@dni/core";
+import { checkDraft, markdownToSafeHtml, normalizeWpSite, WordPressConnectInput, WordPressFixInput, WordPressLlmsInput, WordPressPublishInput, WP_FIX_LABEL, WP_PUBLISHABLE_KINDS, wpMarker, wpSlug } from "@dni/core";
 import type { AppEnv } from "../env";
 import { auditStmt } from "../lib/audit";
 import { ApiError, assertUuid, notFound, parseBody } from "../lib/http";
@@ -10,6 +10,10 @@ import {
   openWpCreds,
   sealWpCreds,
   wpCreatePost,
+  wpPluginFix,
+  wpPluginLlms,
+  wpPluginRevert,
+  wpPluginStatus,
   wpFindBySlug,
   WpError,
   wpFriendly,
@@ -22,6 +26,7 @@ import {
 } from "../lib/wordpress";
 import { requireScope } from "../middleware";
 import { blogDescription } from "./site-blog";
+import { WP_PLUGIN_VERSION } from "../lib/wp-plugin-source";
 
 /**
  * WordPress publishing (APPROVAL_REQUIRED): only content approved by a person is sent, only by a role
@@ -188,6 +193,16 @@ cms.post("/content/:contentId/wordpress", requireScope("content:approve"), async
   const bodyMd = item.body_md.replace(/^\s*#\s+[^\n]*\n+/, "");
   const html = `${markdownToSafeHtml(bodyMd)}\n${wpMarker(id)}`;
   const payload: Record<string, unknown> = { title: item.title, content: html, excerpt: blogDescription(bodyMd), status: input.status };
+  // With the «DNI Growth Connector» plugin: SEO title, description and Article JSON-LD (mirrored into Yoast / Rank Math).
+  const plugin = await wpPluginStatus(deps, creds).catch(() => null);
+  if (plugin) {
+    const description = blogDescription(bodyMd);
+    payload.meta = {
+      _dni_seo_title: item.title.slice(0, 200),
+      _dni_seo_description: description,
+      _dni_jsonld: JSON.stringify({ "@context": "https://schema.org", "@type": "Article", headline: item.title.slice(0, 110), description, inLanguage: "es" }),
+    };
+  }
   try {
     let postId = pub.external_id;
     if (!postId) {
@@ -261,4 +276,169 @@ cms.post("/content/:contentId/wordpress/unpublish", requireScope("content:approv
     auditStmt(db, { organizationId: t.orgId, actorUserId: t.userId, action: "cms.wordpress_unpublish", entityType: "content_item", entityId: id, before: { postId: pub.external_id, state: pub.state }, after: { state: "unpublished" }, requestId: c.get("requestId") }),
   ]);
   return c.json({ publication: pubOut(await loadPub(db, t.orgId, id)) });
+});
+
+/* ── «DNI Growth Connector» plugin: status, reversible technical fixes and llms.txt ─────────────────── */
+
+interface FixRow {
+  id: string;
+  field: string;
+  target_url: string | null;
+  attachment_id: number | null;
+  post_id: number | null;
+  remote_fix_id: string | null;
+  before_value: string | null;
+  after_value: string;
+  state: string;
+  last_error: string | null;
+  created_at: string;
+  reverted_at: string | null;
+}
+const fixOut = (f: FixRow) => ({
+  id: f.id,
+  field: f.field,
+  label: WP_FIX_LABEL[f.field as keyof typeof WP_FIX_LABEL] ?? f.field,
+  url: f.target_url,
+  attachmentId: f.attachment_id,
+  before: f.before_value,
+  after: f.after_value,
+  state: f.state,
+  error: f.last_error,
+  createdAt: f.created_at,
+  revertedAt: f.reverted_at,
+});
+const loadFix = (db: D1Database, orgId: string, id: string) => db.prepare("SELECT * FROM wp_fixes WHERE organization_id = ? AND id = ?").bind(orgId, id).first<FixRow>();
+
+/** Plugin status on the connected site and the latest version available for download. */
+cms.get("/cms/wordpress/plugin", requireScope("content:read"), async (c) => {
+  const t = c.get("tenant");
+  const latest = { version: WP_PLUGIN_VERSION, download: "/descargas/dni-growth-connector.zip" };
+  const conn = await connection(c.env.DB, t.orgId);
+  if (!conn || conn.status !== "connected") return c.json({ latest, installed: null, connected: false });
+  const { creds } = await credsFor(c, t.orgId);
+  try {
+    const installed = await wpPluginStatus(c.get("deps"), creds);
+    return c.json({ latest, installed, connected: true, outdated: installed ? installed.version !== WP_PLUGIN_VERSION : false });
+  } catch (e) {
+    throw new ApiError(502, "wordpress_plugin_status", wpFriendly(e));
+  }
+});
+
+cms.get("/cms/wordpress/fixes", requireScope("content:read"), async (c) => {
+  const t = c.get("tenant");
+  const { results } = await c.env.DB.prepare("SELECT * FROM wp_fixes WHERE organization_id = ? ORDER BY created_at DESC, rowid DESC LIMIT 100").bind(t.orgId).all<FixRow>();
+  return c.json({ fixes: results.map(fixOut) });
+});
+
+async function pluginOrFail(c: Context<AppEnv>, orgId: string) {
+  const { conn, creds } = await credsFor(c, orgId);
+  let plugin;
+  try {
+    plugin = await wpPluginStatus(c.get("deps"), creds);
+  } catch (e) {
+    throw new ApiError(502, "wordpress_plugin_status", wpFriendly(e));
+  }
+  if (!plugin) throw new ApiError(409, "wordpress_plugin_missing", "Instala y activa el plugin «DNI Growth Connector» en tu WordPress para aplicar correcciones.");
+  return { conn, creds, plugin };
+}
+
+const hostOf = (u: string) => new URL(u).hostname.toLowerCase().replace(/^www\./, "");
+
+/** Applies one fix (approval = this action, by a role with content:approve). Audited and reversible. */
+cms.post("/cms/wordpress/fixes", requireScope("content:approve"), async (c) => {
+  const t = c.get("tenant");
+  const db = c.env.DB;
+  const input = await parseBody(c, WordPressFixInput);
+  await rateLimit(db, `wp-fix:${t.orgId}`, 60, 3600);
+  const { conn, creds } = await pluginOrFail(c, t.orgId);
+  if (input.url && conn.account_ref && hostOf(input.url) !== hostOf(conn.account_ref)) {
+    throw new ApiError(422, "wordpress_other_site", `Esa URL no es de tu WordPress conectado (${hostOf(conn.account_ref)}).`);
+  }
+  const id = uuid();
+  await db
+    .prepare("INSERT INTO wp_fixes (id, organization_id, integration_id, field, target_url, attachment_id, after_value, state, created_by, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, 'applying', ?, ?)")
+    .bind(id, t.orgId, conn.id, input.field, input.url ?? null, input.attachmentId ?? null, input.value, t.userId, nowIso())
+    .run();
+  try {
+    const r = await wpPluginFix(c.get("deps"), creds, { field: input.field, value: input.value, url: input.url, attachment_id: input.attachmentId, ref: id });
+    await db.batch([
+      db
+        .prepare("UPDATE wp_fixes SET state = 'applied', post_id = ?, remote_fix_id = ?, before_value = ?, after_value = ?, target_url = COALESCE(target_url, ?) WHERE organization_id = ? AND id = ?")
+        .bind(r.postId, r.id, r.before, r.after, r.url ?? null, t.orgId, id),
+      auditStmt(db, {
+        organizationId: t.orgId,
+        actorUserId: t.userId,
+        action: "cms.wordpress_fix",
+        entityType: "wp_fix",
+        entityId: id,
+        before: { field: input.field, value: r.before.slice(0, 500) },
+        after: { field: input.field, value: r.after.slice(0, 500), postId: r.postId },
+        approvedBy: t.userId,
+        requestId: c.get("requestId"),
+      }),
+    ]);
+  } catch (e) {
+    await db.prepare("UPDATE wp_fixes SET state = 'failed', last_error = ? WHERE organization_id = ? AND id = ?").bind(e instanceof WpError ? e.code : "error", t.orgId, id).run();
+    if (e instanceof WpError && (e.status === 403 || e.status === 401)) {
+      throw new ApiError(403, "wordpress_fix_forbidden", "WordPress no deja editar eso: la URL no es una entrada o página de tu web, o tu usuario no tiene permiso para editarla.");
+    }
+    throw new ApiError(502, "wordpress_fix_failed", wpFriendly(e));
+  }
+  return c.json({ fix: fixOut((await loadFix(db, t.orgId, id))!) }, 201);
+});
+
+/** Undoes a fix: the plugin restores the value it had before. */
+cms.post("/cms/wordpress/fixes/:fixId/revert", requireScope("content:approve"), async (c) => {
+  const t = c.get("tenant");
+  const db = c.env.DB;
+  const id = assertUuid(c.req.param("fixId"), "Corrección");
+  const row = await loadFix(db, t.orgId, id);
+  if (!row) throw notFound("Corrección");
+  if (row.state === "reverted") return c.json({ fix: fixOut(row) });
+  if (row.state !== "applied") throw new ApiError(409, "wordpress_fix_not_applied", "Solo se puede deshacer una corrección aplicada.");
+  const { creds } = await pluginOrFail(c, t.orgId);
+  try {
+    if (row.field === "llms") await wpPluginLlms(c.get("deps"), creds, row.before_value ?? "");
+    else await wpPluginRevert(c.get("deps"), creds, row.post_id!, row.remote_fix_id!);
+  } catch (e) {
+    throw new ApiError(502, "wordpress_revert_failed", wpFriendly(e));
+  }
+  await db.batch([
+    db.prepare("UPDATE wp_fixes SET state = 'reverted', reverted_by = ?, reverted_at = ? WHERE organization_id = ? AND id = ? AND state = 'applied'").bind(t.userId, nowIso(), t.orgId, id),
+    auditStmt(db, {
+      organizationId: t.orgId,
+      actorUserId: t.userId,
+      action: "cms.wordpress_fix_revert",
+      entityType: "wp_fix",
+      entityId: id,
+      before: { field: row.field, value: row.after_value.slice(0, 500) },
+      after: { field: row.field, value: (row.before_value ?? "").slice(0, 500) },
+      requestId: c.get("requestId"),
+    }),
+  ]);
+  return c.json({ fix: fixOut((await loadFix(db, t.orgId, id))!) });
+});
+
+/** Replaces llms.txt on the site (needs an Administrator in WordPress). Reversible like any other fix. */
+cms.post("/cms/wordpress/llms", requireScope("content:approve"), async (c) => {
+  const t = c.get("tenant");
+  const db = c.env.DB;
+  const input = await parseBody(c, WordPressLlmsInput);
+  await rateLimit(db, `wp-fix:${t.orgId}`, 60, 3600);
+  const { conn, creds, plugin } = await pluginOrFail(c, t.orgId);
+  if (!plugin.canLlmsTxt) throw new ApiError(403, "wordpress_llms_forbidden", "Para cambiar llms.txt, el usuario de WordPress conectado debe ser Administrador.");
+  let r: { before: string; after: string; url: string };
+  try {
+    r = await wpPluginLlms(c.get("deps"), creds, input.content);
+  } catch (e) {
+    throw new ApiError(502, "wordpress_fix_failed", wpFriendly(e));
+  }
+  const id = uuid();
+  await db.batch([
+    db
+      .prepare("INSERT INTO wp_fixes (id, organization_id, integration_id, field, target_url, before_value, after_value, state, created_by, created_at) VALUES (?, ?, ?, 'llms', ?, ?, ?, 'applied', ?, ?)")
+      .bind(id, t.orgId, conn.id, r.url, r.before, r.after, t.userId, nowIso()),
+    auditStmt(db, { organizationId: t.orgId, actorUserId: t.userId, action: "cms.wordpress_llms", entityType: "wp_fix", entityId: id, after: { bytes: r.after.length }, approvedBy: t.userId, requestId: c.get("requestId") }),
+  ]);
+  return c.json({ fix: fixOut((await loadFix(db, t.orgId, id))!) }, 201);
 });

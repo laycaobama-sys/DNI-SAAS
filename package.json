@@ -21,6 +21,7 @@
     "db:migrate:remote": "pnpm --filter @dni/api db:migrate:remote",
     "deploy": "pnpm build && pnpm --filter @dni/api deploy && pnpm audit:own",
     "audit:own": "node scripts/audit-own.mjs",
+    "wp:plugin-test": "node scripts/wp-plugin-test.mjs",
     "security:scan": "node scripts/secret-scan.mjs && pnpm audit --prod --audit-level high",
     "verify": "pnpm lint && pnpm typecheck && pnpm test && pnpm build && node scripts/secret-scan.mjs"
   },

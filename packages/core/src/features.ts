@@ -32,6 +32,7 @@ export const FEATURES: FeatureInfo[] = [
       "Borradores de corrección creados desde cada hallazgo (sin IA ni créditos), con comprobaciones antes de aprobar: campos pendientes, promesas de resultados, cifras sin fuente y precios sin verificar.",
       "Content Studio: borradores con IA o escritos a mano, versiones, revisión y aprobación por roles, exportación Markdown/HTML.",
       "Publicación en tu WordPress (plan Starter o superior): conexión con contraseña de aplicación, solo contenido aprobado, como borrador o publicado, sin duplicados y con opción de retirarlo a borrador.",
+      "Plugin gratuito «DNI Growth Connector» para WordPress (opcional): título y descripción SEO compatibles con Yoast SEO y Rank Math, datos estructurados JSON-LD, llms.txt y correcciones técnicas que apruebas una a una y deshaces con un clic.",
       "Perfil de marca extraído con fuente de cada dato y confirmación humana; plan de crecimiento de 30 días editable y exportable.",
       "Asesor de crecimiento con IA que responde con los datos observados de tu auditoría y cita la URL de evidencia.",
       "Conexión de solo lectura con Google Search Console y Google Analytics 4: datos observados de tu propia cuenta, con fuente y fecha.",

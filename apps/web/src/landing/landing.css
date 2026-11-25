@@ -1,3 +1,9 @@
+@import "@fontsource/inter/latin-400.css";
+@import "@fontsource/inter/latin-500.css";
+@import "@fontsource/inter/latin-600.css";
+@import "@fontsource/inter/latin-700.css";
+@import "@fontsource/instrument-serif/latin-400.css";
+@import "@fontsource/instrument-serif/latin-400-italic.css";
 /* DNI Growth landing — archetype "Mouse-Reactive Gradient": near-black, massive serif display, ONE neon accent. */
 :root {
   --bg: #0b0b0c;
@@ -83,8 +89,10 @@ img { max-width: 100%; display: block; }
     radial-gradient(circle 680px at calc(var(--mx) + 18%) calc(var(--my) + 12%), var(--g2) 0%, transparent 60%),
     radial-gradient(circle 360px at calc(var(--mx) - 22%) calc(var(--my) + 20%), rgba(180, 255, 77, .55) 0%, transparent 60%),
     var(--bg);
-  filter: blur(60px) saturate(140%);
-  opacity: .75;
+  /* No CSS blur filter: the radial gradients are already soft, and a blurred, animated full-screen layer
+     costs seconds of main-thread work on mid-range phones (Lighthouse TBT). */
+  opacity: .7;
+  will-change: transform;
   animation: drift 18s ease-in-out infinite alternate;
 }
 @keyframes drift { from { transform: translate3d(-2%, -1%, 0) scale(1); } to { transform: translate3d(2%, 2%, 0) scale(1.06); } }
