@@ -105,7 +105,7 @@ describe("E2E Fase 2: URL → adelanto → registro → bienvenida → primer ar
     let a = (await owner.get(`${O}/activation`)).json;
     expect(a.steps.map((s: { key: string }) => s.key)).toEqual(["brand", "competitors", "analytics", "cms", "mode", "article"]);
     expect(a).toMatchObject({ done: 0, total: 6, next: "brand", publicAudit: { id, host: "taller-sol.es" } });
-    expect(a.steps.find((s: { key: string }) => s.key === "cms").status).toBe("unavailable");
+    expect(a.steps.find((s: { key: string }) => s.key === "cms")).toMatchObject({ status: "pending", cta: "Conectar WordPress" });
 
     // Step 1 + 2: full analysis → brand profile → competitors → confirm.
     const start = await owner.post(`${O}/sites/analyze`, { url: claim.json.analyzeUrl }, { "idempotency-key": "fase2-e2e-analysis" });
@@ -120,6 +120,8 @@ describe("E2E Fase 2: URL → adelanto → registro → bienvenida → primer ar
     // Step 3 skipped on purpose, step 5 chosen.
     a = (await owner.put(`${O}/onboarding`, { skip: "analytics" })).json;
     expect(a.steps.find((s: { key: string }) => s.key === "analytics").status).toBe("skipped");
+    a = (await owner.put(`${O}/onboarding`, { skip: "cms" })).json;
+    expect(a.steps.find((s: { key: string }) => s.key === "cms").status).toBe("skipped");
     a = (await owner.put(`${O}/onboarding`, { publishingMode: "approval", articlesPerWeek: 2 })).json;
     expect(a).toMatchObject({ publishingMode: "approval", articlesPerWeek: 2 });
 
@@ -129,7 +131,7 @@ describe("E2E Fase 2: URL → adelanto → registro → bienvenida → primer ar
     expect(art.status).toBe(201);
     a = (await owner.get(`${O}/activation`)).json;
     const status = Object.fromEntries(a.steps.map((s: { key: string; status: string }) => [s.key, s.status]));
-    expect(status).toEqual({ brand: "done", competitors: "done", analytics: "skipped", cms: "unavailable", mode: "done", article: "done" });
+    expect(status).toEqual({ brand: "done", competitors: "done", analytics: "skipped", cms: "skipped", mode: "done", article: "done" });
     expect(a).toMatchObject({ done: 4, next: null, percent: 67 });
   });
 

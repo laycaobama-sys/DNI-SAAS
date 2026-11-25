@@ -31,6 +31,7 @@ export const FEATURES: FeatureInfo[] = [
       "Informe de auditoría y brief de cada mejora descargables en Markdown o HTML, sin IA y en todos los planes.",
       "Borradores de corrección creados desde cada hallazgo (sin IA ni créditos), con comprobaciones antes de aprobar: campos pendientes, promesas de resultados, cifras sin fuente y precios sin verificar.",
       "Content Studio: borradores con IA o escritos a mano, versiones, revisión y aprobación por roles, exportación Markdown/HTML.",
+      "Publicación en tu WordPress (plan Starter o superior): conexión con contraseña de aplicación, solo contenido aprobado, como borrador o publicado, sin duplicados y con opción de retirarlo a borrador.",
       "Perfil de marca extraído con fuente de cada dato y confirmación humana; plan de crecimiento de 30 días editable y exportable.",
       "Asesor de crecimiento con IA que responde con los datos observados de tu auditoría y cita la URL de evidencia.",
       "Conexión de solo lectura con Google Search Console y Google Analytics 4: datos observados de tu propia cuenta, con fuente y fecha.",
@@ -111,7 +112,7 @@ export const FEATURE_STATUS_LABEL: Record<FeatureStatus, string> = { available: 
 
 /** Planned capabilities that are not part of any module yet. Listed as «no disponible todavía». */
 export const NOT_YET_AVAILABLE: string[] = [
-  "Publicación directa en el CMS de tus clientes (WordPress primero). Hoy los artículos aprobados se exportan en Markdown o HTML.",
+  "Publicación directa en Shopify, Ghost y Webflow. Hoy se exportan en Markdown o HTML (WordPress ya está disponible).",
   "Volumen y dificultad de búsqueda con un proveedor de datos licenciado. Hoy se usan las consultas reales de tu Search Console.",
 ];
 

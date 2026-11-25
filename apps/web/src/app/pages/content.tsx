@@ -3,6 +3,7 @@ import { Link, useNavigate, useParams, useSearchParams } from "react-router";
 import { AlertTriangle, Archive, CheckCircle2, Download, FileText, Globe, PenLine, RotateCcw, Save, Send, ShieldCheck, Sparkles } from "lucide-react";
 import { api, ApiError, del, fmtDate, patch, post, timeAgo } from "../lib/api";
 import { useApi } from "../lib/hooks";
+import { WordPressCard } from "./wordpress";
 import { useAuth } from "../lib/auth";
 import { Badge, Button, Card, EmptyState, ErrorState, Notice, PageHeader, Select, Skeleton, Textarea, TextField, cx } from "../ui";
 
@@ -657,6 +658,7 @@ export function ContentDetailPage() {
               )}
             </Card>
           )}
+          <WordPressCard orgId={orgId} contentId={contentId} kind={it.kind} status={it.status} version={it.version} />
           <Card title="Exportar">
             <div className="flex gap-2">
               <a className="inline-flex min-h-10 flex-1 items-center justify-center gap-2 rounded-full border border-line px-3 text-sm font-semibold hover:bg-surface-2" href={`/api/v1${base}/export?format=md`}>

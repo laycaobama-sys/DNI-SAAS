@@ -2,6 +2,28 @@
 
 Formato: fecha, versión desplegada en Cloudflare y cambios visibles. Las pruebas de cada entrada están en [IMPLEMENTATION_STATUS.md](IMPLEMENTATION_STATUS.md) y el estado del plan en [STATUS.md](STATUS.md).
 
+## 2026-11-25
+
+### WordPress y herramientas gratuitas — versión `a1038509`
+- **Publicación en WordPress** (Starter o superior, [ADR 0025](adr/0025-publicacion-externa-meta-y-wordpress.md), [guía](WORDPRESS.md)): se conecta con una contraseña de aplicación y solo envía contenido aprobado, como borrador o publicado. Envíos repetidos actualizan la misma entrada; un reintento tras un corte no la duplica; «Retirar» la pasa a borrador. Al desconectar se revoca la contraseña en WordPress. Probado contra un WordPress real (Playground).
+- `/precios`: «Publicación en tu blog o CMS» pasa de «En desarrollo» a **Parcial** (WordPress sí; Shopify, Ghost y Webflow en desarrollo). Integraciones y la bienvenida (paso «Conecta tu CMS») lo reflejan.
+- **`/herramientas`** con 8 herramientas gratuitas que funcionan en el navegador del visitante (nada se envía): robots.txt y bots de IA, llms.txt, JSON-LD, FAQ para AEO, vista previa en Google, sitemap, Open Graph y valor del tráfico. Cada una tiene su página indexable con datos estructurados, preguntas frecuentes y llamada a la auditoría gratuita. Están en el sitemap y enlazadas desde la portada, precios, blog y 404.
+- Migración `0024` aditiva (copia previa `backups/dni-growth-db-pre-0024-20261125.sql`).
+
+### Facebook e Instagram — versión `aec5e64b`
+- Módulo **Redes sociales** (Starter o superior): conectar páginas de Facebook y cuentas profesionales de Instagram, escribir con imagen, aprobar y publicar solo a la hora programada. Botón de pausa, comprobación previa de las reglas de Instagram y nunca dos veces la misma publicación.
+- **Parcial** hasta que la titular guarde la clave de la app de Meta y Meta apruebe la app ([BLOQUEOS §0](BLOQUEOS.md)). Hasta entonces la pantalla dice «Muy pronto» y `/precios` dice «En desarrollo».
+- Migración `0023` aditiva (copia previa hecha).
+
+### Confianza: `/estado`, copias diarias y auditoría propia — versión `6f914e1f`
+- **`/estado`** público: 8 comprobaciones reales cada 5 minutos (web, API, auditoría, colas, pagos, Google, email y copias), con historial de 90 días. Aviso por email a la titular a la segunda caída seguida y al recuperarse.
+- **Copia diaria de la base de datos** a R2 en la UE (30 días). Restauración real probada ([RESTAURACION.md](RESTAURACION.md)).
+- Cada despliegue ejecuta la auditoría propia de dnigrowth.com y falla si baja de 100/100.
+
+### Precios honestos y base profesional — commit `3fe5365`
+- Lo que está «En desarrollo» se muestra como «Próximamente · incluida sin coste extra», nunca con ✓; un test lo impide.
+- Requisitos de la garantía con su estado y qué hacer. Buzones por función, `/subencargados`, borrador de DPA (pendiente de abogado) y `security.txt`.
+
 ## 2026-11-24
 
 ### Cada plan abre lo que se paga y cobros sin fallos — versión `8015e5ff`

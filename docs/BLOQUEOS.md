@@ -1,10 +1,26 @@
 # Bloqueos humanos — lo que solo puede hacer la titular
 
-Última revisión: 2026-11-24. Ordenados por urgencia. Mientras tanto, todo lo afectado sigue funcionando en modo prueba o con el aviso correspondiente; ninguna pantalla muestra como «disponible» algo que dependa de estos pasos.
+Última revisión: 2026-11-25. Ordenados por urgencia. Mientras tanto, todo lo afectado sigue funcionando en modo prueba o con el aviso correspondiente; ninguna pantalla muestra como «disponible» algo que dependa de estos pasos.
 
 Reglas que siguen vigentes: nadie más que tú escribe claves, contraseñas o códigos; las claves se guardan con `wrangler secret put` y nunca se pegan en un chat.
 
 ---
+
+## 0. URGENTE (2 minutos) · Activar Facebook e Instagram: guarda la clave de la app de Meta
+
+Ya están construidos y desplegados la conexión de Facebook e Instagram, la aprobación y la publicación automática. En la app de Meta «DNI Growth» (2092022311512990) están configurados los casos de uso de Páginas e Instagram, la URL de redirección, la de retirada de permisos y la de borrado de datos. Solo falta la **clave secreta de la app**, y solo la puedes copiar tú.
+
+1. En developers.facebook.com → tu app «DNI Growth» → **Configuración de la aplicación → Información básica → Clave secreta de la aplicación** → «Mostrar» (Facebook te pedirá la contraseña) → cópiala.
+2. En PowerShell, dentro de la carpeta del proyecto:
+   ```powershell
+   cd "C:\Users\ibrag\Downloads\DNI SAAS\apps\api"
+   ```
+   ```powershell
+   npx.cmd wrangler secret put META_APP_SECRET
+   ```
+   Pega la clave cuando la pida y pulsa Enter. No la pegues en ningún chat.
+
+Al momento, la pantalla **Redes sociales** pasa de «Muy pronto» a «Conectar con Facebook». Con tu cuenta (tienes un rol en la app) ya puedes conectar tus páginas y publicar. Para que **cualquier cliente** pueda conectar las suyas falta lo del apartado 5.
 
 ## 1. HECHO · Stripe en real con la cuenta «DNI Growth-IA» (2026-11-23)
 
@@ -50,7 +66,7 @@ Comprobado en Google Cloud (*Google Auth Platform → Centro de verificación*) 
 
 Mientras tanto la conexión ya funciona: las sincronizaciones diarias de Search Console y Analytics se completan (11 y 7 en los últimos 7 días). Cada cliente nuevo ve el aviso «app no verificada» hasta que Google termine. La garantía de 90 días necesita Search Console conectado.
 
-## 5. EN CURSO · Meta: app publicada; falta proveedor de tecnología y verificar la empresa
+## 5. EN CURSO · Meta: app publicada; para abrir Facebook e Instagram a todos los clientes
 
 Hecho el 2026-11-24:
 - **La cuenta de desarrollador ya no pide confirmación** (la revisión de la app abre sin el aviso de «actividad inusual»).
@@ -61,7 +77,11 @@ Pendiente:
 2. Verificación de la empresa en Meta Business (documentos oficiales del negocio).
 3. Revisión de la app con los vídeos de cada permiso ([GUIA_APROBACIONES_GOOGLE_META.md](GUIA_APROBACIONES_GOOGLE_META.md)).
 
-Hasta entonces, la publicación directa en Instagram y Facebook y los anuncios de Meta aparecen como «requiere aprobación externa» y no se venden como disponibles. No toques la «Clave secreta de la aplicación» en ningún chat.
+4. En la revisión de la app, pide **acceso avanzado** para `pages_show_list`, `pages_read_engagement`, `pages_manage_posts`, `instagram_basic`, `instagram_content_publish` y `business_management`, con un vídeo por permiso. El vídeo muestra conectar desde dnigrowth.com, elegir la página, escribir, aprobar y ver la publicación.
+
+Hecho el 2026-11-25: los permisos están «listos para las pruebas» y las URL de inicio de sesión, retirada de permisos y borrado de datos están guardadas. El panel de Meta no dejó crear una «configuración» de inicio de sesión para empresas (la página no carga); la app usa la lista de permisos, que funciona igual.
+
+Hasta entonces, la publicación en Instagram y Facebook aparece en `/precios` como «En desarrollo» y en el módulo como Parcial, y los anuncios de Meta como «requiere aprobación externa». No se venden como disponibles. No toques la «Clave secreta de la aplicación» en ningún chat.
 
 ## 5 bis. Aviso · Cuenta antigua de Stripe
 
@@ -86,9 +106,18 @@ La cuenta antigua de Stripe (`acct_1Ucxx…`, la que no usa DNI Growth) tiene pe
 
 Pasos en [PENDIENTES_TITULAR.md §0](PENDIENTES_TITULAR.md). Ejecutas `node scripts/platform-claim.mjs` y pegas tú el código. Nunca en un chat.
 
+## 7 bis. Notas de la Entrega 2 (25 nov)
+
+1. **IA en nivel gratuito (decisión tuya del 25 nov):** seguimos con proveedores gratuitos hasta que entren pagos. Riesgo: las condiciones de la API gratuita de Gemini no permiten usarla para servir a usuarios del Espacio Económico Europeo, y Google puede usar lo enviado para mejorar sus productos. Cuando haya ingresos, activa la facturación del proyecto de Google Cloud con un presupuesto y una alerta de 30 €/mes. El código ya tiene techos de gasto.
+2. **Abogado:** además de condiciones, garantía y privacidad, el borrador de DPA en `/legal/encargo-tratamiento` y `/subencargados`.
+3. **Google Auth Platform: `composio.dev`:** cuando termine la verificación, mira en *Clientes → URI de redirección autorizadas* si algún cliente OAuth redirige a composio.dev. Si DNI Growth no lo usa, quítalo. No lo toques mientras la verificación siga abierta.
+4. **Blog:** cuando estén preparados los 10 borradores, revísalos y apruébalos tú (30–60 minutos). Ninguno se publica sin tu aprobación.
+5. **Domicilio profesional o sociedad:** decide con tu gestor si quieres evitar que tu domicilio particular aparezca en el aviso legal y en las facturas.
+6. **TOTP del Control Center, Stripe Tax o IVA fijo, NIF en Stripe y VERI*FACTU:** siguen como estaban.
+
 ## 8. Más adelante
 
-- Shopify Partners y directorio de WordPress (publicación automática): requieren sus revisiones.
+- Shopify (app pública en su tienda de apps) y el directorio de plugins de WordPress: requieren sus revisiones. La publicación en WordPress **ya funciona** sin el directorio, con una contraseña de aplicación.
 - Perfiles en G2, Capterra y Trustpilot.
 - Vídeo demo de 90 s.
 - Primeros clientes beta para casos verificados (nunca testimonios inventados).

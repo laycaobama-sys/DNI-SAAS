@@ -29,6 +29,7 @@ import { searchConsole } from "./routes/searchConsole";
 import { registerPublicBlog, siteBlog } from "./routes/site-blog";
 import { registerStatusPage } from "./routes/status-page";
 import { registerMetaPublic, social } from "./routes/social";
+import { cms } from "./routes/cms";
 import { activationRoutes, publicAudits, registerAuditPage } from "./routes/public-audit";
 import { eventsPublic } from "./routes/events";
 import { FALLBACK_404_HTML, SITE_CSP, SITE_SECURITY_HEADERS } from "./lib/site-headers";
@@ -129,6 +130,7 @@ export function createApp(deps: Deps) {
   tenant.route("/", content);
   tenant.route("/", siteBlog);
   tenant.route("/", social);
+  tenant.route("/", cms);
   tenant.route("/", activationRoutes);
   tenant.route("/", searchConsole);
   tenant.route("/", analytics);

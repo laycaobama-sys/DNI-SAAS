@@ -58,3 +58,9 @@ Diferencias con el plan comercial:
 
 - **Dependencia de los niveles gratuitos**: Google o OpenRouter pueden cambiar sus cuotas. Las llamadas se registran en `ai_usage` y el Control Center muestra el consumo diario.
 - **Garantía de 90 días**: el reembolso total de 90 días de Growth es de 387 €. Solo se paga si se cumplen todos los requisitos y Search Console demuestra que las impresiones no subieron.
+
+## Publicación externa y herramientas gratuitas (2026-11-25)
+- **Facebook, Instagram y WordPress:** sus API no cobran por publicar. El coste para DNI Growth es CPU del Worker (cron cada minuto, que ya existía) y lecturas y escrituras en D1, dentro del plan Workers Paid. Coste marginal estimado: 0 €.
+- **`/herramientas`:** las 8 herramientas funcionan en el navegador del visitante, como archivos estáticos sin llamadas a la API. No consumen IA ni CPU del Worker. Coste marginal: 0 €.
+- **Copias diarias:** unos 107 KB comprimidos al día, 30 días conservados (unos 3 MB en R2), muy por debajo de los 10 GB incluidos. Coste: 0 €.
+- **`/estado`:** 8 comprobaciones cada 5 minutos (unas 2.300 al día), dentro de las peticiones incluidas. Coste: 0 €.

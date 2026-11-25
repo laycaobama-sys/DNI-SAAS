@@ -323,12 +323,29 @@ Desplegada como `4c47d2b4` el 2026-11-24. Migración `0021_activation.sql` aditi
 | Alta con la auditoría: `?audit=` guarda el id, al crear la organización pasa a la cuenta, se borra el código de IP, análisis completo precargado | VERIFICADO EN PRODUCCIÓN (paso 1) · LOCAL (resto) | producción: `/app/register?audit=…` muestra «Al entrar verás el informe completo de tu web y tu plan de 30 días» y guarda `dni.pendingAudit`. Sin crear cuentas reales: recorrido completo URL → adelanto → alta → verificación → organización → bienvenida → análisis precargado probado en `wrangler dev` con D1 local y en `activation.test.ts`. Sin sesión: reclamar → 403, activación → 401 |
 | Bienvenida de 6 pasos leídos de datos reales, «dejar para más tarde», modo y artículos por semana | VERIFICADO SOLO EN LOCAL | `wrangler dev`: «1 de 6 pasos hechos · 17 %», saltar y retomar, guardar modo; `activation.test.ts` (aislamiento entre organizaciones y permisos) |
 | Lista de activación en el panel | VERIFICADO SOLO EN LOCAL | `wrangler dev`; se oculta cuando no queda ningún paso pendiente |
-| CMS | NO IMPLEMENTADO | el paso dice «En desarrollo»: WordPress llega en la Fase 4; mientras, exportación HTML/Markdown |
+| CMS | VERIFICADO SOLO EN LOCAL (2026-11-25) | el paso «Conecta tu CMS» lleva a conectar WordPress desde Starter; en Free dice que está incluido desde Starter (`activation.test.ts`) |
 | Piloto automático | NO IMPLEMENTADO | solo se guarda la preferencia; la interfaz dice que todo sigue esperando aprobación |
 | Correos de ayuda a 24 h y 72 h con baja en un clic | VERIFICADO EN PRODUCCIÓN (arranque) · LOCAL (envío) | cron en producción: `lifecycle_emails_since = 2026-11-23T23:25:04Z` (solo cuentas nuevas desde entonces), 0 envíos todavía; `activation.test.ts`: una vez por persona y tipo, máximo 48 h de retraso, sin envío si no queda nada, baja firmada. Firma falsa → 400 en producción |
 | Eventos `audit_started` y `audit_teaser_viewed` | VERIFICADO EN PRODUCCIÓN | `product_events`: 1 y 3 |
 | Cron sin errores | VERIFICADO EN PRODUCCIÓN | `wrangler tail` 70 s: cron `outcome: ok`, 0 excepciones |
 | Política de privacidad: auditoría gratuita (30 días), correos de ayuda y `dni.pendingAudit` | VERIFICADO EN PRODUCCIÓN | `/legal/privacidad` → 200 |
+
+## Entrega 2 · Confianza, redes sociales, WordPress y herramientas gratuitas (2026-11-25, [ADR 0025](adr/0025-publicacion-externa-meta-y-wordpress.md))
+Versiones `6f914e1f` (`/estado` y copias), `aec5e64b` (Meta) y `a1038509` (WordPress y herramientas). Migraciones `0022`, `0023` y `0024`, todas aditivas y aplicadas tras su copia (`backups/dni-growth-db-pre-00NN-20261125.sql`).
+
+| Elemento | Estado | Prueba |
+|---|---|---|
+| `/estado` con 8 comprobaciones cada 5 min e historial de 90 días; `/api/v1/public/status` | VERIFICADO EN PRODUCCIÓN | 8 en verde; `status-backup.test.ts` |
+| Alerta por email a la titular a la 2.ª caída seguida y al recuperarse (nunca a otros usuarios) | VERIFICADO SOLO EN LOCAL | `status-backup.test.ts` |
+| Copia diaria de D1 a R2 en la UE, 30 días, SHA-256 y registro | VERIFICADO EN PRODUCCIÓN | `backups/db/2026-11-25.sql.gz` (106.961 bytes) restaurada en local con las filas comparadas ([RESTAURACION.md](RESTAURACION.md)) |
+| Auditoría propia 100/100 en cada despliegue | VERIFICADO EN PRODUCCIÓN | `pnpm deploy` → `scripts/audit-own.mjs` en verde para `a1038509` |
+| Facebook e Instagram: conexión, cuentas, redacción con imagen, aprobación, publicación por cron, pausa, desconexión, retirada de permisos y borrado firmados por Meta | VERIFICADO SOLO EN LOCAL | `social.test.ts` (12). En producción: la pantalla dice «Muy pronto» porque falta `META_APP_SECRET` ([BLOQUEOS §0](BLOQUEOS.md)); URLs de la app de Meta guardadas y comprobadas tras recargar |
+| WordPress: conectar con contraseña de aplicación (cifrada y ligada a la organización), comprobar `publish_posts`, publicar o borrador, actualizar sin duplicar, reintento tras corte sin duplicar, retirar a borrador, revocar al desconectar | VERIFICADO CONTRA WORDPRESS REAL (local) | `cms.test.ts` (11, incluye SSRF, http, roles, plan, concurrencia y aislamiento entre organizaciones) y `wordpress-live.test.ts` contra WordPress Playground (PHP 8.3, última versión de WordPress) el 2026-11-25. En producción: rutas desplegadas, migración `0024` aplicada; sin conectar todavía ninguna web de cliente |
+| `/precios`: «Publicación en tu blog o CMS» Parcial (WordPress) y «Publicación programada en Facebook e Instagram» En desarrollo | VERIFICADO EN PRODUCCIÓN | `plan-access.test.ts`: cada plan que muestra la fila abre su módulo (`cms`, `social`) |
+| `/herramientas` + 8 herramientas en el navegador (robots.txt y bots de IA, llms.txt, JSON-LD, FAQ, vista previa en Google, sitemap, Open Graph, valor del tráfico) | VERIFICADO EN PRODUCCIÓN | 9 páginas → 200, en `sitemap.xml`, canónicas; generador de llms.txt usado en producción sin errores de consola; `free-tools.test.ts` (9) y `free-tools-pages.test.ts` (2) |
+| 4 herramientas más del plan (GEO con 1 pregunta, palabras clave frente a competidor, enlaces rotos, imagen OG por URL) | NO IMPLEMENTADO | necesitan consultar webs ajenas o un modelo de IA con tope; pendientes |
+| Landings por producto y sector, `/comparativa/babylovegrowth`, capturas y vídeo, 10 borradores del blog, guía descargable, referidos | NO IMPLEMENTADO | pendientes de la Entrega 2 (B4) |
+| IA de pago para planes de pago (B1) | NO IMPLEMENTADO POR DECISIÓN DE LA TITULAR | se sigue con proveedores gratuitos hasta que entren pagos ([BLOQUEOS §7 bis](BLOQUEOS.md)) |
 
 ## Marca DNI Growth (producción)
 | Elemento | Estado | Prueba |

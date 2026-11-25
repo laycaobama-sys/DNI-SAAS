@@ -30,3 +30,5 @@ export * from "./audit-report";
 export * from "./pricing";
 export * from "./public-audit";
 export * from "./social";
+export * from "./cms";
+export * from "./free-tools";

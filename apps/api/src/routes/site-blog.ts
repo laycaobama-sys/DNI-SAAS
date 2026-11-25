@@ -15,7 +15,7 @@ import { requireScope } from "../middleware";
  */
 
 /** Public pages listed in the sitemap besides the blog posts. */
-export const SITE_PAGES = ["/", "/precios", "/blog", "/seguridad", "/legal/garantia", "/legal/privacidad", "/legal/aviso-legal", "/legal/condiciones", "/legal/eliminacion-datos", "/subencargados", "/legal/encargo-tratamiento", "/estado"];
+export const SITE_PAGES = ["/", "/precios", "/blog", "/seguridad", "/legal/garantia", "/legal/privacidad", "/legal/aviso-legal", "/legal/condiciones", "/legal/eliminacion-datos", "/subencargados", "/legal/encargo-tratamiento", "/estado", "/herramientas", "/herramientas/robots-txt-bots-ia", "/herramientas/generador-llms-txt", "/herramientas/generador-schema", "/herramientas/generador-faq-aeo", "/herramientas/vista-previa-google", "/herramientas/comprobador-sitemap", "/herramientas/etiquetas-open-graph", "/herramientas/calculadora-valor-trafico"];
 
 interface PostRow {
   id: string;
