@@ -131,3 +131,22 @@ Copias exportadas antes de cada migración en `backups/` (fuera de git).
 - Comprobación de backlinks a páginas de dnigrowth.com: devuelve «error» (HTTP 522, el Worker no puede leer su propia zona). Comprobar con páginas de otros dominios.
 - Spend Guardian: tras pruebas dejar topes 0/0 e interruptor de corte activado.
 - Probar planes en Stripe (modo prueba, sin tarjeta): Panel de Stripe → Suscripciones → «Crear suscripción de prueba», cliente de prueba, cobro por factura, metadatos `organization_id` y `plan_code`; cambiar de precio con «Actualizar suscripción → Inmediatamente»; cancelar al terminar. Cada evento queda en la auditoría como `billing.subscription_sync` / `billing.subscription_canceled`.
+
+## Auditoría propia en CI (pendiente de permiso de GitHub)
+La auditoría propia 100/100 de dnigrowth.com se ejecuta en cada `pnpm deploy` (`scripts/audit-own.mjs`). Para que además corra en GitHub Actions con cada push a `main`, añade este job a `.github/workflows/ci.yml`. Subir cambios de workflows exige el permiso `workflow` del token de GitHub: `gh auth refresh -s workflow`, que se aprueba en el navegador.
+
+```yaml
+  own-site-audit:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm audit:own
+```
