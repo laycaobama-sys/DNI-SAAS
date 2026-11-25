@@ -107,6 +107,8 @@ export default defineConfig({
         "sectores/inmobiliarias": resolve(import.meta.dirname, "sectores/inmobiliarias.html"),
         "sectores/reformas": resolve(import.meta.dirname, "sectores/reformas.html"),
         "comparativa/babylovegrowth": resolve(import.meta.dirname, "comparativa/babylovegrowth.html"),
+        "guia-como-aparecer-en-chatgpt": resolve(import.meta.dirname, "guia-como-aparecer-en-chatgpt.html"),
+        "guia/contenido": resolve(import.meta.dirname, "guia/contenido.html"),
       },
     },
   },

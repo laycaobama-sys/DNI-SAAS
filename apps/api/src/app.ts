@@ -32,6 +32,7 @@ import { registerMetaPublic, social } from "./routes/social";
 import { cms } from "./routes/cms";
 import { activationRoutes, publicAudits, registerAuditPage } from "./routes/public-audit";
 import { publicTools } from "./routes/public-tools";
+import { guideApi, registerGuidePages } from "./routes/guide";
 import { eventsPublic } from "./routes/events";
 import { FALLBACK_404_HTML, SITE_CSP, SITE_SECURITY_HEADERS } from "./lib/site-headers";
 import { org, orgsPublic } from "./routes/orgs";
@@ -119,6 +120,7 @@ export function createApp(deps: Deps) {
   app.route("/api/v1/public", billingPublic);
   app.route("/api/v1/public", publicAudits);
   app.route("/api/v1/public", publicTools);
+  app.route("/api/v1/public", guideApi);
 
   // Every tenant route: authenticated user + active membership resolved from the path.
   const tenant = new Hono<AppEnv>();
@@ -202,6 +204,8 @@ export function createApp(deps: Deps) {
   registerPublicBlog(app);
   // Free audit without an account: /auditoria/{id} (ADR 0023).
   registerAuditPage(app, (c) => notFoundPage(c));
+  // Guide in exchange for an email with double opt-in: /guia/* (ADR 0026).
+  registerGuidePages(app, (c) => notFoundPage(c));
 
   // Non-API routes: static landing + SPA shell served from Workers Static Assets.
   app.get("*", async (c) => {

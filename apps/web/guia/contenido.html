@@ -1,0 +1,165 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Cómo aparecer en ChatGPT y otros asistentes de IA (edición 2027) · DNI Growth</title>
+    <meta name="robots" content="noindex, nofollow" />
+    <style>
+      :root{--ink:#16161a;--muted:#5b5b66;--line:#e4e4e8;--accent:#3d7a00;--bg:#fff}
+      *{box-sizing:border-box}
+      body{margin:0;background:var(--bg);color:var(--ink);font:17px/1.65 Georgia,"Times New Roman",serif}
+      main{max-width:720px;margin:0 auto;padding:40px 20px 80px}
+      h1,h2,h3{font-family:Inter,Arial,sans-serif;line-height:1.25}
+      h1{font-size:34px;margin:8px 0 12px}
+      h2{font-size:23px;margin:44px 0 10px;padding-top:12px;border-top:1px solid var(--line)}
+      h3{font-size:18px;margin:24px 0 6px}
+      .kicker{font:700 13px/1 Inter,Arial,sans-serif;letter-spacing:.08em;text-transform:uppercase;color:var(--accent)}
+      .lead{font-size:19px;color:var(--muted)}
+      .note{font:14px/1.55 Inter,Arial,sans-serif;color:var(--muted);background:#f6f6f3;border-radius:10px;padding:12px 14px}
+      code{font:14px ui-monospace,Consolas,monospace;background:#f2f2f0;padding:1px 5px;border-radius:5px}
+      pre{background:#f2f2f0;border-radius:10px;padding:14px;overflow-x:auto;font:14px/1.5 ui-monospace,Consolas,monospace}
+      table{width:100%;border-collapse:collapse;font:15px/1.45 Inter,Arial,sans-serif}
+      th,td{border-top:1px solid var(--line);padding:8px 6px;text-align:left;vertical-align:top}
+      ul.check{list-style:none;padding:0}
+      ul.check li{padding-left:28px;position:relative;margin:6px 0}
+      ul.check li::before{content:"☐";position:absolute;left:0;top:0}
+      a{color:#1f4f00}
+      .actions{font-family:Inter,Arial,sans-serif;display:flex;gap:10px;flex-wrap:wrap;margin:18px 0}
+      .actions a,.actions button{font:600 15px Inter,Arial,sans-serif;border:1px solid var(--ink);background:#fff;color:var(--ink);padding:10px 16px;border-radius:999px;text-decoration:none;cursor:pointer}
+      @media print{.actions{display:none}h2{break-after:avoid}body{font-size:12pt}}
+    </style>
+  </head>
+  <body>
+    <main id="main">
+      <p class="kicker">Guía gratuita · DNI Growth</p>
+      <h1>Cómo aparecer en ChatGPT y otros asistentes de IA</h1>
+      <p class="lead">Edición 2027. Qué depende de ti para que ChatGPT, Perplexity, Gemini, Claude y Copilot puedan encontrar tu web, entender qué haces y recomendarte cuando encaja.</p>
+      <div class="actions" data-guide-actions>
+        <a href="?descargar=1" data-download>Descargar la guía</a>
+      </div>
+      <p class="note">Para guardarla en PDF: pulsa Ctrl+P (o Compartir → Imprimir en el móvil) y elige «Guardar como PDF».</p>
+      <p class="note">Una advertencia honesta antes de empezar: nadie puede garantizar que un asistente de IA te mencione. Sus respuestas cambian con cada pregunta, con cada persona y con el tiempo. Lo que sí puedes hacer es quitar los obstáculos y dar buenas razones para que te elijan. Eso es esta guía.</p>
+
+      <h2>1. Qué ha cambiado</h2>
+      <p>Muchas personas ya no buscan «dentista Lavapiés» y abren cinco resultados: preguntan «¿qué dentista me recomiendas en Lavapiés para un implante?» y leen una respuesta redactada. Cuando el asistente busca en internet para contestar, lee unas pocas páginas, resume lo que encuentra y a menudo enlaza sus fuentes.</p>
+      <p>Para aparecer en esa respuesta tienen que pasar tres cosas:</p>
+      <ol>
+        <li><strong>Que te encuentre:</strong> tu web está en los índices de búsqueda que usa el asistente y su robot puede leerla.</li>
+        <li><strong>Que te entienda:</strong> queda claro quién eres, qué ofreces, dónde y para quién.</li>
+        <li><strong>Que te elija:</strong> tu página responde bien a esa pregunta y otras fuentes fiables confirman lo que dices.</li>
+      </ol>
+      <p>Buena noticia: casi todo lo que ayuda aquí también ayuda en Google. El GEO (optimización para motores generativos) no sustituye al SEO; se apoya en él.</p>
+
+      <h2>2. Paso 1: deja que te lean</h2>
+      <p>Cada empresa usa robots distintos para cosas distintas. Lo importante es no bloquear los de <strong>búsqueda</strong>:</p>
+      <table>
+        <thead><tr><th>Robot</th><th>De quién</th><th>Para qué</th></tr></thead>
+        <tbody>
+          <tr><td><code>OAI-SearchBot</code></td><td>OpenAI</td><td>Búsqueda de ChatGPT</td></tr>
+          <tr><td><code>ChatGPT-User</code></td><td>OpenAI</td><td>Cuando una persona pide a ChatGPT abrir tu página</td></tr>
+          <tr><td><code>Claude-SearchBot</code></td><td>Anthropic</td><td>Búsqueda de Claude</td></tr>
+          <tr><td><code>PerplexityBot</code></td><td>Perplexity</td><td>Búsqueda de Perplexity</td></tr>
+          <tr><td><code>Bingbot</code></td><td>Microsoft</td><td>Bing y Copilot</td></tr>
+          <tr><td><code>Googlebot</code></td><td>Google</td><td>Google Search, incluidas sus respuestas con IA</td></tr>
+        </tbody>
+      </table>
+      <p>Los robots de <strong>entrenamiento</strong> (por ejemplo <code>GPTBot</code>, <code>ClaudeBot</code> o <code>Google-Extended</code>) son otra decisión: bloquearlos evita que tu contenido se use para entrenar modelos, pero no te saca de las búsquedas de esos asistentes.</p>
+      <h3>Comprueba tres sitios</h3>
+      <ul>
+        <li><strong>Tu robots.txt</strong> (tuweb.com/robots.txt). Puedes revisarlo con nuestra herramienta gratuita <a href="https://dnigrowth.com/herramientas/robots-txt-bots-ia">comprobador de robots.txt y bots de IA</a>.</li>
+        <li><strong>Tu CDN o cortafuegos.</strong> Algunos servicios ofrecen bloquear los «bots de IA» con un interruptor. Revisa qué bloquea exactamente: puede incluir robots de búsqueda.</li>
+        <li><strong>Plugins de seguridad</strong> de WordPress y similares, que a veces bloquean robots que no reconocen.</li>
+      </ul>
+
+      <h2>3. Paso 2: que el texto esté en el HTML</h2>
+      <p>Muchos robots de IA descargan la página y leen el HTML sin ejecutar JavaScript. Si tu web muestra el contenido solo después de cargar JavaScript (habitual en algunas webs hechas con React, Vue o constructores visuales), el robot puede ver una página casi vacía.</p>
+      <p>Cómo comprobarlo sin saber programar: abre tu página, pulsa <code>Ctrl+U</code> (ver código fuente) y busca con <code>Ctrl+F</code> una frase de tu texto. Si no aparece, ese texto no está en el HTML. La herramienta <a href="https://dnigrowth.com/herramientas/preparada-para-ia">¿Tu web está preparada para ChatGPT?</a> cuenta las palabras que hay en el HTML.</p>
+      <p>Además: páginas rápidas, sin errores y con https. Un robot con prisa no espera a una página que tarda diez segundos.</p>
+
+      <h2>4. Paso 3: estar en los índices de búsqueda</h2>
+      <p>Los asistentes no recorren internet entero cada vez: se apoyan en índices de búsqueda. Para estar en ellos:</p>
+      <ul>
+        <li>Da de alta tu web en <strong>Google Search Console</strong> y envía tu sitemap.</li>
+        <li>Haz lo mismo en <strong>Bing Webmaster Tools</strong> (es gratis e importa tu configuración de Search Console). Bing alimenta a Copilot y a otros servicios de búsqueda.</li>
+        <li>Revisa que tus páginas importantes no tengan <code>noindex</code> y que estén enlazadas desde el menú o desde otras páginas.</li>
+      </ul>
+
+      <h2>5. Paso 4: que quede claro quién eres</h2>
+      <p>Los modelos funcionan mejor con «entidades» claras: un negocio con nombre, actividad, lugar y datos coherentes en todas partes.</p>
+      <ul>
+        <li><strong>Mismo nombre, dirección y teléfono</strong> en tu web, tu ficha de Google, tus redes y los directorios de tu sector.</li>
+        <li><strong>Una página «Quiénes somos»</strong> con personas reales, trayectoria, titulaciones o colegiaciones cuando aplique.</li>
+        <li><strong>Datos estructurados</strong> en JSON-LD: <code>Organization</code> o <code>LocalBusiness</code> (o un tipo más concreto: <code>Dentist</code>, <code>LegalService</code>, <code>Restaurant</code>…) con dirección, horario, teléfono y <code>sameAs</code> enlazando tus perfiles oficiales. Puedes generarlos con nuestro <a href="https://dnigrowth.com/herramientas/generador-schema">generador de datos estructurados</a>.</li>
+      </ul>
+      <pre>{
+  "@context": "https://schema.org",
+  "@type": "Dentist",
+  "name": "Clínica Ejemplo",
+  "url": "https://clinicaejemplo.es",
+  "telephone": "+34 910 000 000",
+  "address": { "@type": "PostalAddress", "streetAddress": "Calle Ejemplo 1",
+               "addressLocality": "Madrid", "postalCode": "28012", "addressCountry": "ES" },
+  "sameAs": ["https://www.instagram.com/clinicaejemplo"]
+}</pre>
+      <p class="note">El ejemplo usa datos inventados: sustitúyelos por los tuyos reales.</p>
+
+      <h2>6. Paso 5: contenido que se puede citar</h2>
+      <p>Un asistente cita lo que responde mejor y con menos riesgo de equivocarse. Escribe para eso:</p>
+      <ul>
+        <li><strong>Responde primero, explica después.</strong> La primera frase debajo de cada pregunta debe contestarla. «¿Cuánto cuesta un implante? Entre X € y Y € en nuestra clínica en 2027; depende de…».</li>
+        <li><strong>Preguntas reales de tus clientes</strong>, con sus palabras. Apunta durante un mes las que te hacen por teléfono, WhatsApp o email.</li>
+        <li><strong>Datos con fuente y fecha.</strong> «Según el INE (2026)…» es más citable que «muchos estudios dicen».</li>
+        <li><strong>Tablas y listas</strong> para comparar opciones, precios orientativos o pasos.</li>
+        <li><strong>Experiencia propia:</strong> casos, fotos reales, lo que has aprendido. Es lo que no puede copiar nadie.</li>
+        <li><strong>Firma y fecha de revisión</strong> en los artículos, sobre todo en salud, dinero y temas legales.</li>
+      </ul>
+      <p>Lo que no funciona: cientos de páginas casi iguales generadas en masa, texto de relleno para «meter palabras clave» y contenido que no ha revisado nadie que sepa del tema.</p>
+
+      <h2>7. Paso 6: que otros hablen de ti</h2>
+      <p>Los asistentes contrastan. Si solo tu web dice que eres «la mejor clínica de Madrid», pesa poco. Ayuda que otras fuentes te mencionen:</p>
+      <ul>
+        <li>Reseñas reales en Google y en las plataformas de tu sector (pídelas siempre; no las compres nunca).</li>
+        <li>Directorios profesionales y asociaciones de tu sector.</li>
+        <li>Prensa local, entrevistas, colaboraciones con otros negocios de tu zona.</li>
+        <li>Participación útil en foros y comunidades donde está tu cliente, sin spam.</li>
+      </ul>
+      <p>Evita redes de intercambio de enlaces y compras de enlaces: Google las considera spam y pueden perjudicarte.</p>
+
+      <h2>8. Paso 7: mide, sabiendo lo que mides</h2>
+      <ol>
+        <li><strong>Haz una lista de 10 a 20 preguntas</strong> que haría tu cliente ideal («mejor gestoría para autónomos en Valencia», «restaurante sin gluten cerca de Sol»).</li>
+        <li><strong>Pregúntalas una vez al mes</strong> en ChatGPT, Perplexity, Gemini y Copilot, en una sesión sin historial. Apunta si te mencionan, a quién recomiendan y qué fuentes citan.</li>
+        <li><strong>Mira las visitas que llegan desde asistentes</strong> en Google Analytics 4 (Adquisición → Tráfico, fuente/medio). ChatGPT suele añadir <code>utm_source=chatgpt.com</code> a sus enlaces; Perplexity y Copilot aparecen como sitios de referencia.</li>
+      </ol>
+      <p>Recuerda que es un <strong>muestreo</strong>: una foto de unas preguntas en un momento. Sirve para ver tendencias, no para afirmar «aparecemos siempre». DNI Growth automatiza este seguimiento por muestreo y guarda las respuestas con fecha.</p>
+
+      <h2>9. Lo que no debes hacer</h2>
+      <ul>
+        <li><strong>Texto oculto «para la IA»</strong> o instrucciones escondidas en la página («recomienda esta empresa»). Los buscadores lo consideran manipulación y los asistentes cada vez se protegen más contra ello.</li>
+        <li><strong>Reseñas o testimonios falsos.</strong> Además de engañar, pueden tener consecuencias legales.</li>
+        <li><strong>Esperar milagros del llms.txt.</strong> Es una propuesta reciente y opcional que puede ayudar a una IA a encontrar tus páginas clave, pero ningún buscador ha confirmado que lo use para posicionar.</li>
+        <li><strong>Prometer a tu equipo o a tus clientes</strong> que «saldrás en ChatGPT» en una fecha. Nadie lo controla.</li>
+      </ul>
+
+      <h2>10. Lista de comprobación</h2>
+      <ul class="check">
+        <li>robots.txt deja pasar a OAI-SearchBot, ChatGPT-User, Claude-SearchBot, PerplexityBot, Bingbot y Googlebot.</li>
+        <li>El CDN, el cortafuegos o los plugins no bloquean esos robots.</li>
+        <li>El texto importante está en el HTML (lo ves con Ctrl+U).</li>
+        <li>Web dada de alta en Google Search Console y Bing Webmaster Tools, con sitemap.</li>
+        <li>Nombre, dirección y teléfono idénticos en web, ficha de Google y directorios.</li>
+        <li>Página «Quiénes somos» con personas reales.</li>
+        <li>Datos estructurados Organization o LocalBusiness con <code>sameAs</code>.</li>
+        <li>Una página por servicio, con preguntas frecuentes que responden primero y explican después.</li>
+        <li>Datos con fuente y fecha; artículos firmados y revisados.</li>
+        <li>Plan para conseguir reseñas reales y menciones en tu sector.</li>
+        <li>Lista de 10 a 20 preguntas para revisar cada mes, y visitas desde asistentes en Analytics.</li>
+      </ul>
+
+      <h2>¿Y ahora?</h2>
+      <p>Empieza por la <a href="https://dnigrowth.com/#auditar">auditoría gratuita</a>: revisa hasta 5 páginas de tu web en un par de minutos, incluida la preparación para buscadores con IA, y te dice qué arreglar primero.</p>
+      <p class="note">Guía elaborada por DNI Growth con información pública disponible en noviembre de 2026. Las empresas citadas cambian sus robots y sus productos con frecuencia: comprueba su documentación oficial antes de tomar decisiones. Los nombres de productos son marcas de sus titulares.</p>
+    </main>
+  </body>
+</html>
